@@ -1,0 +1,30 @@
+{
+  "fields": [
+    {
+      "key": "fullName",
+      "labels": {
+        "en": "Name",
+        "fr": "Nom",
+        "ar": "al name"
+      }
+    },
+    {
+      "key": "phoneNumber",
+      "labels": {
+        "en": "Phone Number",
+        "fr": "Le telefon",
+        "ar": "phone"
+      }
+    }
+  ],
+  "photo": {
+    "enabled": true,
+    "field_name": "photo",
+    "labels": {
+      "en": "Photo",
+      "fr": "Photo",
+      "ar": "صورة"
+    }
+  },
+  "COLUMN_TO_MATCH": "phoneNumber"
+}

@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>FSP Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f9f9f9;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  header {
+    background-color: white;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 120px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  .header-left { display:flex; align-items:center; gap:10px; }
+  .header-left img { height: 60px; }
+  .scandroid-banner img { height: 100px; object-fit: contain; max-width: 100%; display: block; }
+  .right-controls { display: flex; align-items: center; gap: 10px; }
+
+  /* Online/Offline status pill */
+  .status-pill{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700;
+    border:1px solid transparent; user-select:none;
+  }
+  .status-pill.online{ background:#e7f9ef; color:#0f5132; border-color:#b7ebcd; }
+  .status-pill.offline{ background:#fdecec; color:#842029; border-color:#f5c2c7; }
+
+  main { flex-grow: 1; padding: 40px; text-align: center; }
+  .sync-section { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px #ccc; max-width: 500px; margin: auto; }
+  .sync-section h2 { margin-bottom: 20px; }
+
+  /* Unified button styles */
+  #syncBtn, #importBtn, #scanBtn {
+    display: block;
+    width: 100%;
+    padding: 12px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+
+  /* Individual colours */
+  #syncBtn { background-color: #007bff; color: white; }
+  #importBtn { background-color: #ffd580; color: #333; } /* peachy */
+  #scanBtn { background-color: #28a745; color: white; }
+
+  #statusMessage { font-size: 16px; margin-top: 10px; color: #333; }
+  footer { background-color: #f1f1f1; color: #666; padding: 15px 30px; font-size: 14px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  select { padding: 6px; }
+  .logout-button { padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; }
+
+  /* Mobile */
+  @media (max-width: 576px) {
+    header { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; height: auto; padding: 12px; }
+    .header-left img { height: 35px; }
+    .scandroid-banner img { height: 50px; max-width: 70%; }
+    .right-controls { flex-direction: row; width: 100%; justify-content: center; gap:8px; }
+    main { padding: 20px; }
+    .sync-section { padding: 20px; width: 100%; max-width: 420px; box-sizing: border-box; }
+    #syncBtn, #importBtn, #scanBtn { width: 100%; }
+    footer { flex-direction: column; text-align: center; padding: 12px 16px; }
+  }
+</style>
+
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" href="/static/scandroid.png">
+</head>
+<body>
+
+<header>
+
+  <div class="header-left">
+    <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
+    <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
+  </div>
+
+  <div class="scandroid-banner">
+    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
+  </div>
+
+  <div class="right-controls">
+    <!-- status pill -->
+    <span id="netStatus" class="status-pill offline">{{ (t.offline or 'Offline') }}</span>
+
+    <form method="get" action="/fsp-admin">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+    <form method="get" action="/fsp-logout">
+      <button type="submit" class="logout-button">{{ t.logout or "Logout" }}</button>
+    </form>
+  </div>
+</header>
+
+<main>
+<div id="offline-popup" style="
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff3cd;
+  color: #856404;
+  padding: 16px 24px;
+  font-weight: bold;
+  border: 1px solid #ffeeba;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 9999;
+  max-width: 90%;
+  text-align: center;
+  position: fixed;
+">
+  <button onclick="closeOfflinePopup()" style="
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #856404;
+  " aria-label="Close popup">&times;</button>
+  ⚠️ {{ t.must_be_online or "You must be online to perform this action." }}
+</div>
+
+  <div class="sync-section">
+    <h2>{{ t.fsp_sync_title or "📥 FSP: Sync Offline Records" }}</h2>
+    <button id="syncBtn">{{ t.step1 or t.sync_latest or "Step 1. Sync Latest Records" }}</button>
+    <button id="importBtn">{{ t.step2 or "Step 2. Import Offline Cache" }}</button>
+    <button id="scanBtn" onclick="location.href='/scan?lang={{ lang }}'">{{ t.step3 or "Step 3. Scan QR Codes" }}</button>
+    <div id="statusMessage">{{ t.sync_initial or "Click sync to see how many beneficiaries are ready for offline validation." }}</div>
+  </div>
+<div class="sync-section" style="margin-top: 30px;">
+  <h2>{{t.step_4_generate}}</h2>
+  <p id="csv-status">{{t.payments_ready}}<span id="csv-count">0</span></p>
+  <button id="generateCsvBtn" style="background-color:#ffc107; color:#333; padding:12px 20px; border:none; border-radius:6px; font-size:16px; cursor:pointer;">
+    {{t.generate_csv}}
+  </button>
+</div>
+
+<div class="sync-section" style="margin-top: 20px;">
+  <h2>{{t.step_5_send}}</h2>
+  <button id="submitCsvBtn" disabled style="background-color:#28a745; color:white; padding:12px 20px; border:none; border-radius:6px; font-size:16px; cursor:pointer;">
+    {{t.send_payments}}
+  </button>
+  <p id="submit-status" style="margin-top: 10px; font-size: 16px;"></p>
+</div>
+</main>
+
+<footer>
+    <div class="footer-left">{{ t.footer_dev }}</div>
+    <div class="footer-right">{{ t.footer_support}}</div>
+</footer>
+<script>
+  // JINJA TEMPLATE VARIABLE
+  const t = {{ t | tojson | safe }};
+</script>
+
+<!-- IndexedDB helper -->
+<script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
+<!-- ZIP helper -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+
+<script>
+  const ONLINE_TEXT = "{{ t.online or 'Online' }}";
+  const OFFLINE_TEXT = "{{ t.offline or 'Offline' }}";
+
+  // Sync button
+  document.getElementById("syncBtn").addEventListener("click", function () {
+  if (!navigator.onLine) {
+    showOfflineWarningTemporarily();
+    return;
+  }
+    const btn = this;
+    const statusDiv = document.getElementById("statusMessage");
+    btn.disabled = true;
+    btn.innerText = "{{ t.syncing or 'Syncing...' }}";
+
+    fetch("/sync-fsp?lang={{ lang }}")
+      .then(r => r.json())
+      .then(data => { statusDiv.textContent = data.message; })
+      .catch(() => { statusDiv.textContent = "{{ t.sync_error or '❌ Failed to sync. Please try again.' }}"; })
+      .finally(() => { btn.disabled = false; btn.innerText = "{{ t.step1 or t.sync_latest or 'Step 1. Sync Latest Records' }}"; });
+  });
+
+  // Service worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js?v=2', { updateViaCache: 'none' }).catch(()=>{});
+    });
+  }
+
+  // Online detection -> update status pill (no dimming)
+  const pill = document.getElementById('netStatus');
+  function setOnlineState(isOnline) {
+    pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
+    pill.classList.toggle('online', isOnline);
+    pill.classList.toggle('offline', !isOnline);
+  }
+
+  async function pingWithTimeout(timeoutMs = 2000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch('/ping', { cache: 'no-store', signal: controller.signal });
+      clearTimeout(timer);
+      return res.ok;
+    } catch {
+      clearTimeout(timer);
+      return false;
+    }
+  }
+
+  async function checkOnline() {
+    const ok = await pingWithTimeout(2000);
+    setOnlineState(ok);
+  }
+
+  checkOnline();
+  setInterval(checkOnline, 5000);
+  window.addEventListener('online', () => setOnlineState(true));
+  window.addEventListener('offline', () => setOnlineState(false));
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistration().then(reg => reg && reg.update());
+  }
+</script>
+
+<script>
+  // ---------- IndexedDB ----------
+  async function openScandroidDB() {
+    return await idb.openDB('scandroid', 13, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('records')) db.createObjectStore('records', { keyPath: 'uuid' });
+        if (!db.objectStoreNames.contains('photos'))  db.createObjectStore('photos',  { keyPath: 'uuid' });
+        if (!db.objectStoreNames.contains('meta'))    db.createObjectStore('meta',    { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('decisions')) db.createObjectStore('decisions', { keyPath: 'uuid' });
+        if (!db.objectStoreNames.contains('transaction')) db.createObjectStore('transaction', { keyPath: 'uuid' });
+        if (!db.objectStoreNames.contains('payments')) db.createObjectStore('payments', { keyPath: 'uuid' });
+      }
+    });
+  }
+
+  const chunk = (arr, size) => Array.from({length: Math.ceil(arr.length/size)}, (_,i)=>arr.slice(i*size, i*size+size));
+  const findJsonEntry = (zip) => Object.values(zip.files).find(f => /registrations_cache\.json$/i.test(f.name)) || null;
+  const listPhotoEntries = (zip) => Object.values(zip.files).filter(f => /\.enc$/i.test(f.name));
+
+  async function importLatestCache() {
+    const btn = document.getElementById('importBtn');
+    const statusDiv = document.getElementById('statusMessage');
+    const originalText = btn.textContent;
+    btn.disabled = true; btn.textContent = '{{ (lang=="fr") and "Importation…" or (lang=="ar") and "جاري الاستيراد…" or "Importing…" }}';
+
+    try {
+      const res = await fetch('/api/offline/latest.zip', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Fetch latest.zip failed: ${res.status}`);
+      const zipBlob = await res.blob();
+      const zip = await JSZip.loadAsync(zipBlob);
+
+      const jsonEntry = findJsonEntry(zip);
+      if (!jsonEntry) throw new Error('registrations_cache.json not found in ZIP');
+      const jsonText = await jsonEntry.async('string');
+      const records = JSON.parse(jsonText) || [];
+
+      const db = await openScandroidDB();
+
+      let written = 0;
+      for (const group of chunk(records, 50)) {
+        await Promise.all(group.map(async rec => {
+          const uuid = rec.uuid || rec._uuid;
+          if (!uuid) return;
+          await db.put('records', {
+            uuid,
+            registrationId: rec.registrationId,
+            photo_filename: rec.photo_filename,
+            data: rec.data
+          });
+          written++;
+        }));
+      }
+
+      const photos = listPhotoEntries(zip);
+      let photosWritten = 0;
+      for (const group of chunk(photos, 10)) {
+        const items = await Promise.all(group.map(async entry => {
+          const m = entry.name.match(/([^/\\]+)\.enc$/i);
+          const uuid = m ? m[1] : null;
+          if (!uuid) return null;
+          const buf = await entry.async('arraybuffer');
+          return { uuid, bytes: new Uint8Array(buf) };
+        }));
+        await Promise.all(items.filter(Boolean).map(item => db.put('photos', item)));
+        photosWritten += items.filter(Boolean).length;
+      }
+
+      statusDiv.textContent = `✅ ${written} {{ (lang=='fr') and "bénéficiaires" or (lang=='ar') and "مستفيد" or "beneficiaries" }} · ${photosWritten} {{ (lang=='fr') and "photos" or (lang=='ar') and "صور" or "photos" }}.`;
+      await db.put('meta', { key: 'batchInfo', value: { importedAt: Date.now(), recordCount: written, photos: photosWritten } });
+
+    } catch (err) {
+      console.error(err);
+      statusDiv.textContent = `❌ {{ (lang=='fr') and "Échec de l’import" or (lang=='ar') and "فشل الاستيراد" or "Import failed" }}: ${err.message || err}`;
+    } finally {
+      btn.disabled = false; btn.textContent = originalText;
+    }
+  }
+
+  document.getElementById('importBtn').addEventListener('click', importLatestCache);
+</script>
+<script>
+
+function showOfflineWarningTemporarily() {
+  const popup = document.getElementById('offline-popup');
+  popup.style.display = 'block';
+  setTimeout(() => {
+    popup.style.display = 'none';
+  }, 3000);
+}
+  const generateCsvBtn = document.getElementById('generateCsvBtn');
+  const submitCsvBtn = document.getElementById('submitCsvBtn');
+  const csvCountEl = document.getElementById('csv-count');
+  const submitStatus = document.getElementById('submit-status');
+  let cachedCsvBlob = null;
+
+  async function loadPaymentsAndCount() {
+    const db = await openScandroidDB();
+    if (!db.objectStoreNames.contains('payments')) return 0;
+
+    const tx = db.transaction('payments', 'readonly');
+    const store = tx.objectStore('payments');
+    const allPayments = await store.getAll();
+    csvCountEl.textContent = allPayments.length;
+    return allPayments;
+  }
+
+  // Decrypt helper (must match what you're using elsewhere)
+  async function decrypt(encrypted, keyHex) {
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        hexToBytes(keyHex),
+        "AES-GCM",
+        false,
+        ["decrypt"]
+      );
+
+      const data = atob(encrypted);
+      const iv = Uint8Array.from(data.slice(0, 12), c => c.charCodeAt(0));
+      const ciphertext = Uint8Array.from(data.slice(12), c => c.charCodeAt(0));
+      const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+      return new TextDecoder().decode(decrypted);
+    } catch (err) {
+      console.error("Decryption failed:", err);
+      return encrypted; // fallback
+    }
+  }
+
+  function hexToBytes(hex) {
+    return new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+  }
+
+  generateCsvBtn.addEventListener('click', async () => {
+    generateCsvBtn.disabled = true;
+    submitStatus.textContent = "⏳ Generating CSV...";
+
+    const db = await openScandroidDB();
+    const payments = await loadPaymentsAndCount();
+
+    if (!payments.length) {
+      submitStatus.textContent = "⚠️ No payments to export.";
+      return;
+    }
+
+    // Load encryption key from meta
+    const metaTx = db.transaction('meta', 'readonly');
+    const metaStore = metaTx.objectStore('meta');
+    const encKeyObj = await metaStore.get('encryptionKey');
+    const encKey = encKeyObj?.value || '';
+
+    const csvRows = [['phoneNumber', 'status']];
+    for (const p of payments) {
+      let phone = p.match_value;
+      if (encKey && phone.startsWith('gAAAA')) {
+        phone = await decrypt(phone, encKey);
+      }
+      csvRows.push([phone, p.status]);
+    }
+
+    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    cachedCsvBlob = new Blob([csvContent], { type: 'text/csv' });
+
+    submitStatus.textContent = "✅ CSV ready with " + (csvRows.length - 1) + " records.";
+    submitCsvBtn.disabled = false;
+  });
+// document.getElementById('downloadCsvBtn').addEventListener('click', () => {
+//   if (!cachedCsvBlob) {
+//     alert("No CSV generated yet.");
+//     return;
+//   }
+
+//   const url = URL.createObjectURL(cachedCsvBlob);
+//   const a = document.createElement("a");
+//   a.href = url;
+//   a.download = "payments_preview.csv";
+//   a.click();
+//   URL.revokeObjectURL(url);
+// });
+submitCsvBtn.addEventListener('click', async () => {
+  if (!navigator.onLine) {
+    showOfflineWarningTemporarily();
+    return;
+  }
+    if (!cachedCsvBlob) {
+      alert("No CSV generated yet.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('csv', cachedCsvBlob, 'payments.csv');
+
+    submitStatus.textContent = "📤 Sending...";
+try {
+  const res = await fetch('/submit-payments', {
+    method: 'POST',
+    body: formData
+  });
+
+  const responseText = await res.text();
+  if (!res.ok) throw new Error(responseText || "Unknown error from server");
+
+  submitStatus.textContent = t.payment_submit_success || "✅ Payments submitted successfully!";
+
+  const db = await openScandroidDB();
+  const tx = db.transaction('payments', 'readwrite');
+  await tx.objectStore('payments').clear();
+
+  csvCountEl.textContent = "0";
+  submitCsvBtn.disabled = true;
+  generateCsvBtn.disabled = false;
+  cachedCsvBlob = null;
+} catch (err) {
+  console.error(err);
+  submitStatus.textContent = (t.payment_submit_failed || "❌ Failed to submit") + ": " + (err.message || "Unknown error");
+}
+
+  });
+
+  // Init on page load
+  loadPaymentsAndCount();
+
+  let popupTimeout;
+
+  function showOfflineWarningTemporarily() {
+    const popup = document.getElementById('offline-popup');
+    popup.style.display = 'block';
+
+    clearTimeout(popupTimeout);
+    popupTimeout = setTimeout(() => {
+      popup.style.display = 'none';
+    }, 3000);
+  }
+
+  function closeOfflinePopup() {
+    const popup = document.getElementById('offline-popup');
+    popup.style.display = 'none';
+    clearTimeout(popupTimeout);
+  }
+
+</script>
+
+</body>
+</html>

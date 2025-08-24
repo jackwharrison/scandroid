@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>Scandroid | Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      background: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 40px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .header-logos img {
+      height: 60px;
+      margin-right: 20px;
+    }
+
+    .scandroid-banner img {
+      height: 150px;
+      max-width: 300px;
+      object-fit: contain;
+    }
+
+    .lang-selector {
+      position: absolute;
+      top: 20px;
+      right: 40px;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+  .role-buttons {
+    display: flex;
+    gap: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .role-buttons a {
+    text-decoration: none;
+    color: white;
+    padding: 18px 30px;
+    border-radius: 8px;
+    font-size: 18px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+    text-align: center;
+    min-width: 200px;
+    flex: 1 1 200px;
+    max-width: 240px;
+  }
+
+  .btn-admin {
+    background-color: #dc3545;
+  }
+
+  .btn-admin:hover {
+    background-color: #a71d2a;
+  }
+
+  .btn-fsp {
+    background-color: #007bff;
+  }
+
+  .btn-fsp:hover {
+    background-color: #0056b3;
+  }
+
+
+    footer {
+      background-color: #f1f1f1;
+      color: #666;
+      padding: 15px 30px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 50px;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    @media (max-width: 600px) {
+      .header-logos img {
+        height: 40px;
+        margin-right: 10px;
+      }
+
+      .scandroid-banner img {
+        height: 100px;
+        max-width: 60%;
+      }
+
+    .role-buttons a {
+      font-size: 16px;
+      padding: 14px 20px;
+      min-width: 150px;
+      flex: 1 1 150px;
+      max-width: 180px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-logos">
+      <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
+      <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
+    </div>
+    <div class="scandroid-banner">
+      <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid Banner">
+    </div>
+    <div class="lang-selector">
+      <form method="get" action="/">
+        <label for="lang">{{ t.language }}:</label>
+        <select name="lang" onchange="this.form.submit()">
+          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+          <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+          <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+        </select>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <h1>{{ t.home_question or "Who are you?" }}</h1>
+    <div class="role-buttons">
+    <a class="btn-admin" href="/admin-login?lang={{ lang }}">{{ t.home_admin or "I am an Admin" }}</a>
+    <a class="btn-fsp" href="/fsp-login?lang={{ lang }}">{{ t.home_fsp or "I am an FSP" }}</a>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-left">{{ t.footer_dev }}</div>
+    <div class="footer-right">{{ t.footer_support}}</div>
+  </footer>
+</body>
+</html>

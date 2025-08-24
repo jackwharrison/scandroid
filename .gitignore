@@ -1,0 +1,51 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+
+# Environment variables / secrets
+.env
+*.env
+config.json
+system_config.json
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+.idea/
+.vscode/
+
+# Log and database files
+*.log
+*.sqlite3
+
+# Test outputs or user data
+*.zip
+*.csv
+*.db
+offline-cache/
+
+# Python egg files
+*.egg
+*.egg-info/
+dist/
+build/
+
+# PyInstaller
+*.spec
+
+# Misc
+pip-log.txt
+coverage.xml
+htmlcov/

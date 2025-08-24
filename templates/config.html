@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>{{ t.config_title }}</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8f9fa;
+    }
+
+    .page-wrapper {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 20px 40px 60px 40px;
+    }
+
+    .back-button {
+      margin-bottom: 20px;
+    }
+
+    .back-button a {
+      text-decoration: none;
+      background-color: #007bff;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .lang-selector {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+    }
+
+    .logo-container {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .logo-container img {
+      height: 60px;
+      margin: 0 10px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 0 10px #ccc;
+      margin-bottom: 30px;
+    }
+
+    th, td {
+      border: 1px solid #aaa;
+      padding: 10px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background-color: #f0f0f0;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+
+    input[type="radio"] {
+      margin: 0 auto;
+      display: block;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
+    fieldset {
+      margin-top: 30px;
+      padding: 25px 30px;
+      background: #fff;
+      box-shadow: 0 0 10px #ccc;
+      border: 1px solid #aaa;
+    }
+
+    legend {
+      font-size: 18px;
+      font-weight: bold;
+      padding: 0 10px;
+    }
+
+    .photo-config label {
+      display: block;
+      margin: 10px 0 5px;
+    }
+
+    footer {
+      background-color: #f1f1f1;
+      color: #666;
+      padding: 15px 30px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      margin-top: auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="back-button">
+      <a href="/admin-dashboard?lang={{ lang }}">&larr; {{ t.back_to_dashboard}}</a>
+    </div>
+
+    <div class="lang-selector">
+      <form method="get" action="/config">
+        <label for="lang">{{ t.language }}:</label>
+        <select name="lang" onchange="this.form.submit()">
+          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+          <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+          <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+        </select>
+      </form>
+    </div>
+
+    <div class="logo-container">
+      <img src="{{ url_for('static', filename='ns1.png') }}" alt="National Society 1">
+      <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid Logo">
+      <img src="{{ url_for('static', filename='ns2.png') }}" alt="National Society 2">
+    </div>
+
+    <h1>{{ t.config_title or 'Configure Fields to Display' }}</h1>
+
+    <form id="configForm">
+      <!-- Fields Table -->
+      <table id="fieldTable">
+        <thead>
+          <tr>
+            <th>Field Key (from Kobo)</th>
+            <th>{{ t.label_en}}</th>
+            <th>{{ t.label_fr}}</th>
+            <th>{{ t.label_ar}}</th>
+            <th>{{ t.use_for_matching}}</th>
+            <th>{{ t.remove}}</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <button type="button" onclick="addRow()">{{ t.add_field or 'Add Field' }}</button>
+
+      <!-- Photo Field Configuration -->
+      <fieldset class="photo-config">
+        <legend>{{ t.photo_config_title or "Photo Field Configuration" }}</legend>
+
+        <label>
+          <input type="checkbox" id="photoEnabled"> {{ t.enable_photo_field or "Enable photo field display" }}
+        </label>
+
+        <label>{{ t.field_key or "Field Key (from Kobo)" }}:</label>
+        <input type="text" id="photoKey">
+
+        <label>{{ t.label_en or "Label (EN)" }}:</label>
+        <input type="text" id="photoLabelEn">
+
+        <label>{{ t.label_fr or "Label (FR)" }}:</label>
+        <input type="text" id="photoLabelFr">
+
+        <label>{{ t.label_ar or "Label (AR)" }}:</label>
+        <input type="text" id="photoLabelAr">
+      </fieldset>
+
+      <br>
+      <button type="submit">{{ t.save or 'Save' }}</button>
+    </form>
+
+    <footer>
+      <div class="footer-left">{{ t.footer_dev }}</div>
+      <div class="footer-right">{{ t.footer_support}}</div>
+    </footer>
+  </div>
+
+  <script>
+    const matchFieldKey = {{ system_config.get("COLUMN_TO_MATCH", "null") | tojson }};
+
+    function addRowFromData(item = { key: '', labels: { en: '', fr: '', ar: '' } }) {
+      const row = document.createElement('tr');
+      const isMatch = item.key === matchFieldKey;
+
+      row.innerHTML = `
+        <td><input type="text" name="key" value="${item.key || ''}"></td>
+        <td><input type="text" name="label_en" value="${item.labels.en || ''}"></td>
+        <td><input type="text" name="label_fr" value="${item.labels.fr || ''}"></td>
+        <td><input type="text" name="label_ar" value="${item.labels.ar || ''}"></td>
+        <td><input type="radio" name="match_field" value="${item.key}" ${isMatch ? 'checked' : ''}></td>
+        <td><button type="button" onclick="removeRow(this)">X</button></td>
+      `;
+      document.querySelector('#fieldTable tbody').appendChild(row);
+    }
+
+    function addRow() {
+      addRowFromData();
+    }
+
+    function removeRow(button) {
+      button.closest('tr').remove();
+    }
+
+    async function loadConfig() {
+      const config = {{ config | tojson }};
+      if (config.fields) {
+        config.fields.forEach(addRowFromData);
+      }
+
+      if (config.photo) {
+        document.getElementById('photoEnabled').checked = config.photo.enabled;
+        document.getElementById('photoKey').value = config.photo.field_name || 'photo';
+        document.getElementById('photoLabelEn').value = config.photo.labels.en || '';
+        document.getElementById('photoLabelFr').value = config.photo.labels.fr || '';
+        document.getElementById('photoLabelAr').value = config.photo.labels.ar || '';
+      }
+    }
+
+    document.getElementById('configForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const rows = document.querySelectorAll('#fieldTable tbody tr');
+      const fields = Array.from(rows).map(row => {
+        const inputs = row.querySelectorAll('input');
+        return {
+          key: inputs[0].value,
+          labels: {
+            en: inputs[1].value,
+            fr: inputs[2].value,
+            ar: inputs[3].value
+          }
+        };
+      });
+
+      const selectedMatchField = document.querySelector('input[name="match_field"]:checked');
+      if (!selectedMatchField) {
+        alert("Please select one field to match for payment.");
+        return;
+      }
+
+      const photoConfig = {
+        enabled: document.getElementById('photoEnabled').checked,
+        field_name: document.getElementById('photoKey').value,
+        labels: {
+          en: document.getElementById('photoLabelEn').value,
+          fr: document.getElementById('photoLabelFr').value,
+          ar: document.getElementById('photoLabelAr').value
+        }
+      };
+
+      const result = {
+        fields: fields,
+        photo: photoConfig,
+        COLUMN_TO_MATCH: selectedMatchField.value
+      };
+
+      const res = await fetch('/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result)
+      });
+
+      if (res.ok) {
+        alert('{{ t.saved_successfully or "Saved successfully" }}');
+      } else {
+        alert('{{ t.failed_to_save or "Failed to save." }}');
+      }
+    });
+
+    window.onload = loadConfig;
+  </script>
+</body>
+</html>

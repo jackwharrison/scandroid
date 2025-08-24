@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>{{ t.scan_title or "Scan QR" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin:0; font-family: Arial, sans-serif; background:#f9f9f9; display:flex; flex-direction:column; min-height:100vh; }
+    header, footer { padding: 12px 16px; background:#fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    main { flex:1; padding: 16px; display:flex; flex-direction:column; align-items:center; gap:12px; }
+    .wrap { width:100%; max-width:520px; }
+    .video-wrap { position:relative; width:100%; aspect-ratio:3/4; background:#000; border-radius:12px; overflow:hidden; }
+    video { width:100%; height:100%; object-fit:cover; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .btn { padding:12px 16px; border-radius:8px; font-size:16px; border:none; cursor:pointer; }
+    .btn-primary { background:#007bff; color:#fff; }
+    .btn-secondary { background:#6c757d; color:#fff; }
+
+    .hint { color:#333; text-align:center; }
+    #status { font-size:14px; color:#555; word-break:break-word; min-height:1.4em; }
+
+    /* Online/Offline status pill */
+    .status-pill{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700;
+      border:1px solid transparent; user-select:none;
+    }
+    .status-pill.online{ background:#e7f9ef; color:#0f5132; border-color:#b7ebcd; }
+    .status-pill.offline{ background:#fdecec; color:#842029; border-color:#f5c2c7; }
+
+    @media (max-width:576px){ header, footer { text-align:center; } .row{justify-content:center;} }
+  </style>
+</head>
+<body>
+  <header class="row" style="align-items:center;">
+    <button class="btn btn-secondary" onclick="history.back()">&larr; {{ t.back_to_dashboard or 'Back' }}</button>
+    <div style="flex:1"></div>
+    <span id="netStatus" class="status-pill offline">{{ t.offline or 'Offline' }}</span>
+    <div style="width:8px"></div>
+    <span class="hint">{{ t.scan_hint or "Point the camera at the QR code." }}</span>
+  </header>
+
+  <main>
+    <div class="wrap">
+      <div class="row" style="justify-content:flex-start;">
+        <button id="startBtn" class="btn btn-primary">{{ t.start_camera or "Start camera" }}</button>
+      </div>
+
+      <div class="video-wrap" style="margin-top:12px;">
+        <video id="video" autoplay playsinline muted></video>
+      </div>
+
+      <div id="status" class="hint">{{ t.waiting_to_start or "Waiting to start…" }}</div>
+    </div>
+  </main>
+
+  <footer>
+    <small>{{ t.footer_dev or "Developed by 510 @ The Netherlands Red Cross" }}</small>
+  </footer>
+
+  <!-- Lightweight QR decoder (fallback) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+  <script>
+  (function () {
+    const statusEl = document.getElementById('status');
+    const netPill  = document.getElementById('netStatus');
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+    const lang = "{{ lang }}";
+
+    const TXT = {
+      requesting: "{{ t.requesting_camera or 'Requesting camera… If prompted, tap Allow.' }}",
+      denied: "{{ t.camera_denied or 'Camera permission denied or not available.' }}",
+      scanning: "{{ t.scanning or 'Scanning…' }}",
+      starting: "{{ t.starting_camera or 'Starting camera…' }}"
+    };
+
+    const ONLINE_TEXT  = "{{ t.online or 'Online' }}";
+    const OFFLINE_TEXT = "{{ t.offline or 'Offline' }}";
+
+    let stream = null;
+    let rafId = null;
+    let lastOnline = navigator.onLine;
+
+    const setStatus = (m) => statusEl.textContent = m;
+
+    function setOnlineState(isOnline){
+      netPill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
+      netPill.classList.toggle('online', isOnline);
+      netPill.classList.toggle('offline', !isOnline);
+      lastOnline = isOnline;
+    }
+
+    // Decide destination after a successful scan
+    function routeAfterScan(id) {
+    const v = String(id || '').trim();
+    if (!v) return;
+    window.location.href = `/beneficiary-offline?uuid=${encodeURIComponent(v)}&lang=${encodeURIComponent(lang)}`;
+    }
+
+    async function startCamera() {
+      setStatus(TXT.requesting);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+      } catch (e) {
+        console.error(e);
+        setStatus(TXT.denied);
+        return;
+      }
+      video.srcObject = stream;
+
+      const onReady = () => {
+        video.removeEventListener('playing', onReady);
+        video.removeEventListener('canplay', onReady);
+        startDecoding();
+      };
+      video.addEventListener('playing', onReady, { once: true });
+      video.addEventListener('canplay', onReady, { once: true });
+      try { await video.play(); } catch (_) {}
+    }
+
+    async function startDecoding() {
+      setStatus(TXT.scanning);
+
+      if ('BarcodeDetector' in window) {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          return loopNative(detector);
+        } catch (e) {
+          console.warn('BarcodeDetector init failed, falling back to jsQR', e);
+        }
+      }
+      loopJsQR();
+    }
+
+    function loopNative(detector) {
+      const tick = async () => {
+        try {
+          const codes = await detector.detect(video);
+          if (codes && codes.length) {
+            cleanup();
+            const v = codes[0].rawValue || codes[0].value || '';
+            if (v) return routeAfterScan(v);
+          }
+          setStatus(TXT.scanning);
+        } catch (e) {
+          console.warn('BarcodeDetector detect error; switching to jsQR', e);
+          return loopJsQR();
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function loopJsQR() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      const tick = () => {
+        if (video.readyState >= 2) {
+          const w = Math.min(640, video.videoWidth || 640);
+          const h = Math.floor(w * (video.videoHeight || 480) / (video.videoWidth || 640));
+          canvas.width = w; canvas.height = h;
+          ctx.drawImage(video, 0, 0, w, h);
+          const img = ctx.getImageData(0, 0, w, h);
+          const qr = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+          if (qr && qr.data) {
+            cleanup();
+            return routeAfterScan(qr.data);
+          }
+          setStatus(TXT.scanning);
+        } else {
+          setStatus(TXT.starting);
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function cleanup() {
+      if (rafId) cancelAnimationFrame(rafId);
+      try { stream && stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+    }
+
+    // Robust online detection using /ping (short timeout)
+    async function pingWithTimeout(timeoutMs = 2000) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch('/ping', { cache: 'no-store', signal: controller.signal });
+        clearTimeout(timeout);
+        return res.ok;
+      } catch {
+        clearTimeout(timeout);
+        return false;
+      }
+    }
+    async function checkOnline() {
+      const ok = await pingWithTimeout(2000);
+      setOnlineState(ok);
+    }
+    checkOnline();
+    setInterval(checkOnline, 5000);
+    window.addEventListener('online', () => setOnlineState(true));
+    window.addEventListener('offline', () => setOnlineState(false));
+
+    startBtn.addEventListener('click', startCamera);
+    window.addEventListener('beforeunload', cleanup);
+  })();
+  </script>
+</body>
+</html>

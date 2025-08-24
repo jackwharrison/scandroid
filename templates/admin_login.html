@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>Red Cross Login</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+
+    .branding {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .branding img {
+      height: 300px;
+      margin-bottom: 10px;
+    }
+
+    .branding h1 {
+      margin: 0;
+    }
+
+    .branding p {
+      margin: 0;
+      font-style: italic;
+      color: #666;
+    }
+
+    .login-box {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+      width: 300px;
+    }
+
+    .login-box h2 {
+      text-align: center;
+    }
+
+    .login-box input[type="text"],
+    .login-box input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+
+    .login-box button {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+    }
+
+    .error {
+      color: red;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .lang-selector {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+    }
+
+    footer {
+      background-color: #f1f1f1;
+      color: #666;
+      padding: 15px 30px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: auto; /* Pushes footer to bottom */
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="lang-selector">
+      <form method="get" action="/admin-login">
+        <label for="lang">{{ t.language }}:</label>
+        <select name="lang" onchange="this.form.submit()">
+          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+          <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+          <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+        </select>
+      </form>
+    </div>
+
+    <div class="branding">
+      <img src="{{ url_for('static', filename='scandroid.png') }}" alt="Scandroid Logo">
+    </div>
+
+      <div class="login-box">
+        <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1 Logo" style="display: block; margin: 0 auto 20px; height: 60px;">
+
+        <h2>{{ t.login }}</h2>
+
+        {% if error %}
+          <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="/admin-login">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input type="text" name="username" placeholder="Username" required>
+          <input type="password" name="password" placeholder="{{ t.enter_password }}" required>
+          <button type="submit">{{ t.submit }}</button>
+        </form>
+      </div>
+
+
+  <footer>
+    <div class="footer-left">{{ t.footer_dev }}</div>
+    <div class="footer-right">{{ t.footer_support}}</div>
+  </footer>
+</body>
+</html>
