@@ -1,6 +1,6 @@
 import json
 
-CONFIG_PATH = "system_config.json"
+CONFIG_PATH = "/home/site/wwwroot/system_config.json"
 
 def load_config():
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
