@@ -266,7 +266,11 @@
   const findJsonEntry = (zip) => Object.values(zip.files).find(f => /registrations_cache\.json$/i.test(f.name)) || null;
   const listPhotoEntries = (zip) => Object.values(zip.files).filter(f => /\.enc$/i.test(f.name));
 
-  async function importLatestCache() {
+ async function importLatestCache() {
+  if (!navigator.onLine) {
+    showOfflineWarningTemporarily();
+    return;
+  }
     const btn = document.getElementById('importBtn');
     const statusDiv = document.getElementById('statusMessage');
     const originalText = btn.textContent;
