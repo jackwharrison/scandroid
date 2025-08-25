@@ -109,17 +109,36 @@
       margin: 10px 0 5px;
     }
 
-    footer {
-      background-color: #f1f1f1;
-      color: #666;
-      padding: 15px 30px;
-      font-size: 14px;
-      display: flex;
-      justify-content: space-between;
-      margin-top: auto;
-      width: 100%;
-      box-sizing: border-box;
-    }
+        footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  font-size: 0.9rem;
+  background-color: #f8f8f8;
+  border-top: 1px solid #ddd;
+  flex-wrap: wrap;
+}
+
+.footer-left, .footer-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.guide-button {
+  background-color: #d62828;
+  color: #fff;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 5px;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+  max-width: fit-content;
+}
+
+.guide-button:hover {
+  background-color: #b81f1f;
+}
   </style>
 </head>
 <body>
@@ -190,10 +209,18 @@
       <button type="submit">{{ t.save or 'Save' }}</button>
     </form>
 
-    <footer>
-      <div class="footer-left">{{ t.footer_dev }}</div>
-      <div class="footer-right">{{ t.footer_support}}</div>
-    </footer>
+<footer>
+  <div class="footer-left">
+    <a href="https://jackwharrison.github.io/scandroid-user-guide/" target="_blank" class="guide-button">
+      📘 Open Scandroid User Guide
+    </a>
+  </div>
+  <div class="footer-right">
+    <div>Developed by 510 @ The Netherlands Red Cross</div>
+    <div>If you need support, contact: <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a></div>
+  </div>
+</footer>
+
   </div>
 
   <script>
