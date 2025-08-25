@@ -97,18 +97,35 @@
     }
 
     footer {
-     background-color: #f1f1f1;
-     color: #666;
-     padding: 15px 30px;
-     font-size: 14px;
-     display: flex;
-     justify-content: space-between;
-     position: absolute;
-     bottom: 0;
-     width: 100%;
-     box-sizing: border-box;
-    }
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  font-size: 0.9rem;
+  background-color: #f8f8f8;
+  border-top: 1px solid #ddd;
+  flex-wrap: wrap;
+}
 
+.footer-left, .footer-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.guide-button {
+  background-color: #d62828;
+  color: #fff;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 5px;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+  max-width: fit-content;
+}
+
+.guide-button:hover {
+  background-color: #b81f1f;
+}
   </style>
 </head>
 <body>
@@ -153,15 +170,16 @@
 
 <footer>
   <div class="footer-left">
-        <a href="https://jackwharrison.github.io/scandroid-user-guide/" target="_blank">
-      📘 Scandroid User Guide
+    <a href="https://jackwharrison.github.io/scandroid-user-guide/" target="_blank" class="guide-button">
+      📘 Open Scandroid User Guide
     </a>
-    Developed by 510 @ The Netherlands Red Cross<br>
   </div>
   <div class="footer-right">
-    If you need support, contact <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a>
+    <div>Developed by 510 @ The Netherlands Red Cross</div>
+    <div>Contact: <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a></div>
   </div>
 </footer>
+
 
 
 </body>
