@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Invalid QR Code</title>
+  <style>
+    :root {
+      --pad: 16px;
+      --gap: 12px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      border: 1px solid var(--line);
+      width: 100%;
+      max-width: 460px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 18px var(--pad);
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .logos {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .logos img {
+      height: 42px;
+    }
+
+    .content {
+      padding: 24px;
+      text-align: center;
+    }
+
+    h2 {
+      color: #dc2626;
+      margin: 0.5rem 0;
+      font-size: 1.6rem;
+    }
+
+    p {
+      color: #333;
+      margin: 0.4rem 0 1rem;
+    }
+
+    .reason-box {
+      margin: 1rem 0 1.5rem;
+      padding: 12px 16px;
+      background: #fee2e2;
+      border-left: 4px solid #dc2626;
+      border-radius: 8px;
+      font-weight: 600;
+      color: #7f1d1d;
+    }
+
+    .actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      padding: 12px 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn-scan {
+      background: #e8f9ef;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .btn-scan:hover {
+      background: #d1fae5;
+    }
+
+    .btn-home {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #93c5fd;
+    }
+
+    .btn-home:hover {
+      background: #dbeafe;
+    }
+
+    @media (max-width: 480px) {
+      .content {
+        padding: 16px;
+      }
+
+      .logos img {
+        height: 36px;
+      }
+
+      h2 {
+        font-size: 1.4rem;
+      }
+
+      .btn {
+        font-size: 0.95rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logos">
+        <img src="/static/ns1.png" alt="Logo 1" />
+        <img src="/static/scandroid_banner.png" alt="Scandroid" />
+        <img src="/static/ns2.png" alt="Logo 2" />
+      </div>
+    </div>
+
+    <div class="content">
+      <h2>❌ Invalid QR Code</h2>
+      <p>This QR code cannot be used.</p>
+
+      <div class="reason-box" id="reasonBox">
+        Checking reason…
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-scan" id="btnScan">Scan next beneficiary</button>
+        <button class="btn btn-home" id="btnHome">Go to homepage</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reason = params.get("reason") || "Invalid or unrecognized QR code.";
+  const lang = params.get("lang") || "en";
+
+  // Map technical reasons → friendly user messages
+  const reasonMap = {
+    "status=success": "This QR code has already been used.",
+    "Invalid QR": "The QR code is invalid or unrecognized.",
+    "No offline record found": "This QR code does not match any stored beneficiary.",
+    "Database error": "There was a problem reading offline data. Please try again."
+  };
+
+  // Use readable message if we have one
+  const displayReason = reasonMap[reason] || reason;
+
+  document.getElementById("reasonBox").textContent = displayReason;
+
+  document.getElementById("btnScan").onclick = () => {
+    window.location.href = `/scan?lang=${encodeURIComponent(lang)}`;
+  };
+
+  document.getElementById("btnHome").onclick = () => {
+    window.location.href = `/fsp-admin?lang=${encodeURIComponent(lang)}`;
+  };
+</script>
+
+
+</body>
+</html>

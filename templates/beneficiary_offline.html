@@ -325,6 +325,15 @@
         if (photoMsg) photoMsg.textContent = 'No photo found in cache.';
         return;
       }
+      if (rec.valid === false) {
+        console.warn("❌ Invalid QR Code:", rec.reason || "Unknown reason");
+
+        window.location.href = `/invalid-qr.html?reason=${
+            encodeURIComponent(rec.reason || "Invalid QR")
+          }&lang=${encodeURIComponent(LANG)}`;
+
+        return;
+      }
 
       // Decrypt & render fields
       renderFields(fieldsEl, rec.data || {}, keyB64);
@@ -423,7 +432,10 @@ async function handleDecision(status) {
   };
 
 document.getElementById("approveBtn").addEventListener("click", () => savePaymentDecision("success"));
-document.getElementById("rejectBtn").addEventListener("click", () => savePaymentDecision("error"));
+document.getElementById("rejectBtn").addEventListener("click", () => {
+  window.location.href = `/success-offline?lang=${encodeURIComponent(LANG)}`;
+});
+
 
 async function savePaymentDecision(decisionValue) {
   const note = document.getElementById('decisionNote');

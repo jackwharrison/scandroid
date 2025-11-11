@@ -135,11 +135,25 @@ def download_cache(program_id, payment_id):
         photo_path = os.path.join(batch_dir, "photos", photo_filename)
         download_and_encrypt_photo(uuid, photo_path)
 
+        status = (t.get("status") or t.get("transactionStatus") or "").lower()
+        deleted = (t.get("registrationStatus") or "").lower() == "deleted"
+
+        is_valid = status == "waiting" and not deleted
+        reason = "ok"
+        if not is_valid:
+            if status != "waiting":
+                reason = f"status={status}"
+            elif deleted:
+                reason = "deleted"
+
         record = {
             "uuid": uuid,
             "registrationId": reg_id,
             "photo_filename": photo_filename,
-            "data": encrypted_data
+            "paymentId": t.get("paymentId"),
+            "data": encrypted_data,
+            "valid": is_valid,
+            "reason": reason
         }
 
         cache_data.append(record)
@@ -152,5 +166,174 @@ def download_cache(program_id, payment_id):
     print(f"{len(cache_data)} beneficiaries ready for offline validation.")
     return len(cache_data)
 
+from collections import defaultdict
+from datetime import timedelta
+
+from datetime import datetime, timedelta
+
+from datetime import datetime, timedelta  # Make sure this is at the top if not already
+
+def download_recent_payments_cache(program_id):
+    base_path = "offline-cache"
+    os.makedirs(base_path, exist_ok=True)
+    batch_dir = get_next_batch_dir(base_path, "recent")
+
+    # Get ALL transactions
+    url = f"{API_BASE}/programs/{program_id}/transactions"
+    response = requests.get(url, cookies=COOKIES)
+    response.raise_for_status()
+    data = response.json()
+
+    # Handle multiple possible 121 API formats
+    if isinstance(data, dict):
+        if "transactions" in data:
+            all_transactions = data["transactions"]
+        elif "data" in data:
+            all_transactions = data["data"]
+        else:
+            print("[ERROR] Unexpected transaction structure:", data.keys())
+            return 0
+    elif isinstance(data, list):
+        all_transactions = data
+    else:
+        print("[ERROR] Unknown transaction data type")
+        return 0
+
+    print(f"[INFO] Total transactions fetched: {len(all_transactions)}")
+
+    fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
+    filtered = []
+
+    # Debug counters
+    counts = {
+        "not_dict": 0,
+        "not_waiting": 0,
+        "deleted": 0,
+        "missing_created": 0,
+        "invalid_date": 0,
+        "too_old": 0,
+        "valid": 0
+    }
+
+    for t in all_transactions:
+        if not isinstance(t, dict):
+            counts["not_dict"] += 1
+            continue
+
+        status = (t.get("status") or t.get("transactionStatus") or "").lower()
+        created = t.get("created", "")
+        deleted = (t.get("registrationStatus") or "").lower() == "deleted"
+
+        if status != "waiting":
+            counts["not_waiting"] += 1
+            continue
+
+        if deleted:
+            counts["deleted"] += 1
+            continue
+
+        if not created:
+            counts["missing_created"] += 1
+            continue
+
+        try:
+            # Try parsing timestamp formats
+            try:
+                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError:
+            counts["invalid_date"] += 1
+            print(f"[SKIP] Invalid date: {created}")
+            continue
+
+        if created_dt < fourteen_days_ago:
+            counts["too_old"] += 1
+            continue
+
+        filtered.append(t)
+        counts["valid"] += 1
+
+    print("\n[DEBUG] Filter counts:")
+    for k, v in counts.items():
+        print(f"  - {k}: {v}")
+    print(f"[INFO] Filtered transactions: {len(filtered)}")
+
+    # Keep only the latest tranche per UUID
+    latest_by_uuid = {}
+    for t in filtered:
+        uuid = t.get("registrationReferenceId")
+        if not uuid:
+            continue
+        existing = latest_by_uuid.get(uuid)
+        if not existing or t["created"] > existing["created"]:
+            latest_by_uuid[uuid] = t
+
+    print(f"[INFO] Final unique transactions to cache: {len(latest_by_uuid)}")
+
+    cache_data = []
+
+    for t in latest_by_uuid.values():
+        reg_id = t.get("registrationId")
+        uuid = t.get("registrationReferenceId")
+
+        if not reg_id or not uuid:
+            print("[SKIP] Missing reg_id or uuid")
+            continue
+
+        try:
+            reg = get_registration(program_id, reg_id)
+        except Exception as e:
+            print(f"[!] Failed registration fetch for {reg_id}: {e}")
+            continue
+
+        filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
+        encrypted_data = encrypt_data(filtered_data)
+
+        photo_filename = f"{uuid}.enc"
+        photo_path = os.path.join(batch_dir, "photos", photo_filename)
+        download_and_encrypt_photo(uuid, photo_path)
+        is_valid = status == "waiting" and not deleted and created_dt >= fourteen_days_ago
+        reason = "ok"
+        if not is_valid:
+            if status != "waiting":
+                reason = f"status={status}"
+            elif deleted:
+                reason = "deleted"
+            elif created_dt < fourteen_days_ago:
+                reason = "too_old"
+
+        record = {
+            "uuid": uuid,
+            "registrationId": reg_id,
+            "photo_filename": photo_filename,
+            "data": encrypted_data,
+            "valid": is_valid,
+            "reason": reason
+        }
+
+        cache_data.append(record)
+
+    # Save encrypted registration data
+    json_path = os.path.join(batch_dir, "registrations_cache.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(cache_data, f, indent=2)
+
+    print(f"\n[OK] Batch saved to: {batch_dir}")
+    print(f"{len(cache_data)} beneficiaries ready.")
+
+    batch_info = {
+        "batchType": "payment-recent",
+        "programId": program_id,
+        "recordCount": len(cache_data),
+        "generatedAt": datetime.utcnow().isoformat() + "Z"
+    }
+
+    with open(os.path.join(batch_dir, "batch_info.json"), "w", encoding="utf-8") as f:
+        json.dump(batch_info, f, indent=2)
+
+    return len(cache_data)
+
+
 if __name__ == "__main__":
-    download_cache(PROGRAM_ID, PAYMENT_ID)
+    download_recent_payments_cache(PROGRAM_ID)

@@ -93,12 +93,83 @@
       netPill.classList.toggle('offline', !isOnline);
       lastOnline = isOnline;
     }
+async function checkAndRouteRecord(scannedId) {
+  const dbReq = indexedDB.open("scandroid");
+
+  dbReq.onsuccess = async function () {
+    const db = dbReq.result;
+    let rec = null;
+
+    // Step 1: Try direct lookup by UUID
+    rec = await new Promise((resolve) => {
+      const tx = db.transaction("records", "readonly");
+      const store = tx.objectStore("records");
+      const req = store.get(String(scannedId));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+
+    // Step 2: If not found, try idIndex map
+    if (!rec) {
+      const tx = db.transaction("meta", "readonly");
+      const metaStore = tx.objectStore("meta");
+      const indexReq = metaStore.get("idIndex");
+
+      const idx = await new Promise((resolve) => {
+        indexReq.onsuccess = () => resolve(indexReq.result?.value || {});
+        indexReq.onerror = () => resolve({});
+      });
+
+      const mapped = idx['uuid:' + scannedId] || idx['reg:' + scannedId] || idx['kobo:' + scannedId];
+
+      if (mapped) {
+        rec = await new Promise((resolve) => {
+          const tx2 = db.transaction("records", "readonly");
+          const store2 = tx2.objectStore("records");
+          const getMapped = store2.get(mapped);
+          getMapped.onsuccess = () => resolve(getMapped.result);
+          getMapped.onerror = () => resolve(null);
+        });
+      }
+    }
+
+    // Step 3: If still not found, fallback scan
+    if (!rec) {
+      rec = await dbFindRecordByAnyId(db, scannedId);
+    }
+
+    // Step 4: Redirect based on result
+    if (!rec) {
+      console.warn(`[!] No record found for scanned ID: ${scannedId}`);
+      window.location.href = `/invalid-qr?reason=${encodeURIComponent("No offline record found")}&lang=${encodeURIComponent(lang)}`;
+      return;
+    }
+
+    console.log('[DEBUG] Scanned record:', rec);
+
+    const isValid = String(rec.valid).toLowerCase() === 'true';
+      if (!isValid) {
+        const reason = rec.reason || "Invalid QR";
+        console.warn(`[!] Invalid QR scanned: ${rec.uuid}, Reason: ${reason}`);
+        window.location.href = `/invalid-qr?reason=${encodeURIComponent(reason)}&lang=${encodeURIComponent(lang)}`;
+        return;
+      }
+    // ✅ Valid record, go to beneficiary page
+    window.location.href = `/beneficiary-offline?uuid=${encodeURIComponent(rec.uuid)}&lang=${encodeURIComponent(lang)}`;
+  };
+
+  dbReq.onerror = function () {
+    console.warn('[!] IndexedDB error opening scandroid DB');
+    window.location.href = `/invalid-qr?reason=${encodeURIComponent("Database error")}&lang=${encodeURIComponent(lang)}`;
+  };
+}
+
 
     // Decide destination after a successful scan
     function routeAfterScan(id) {
-    const v = String(id || '').trim();
-    if (!v) return;
-    window.location.href = `/beneficiary-offline?uuid=${encodeURIComponent(v)}&lang=${encodeURIComponent(lang)}`;
+      const v = String(id || '').trim();
+      if (!v) return;
+      checkAndRouteRecord(v);
     }
 
     async function startCamera() {

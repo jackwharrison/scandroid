@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voucher Generator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+<style>
+  :root { --pad:16px; --gap:12px; --radius:16px; --card:#fff; --ink:#111; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6; }
+
+  /* FIXED: removed flex centering */
+  body{
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    margin:0;
+    padding:24px;
+  }
+
+  /* NEW: wrapper to centre only the card */
+  .page-wrapper {
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height: calc(100vh - 80px); /* leaves space for top bar */
+  }
+
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    box-shadow:0 10px 30px rgba(0,0,0,.06);
+    border:1px solid var(--line);
+    width:100%;
+    max-width:520px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .header{
+    padding:18px var(--pad);
+    border-bottom:1px solid var(--line);
+    display:grid;
+    gap:10px;
+    text-align:center;
+  }
+
+  .logos{
+    display:flex;
+    justify-content:center;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+
+  .logos img{height:42px}
+
+  .content{padding:24px;text-align:center}
+
+  h2{margin:.5rem 0;font-size:1.4rem}
+
+  .counter{font-weight:700;color:#007bff;margin:.6rem 0 1rem}
+
+  .actions{display:grid;gap:12px;margin-top:12px}
+
+  .btn{
+    padding:12px 16px;
+    font-weight:700;
+    border:none;
+    border-radius:12px;
+    font-size:1rem;
+    cursor:pointer;
+  }
+
+  .btn-primary{background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd}
+  .btn-primary:hover{background:#dbeafe}
+
+  .btn-success{background:#e8f9ef;color:#065f46;border:1px solid #a7f3d0}
+  .btn-success:hover{background:#d1fae5}
+
+  input[type=file]{display:none}
+
+  label.file{
+    display:block;
+    border:1px dashed #93c5fd;
+    padding:14px;
+    border-radius:12px;
+    background:#f8fbff;
+    cursor:pointer;
+  }
+
+  .hint{color:var(--muted);font-size:.92rem}
+
+  .voucher-topbar {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto 14px auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .topbar-back {
+    background-color: #dc3545;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: bold;
+    text-decoration: none;
+    border: 1px solid #b91c1c;
+  }
+
+  .topbar-back:hover {
+    background-color: #b91c1c;
+  }
+
+  .lang-form select {
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+    background: white;
+    font-weight: 600;
+    cursor: pointer;
+  }
+</style>
+
+</head>
+<body>
+
+  <div class="voucher-topbar">
+    <a href="/admin-dashboard?lang={{ lang }}" class="topbar-back">← {{ t.back }}</a>
+
+    <form method="get" action="/vouchers" class="lang-form">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+  </div>
+
+  <div class="page-wrapper">
+    <div class="card">
+      <div class="header">
+        <div class="logos">
+          <img src="/static/ns1.png" alt="Logo 1" />
+          <img src="/static/scandroid_banner.png" alt="Scandroid" />
+          <img src="/static/ns2.png" alt="Logo 2" />
+        </div>
+      </div>
+
+      <div class="content">
+        <h2>{{ t.voucher_generator }}</h2>
+        <p class="hint">{{ t.csv_hint }}</p>
+
+        <form id="uploadForm">
+          <input id="csv" name="csv" type="file" accept=".csv" />
+          <label for="csv" class="file">📄 {{ t.choose_csv }}</label>
+
+          <div id="filename" class="hint" style="margin-top:8px;"></div>
+          <button type="submit" class="btn btn-primary">{{ t.upload_csv }}</button>
+        </form>
+
+        <div id="counter" class="counter" style="display:none;">…</div>
+
+        <div class="actions">
+          <button id="downloadBtn" class="btn btn-success" disabled>
+            ⬇️ {{ t.download_vouchers }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+  const fileInput = document.getElementById('csv');
+  const filename = document.getElementById('filename');
+  const form = document.getElementById('uploadForm');
+  const counter = document.getElementById('counter');
+  const downloadBtn = document.getElementById('downloadBtn');
+
+  // Injected translations
+  const TXT = {
+    chooseCSV: "{{ t.choose_csv_alert }}",
+    uploadFailed: "{{ t.upload_failed }}",
+    singular: "{{ t.voucher_ready_singular }}",
+    plural: "{{ t.voucher_ready_plural }}"
+  };
+
+  fileInput.addEventListener('change', () => {
+    filename.textContent = fileInput.files[0]?.name || '';
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (!fileInput.files[0]) {
+      alert(TXT.chooseCSV);
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('csv', fileInput.files[0]);
+
+    const res = await fetch('/vouchers/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (!data.success) {
+      alert(data.message || TXT.uploadFailed);
+      return;
+    }
+
+    counter.style.display = 'block';
+
+    counter.textContent =
+      data.count === 1
+        ? `1 ${TXT.singular}`
+        : `${data.count} ${TXT.plural}`;
+
+    downloadBtn.disabled = data.count === 0;
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    window.location.href = '/vouchers/download';
+  });
+</script>
+
+</body>
+</html>

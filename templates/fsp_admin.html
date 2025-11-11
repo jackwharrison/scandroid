@@ -330,12 +330,7 @@
         await Promise.all(group.map(async rec => {
           const uuid = rec.uuid || rec._uuid;
           if (!uuid) return;
-          await db.put('records', {
-            uuid,
-            registrationId: rec.registrationId,
-            photo_filename: rec.photo_filename,
-            data: rec.data
-          });
+        await db.put('records', rec);
           written++;
         }));
       }
