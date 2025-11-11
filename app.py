@@ -15,6 +15,11 @@ from reportlab.lib.utils import ImageReader
 import qrcode
 import csv
 from flask_session import Session
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# Register a Unicode-safe font
+pdfmetrics.registerFont(TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf")))
 
 
 app = Flask(__name__)
@@ -95,11 +100,11 @@ def _draw_voucher(c, item, static_folder):
     # --- CENTER "Project" between logos (vertically aligned to logos) ---
     project_y = min(left_logo_top, right_logo_top) - 0.3*cm
 
-    c.setFont("Helvetica-Bold", 16)
+    c.setFont("DejaVu", 16)
     c.drawCentredString(width/2, project_y, "Project")
 
     # underline "Project"
-    text_width = c.stringWidth("Project", "Helvetica-Bold", 16)
+    text_width = c.stringWidth("Project", "DejaVu", 16)
     c.line(
         (width/2 - text_width/2),
         project_y - 0.08*cm,
@@ -109,11 +114,11 @@ def _draw_voucher(c, item, static_folder):
 
     # --- MAIN TITLE just below "Project" ---
     title_y = project_y - 1.4*cm
-    c.setFont("Helvetica-Bold", 22)
+    c.setFont("DejaVu", 22)
     c.drawCentredString(width/2, title_y, "CASH ON THE MOVE")
 
     # Subtitle lines
-    c.setFont("Helvetica", 11)
+    c.setFont("DejaVu", 11)
     c.drawCentredString(width/2, title_y - 1.0*cm,
                         "Supporting people on the move especially those")
     c.drawCentredString(width/2, title_y - 1.6*cm,
@@ -139,7 +144,7 @@ def _draw_voucher(c, item, static_folder):
     info_y = qr_y + qr_box_size - 0.5*cm
     line_height = 0.75 * cm
 
-    c.setFont("Helvetica", 12)
+    c.setFont("DejaVu", 12)
 
     # Formatting for dynamic keys
     def pretty_label(raw):
@@ -149,16 +154,34 @@ def _draw_voucher(c, item, static_folder):
         return raw.title()
 
     # All dynamic fields except referenceId
+    def is_reference_id(key: str) -> bool:
+        k = key.strip().lower().replace("_", "").replace(" ", "")
+        return ("ref" in k and "id" in k)
+        
+
+    # All dynamic fields except the reference ID (robust detection)
     fields_to_print = {
         k: v for k, v in item.items()
-        if k.lower() != "referenceid" and v not in (None, "")
+        if not is_reference_id(k) and v not in (None, "")
     }
+
 
     y = info_y
     for key, value in fields_to_print.items():
         label = pretty_label(key)
+        c.setFont("DejaVu", 12)
         c.drawString(info_x, y, f"{label}: {value}")
         y -= line_height
+
+    # ---- SMALL REFERENCE ID AT BOTTOM ------------------------------------
+    refid = item.get("referenceid", "").strip()
+    if refid:
+        c.setFont("DejaVu", 8)
+        c.drawString(
+            margin + 0.1*cm,
+            margin + 0.2*cm,
+            f"Reference ID: {refid}"
+        )
 
 
 def generate_vouchers_pdf(rows, static_folder):
