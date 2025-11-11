@@ -8,11 +8,177 @@ from config import ADMIN_USERNAME, ADMIN_PASSWORD, FSP_USERNAME, FSP_PASSWORD
 from urllib.parse import quote
 import subprocess
 import zipfile
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A5, landscape
+from reportlab.lib.units import cm
+from reportlab.lib.utils import ImageReader
+import qrcode
+import csv
+from flask_session import Session
 
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
+app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_PERMANENT"] = False
+Session(app)
+def _make_qr_image(data, box_cm=3.0):
+    """Return a Pillow image for the QR sized to box_cm × box_cm at 300dpi."""
+    qr = qrcode.QRCode(
+        version=None, error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10, border=4
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
+    # resize to cm at 300dpi (ReportLab draws images in points, we’ll scale when drawing)
+    target_px = int((box_cm / 2.54) * 300)  # cm -> inches -> px
+    img = img.resize((target_px, target_px))
+    return img
+
+def _draw_voucher(c, item, static_folder):
+    """
+    Draw one voucher on an A5 LANDSCAPE page matching the provided layout.
+    Supports dynamic CSV fields.
+    """
+    width, height = landscape(A5)
+
+    margin = 1.0 * cm
+    inner_w = width - 2 * margin
+    inner_h = height - 2 * margin
+
+    # ---- BORDER -------------------------------------------------------------
+    c.setLineWidth(0.8)
+    c.rect(margin, margin, inner_w, inner_h)
+    logo_height = 2.5 * cm       # height of left logo
+    logo_top_y = height - margin - 1.0*cm   # move logos DOWN slightly (was -0.0)
+
+    # LEFT LOGO (ns1)
+    try:
+        logo1 = ImageReader(os.path.join(static_folder, "ns1.png"))
+        c.drawImage(
+            logo1,
+            margin,                          # <--- as far left as possible
+            logo_top_y - logo_height,
+            preserveAspectRatio=True,
+            height=logo_height,
+            mask='auto'
+        )
+        left_logo_bottom = logo_top_y - logo_height
+        left_logo_top = logo_top_y
+    except:
+        left_logo_top = height - margin - 0.5*cm
+
+    # RIGHT LOGO (ns2) – wide logo, scale by width
+    try:
+        logo2 = ImageReader(os.path.join(static_folder, "ns2.png"))
+        max_width = 5.0 * cm
+
+        img_w, img_h = logo2.getSize()
+        scale = max_width / img_w
+        scaled_height = img_h * scale
+
+        c.drawImage(
+            logo2,
+            width - margin - max_width,
+            logo_top_y - scaled_height,
+            width=max_width,
+            height=scaled_height,
+            preserveAspectRatio=True,
+            mask='auto'
+        )
+        right_logo_top = logo_top_y
+    except:
+        right_logo_top = height - margin - 0.5*cm
+
+    # --- CENTER "Project" between logos (vertically aligned to logos) ---
+    project_y = min(left_logo_top, right_logo_top) - 0.3*cm
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawCentredString(width/2, project_y, "Project")
+
+    # underline "Project"
+    text_width = c.stringWidth("Project", "Helvetica-Bold", 16)
+    c.line(
+        (width/2 - text_width/2),
+        project_y - 0.08*cm,
+        (width/2 + text_width/2),
+        project_y - 0.08*cm
+    )
+
+    # --- MAIN TITLE just below "Project" ---
+    title_y = project_y - 1.4*cm
+    c.setFont("Helvetica-Bold", 22)
+    c.drawCentredString(width/2, title_y, "CASH ON THE MOVE")
+
+    # Subtitle lines
+    c.setFont("Helvetica", 11)
+    c.drawCentredString(width/2, title_y - 1.0*cm,
+                        "Supporting people on the move especially those")
+    c.drawCentredString(width/2, title_y - 1.6*cm,
+                        "in vulnerable situations")
+    # ---- QR CODE ------------------------------------------------------------
+    qr_box_size = 5.0 * cm
+    qr_x = margin + 0.6*cm
+    qr_y = margin + 0.6*cm
+
+    # Outer box
+    c.setLineWidth(0.7)
+    c.rect(qr_x - 0.1*cm, qr_y - 0.1*cm, qr_box_size + 0.2*cm, qr_box_size + 0.2*cm)
+
+    # QR image
+    refid = item.get("referenceid", "").strip()
+    qr_img = _make_qr_image(refid, box_cm=3.0)
+    c.drawInlineImage(qr_img, qr_x, qr_y, width=qr_box_size, height=qr_box_size)
+
+    # *** Removed “Reference ID below QR” (as you requested) ***
+
+    # ---- BENEFICIARY INFORMATION -------------------------------------------
+    info_x = qr_x + qr_box_size + 2.0*cm
+    info_y = qr_y + qr_box_size - 0.5*cm
+    line_height = 0.75 * cm
+
+    c.setFont("Helvetica", 12)
+
+    # Formatting for dynamic keys
+    def pretty_label(raw):
+        raw = raw.replace("_", " ")
+        raw = ''.join([' ' + ch if ch.isupper() else ch for ch in raw])
+        raw = ' '.join(raw.split())
+        return raw.title()
+
+    # All dynamic fields except referenceId
+    fields_to_print = {
+        k: v for k, v in item.items()
+        if k.lower() != "referenceid" and v not in (None, "")
+    }
+
+    y = info_y
+    for key, value in fields_to_print.items():
+        label = pretty_label(key)
+        c.drawString(info_x, y, f"{label}: {value}")
+        y -= line_height
+
+
+def generate_vouchers_pdf(rows, static_folder):
+    """
+    rows: list of dicts with keys: referenceId, name
+    returns BytesIO of PDF
+    """
+    from io import BytesIO
+    pdf_io = BytesIO()
+
+    # Create a landscape A5 page
+    c = canvas.Canvas(pdf_io, pagesize=landscape(A5))
+
+    for r in rows:
+        _draw_voucher(c, r, static_folder)
+        c.showPage()
+
+    c.save()
+    pdf_io.seek(0)
+    return pdf_io
 
 translations = {
 "en": {
@@ -99,7 +265,17 @@ translations = {
     "step_5_send": "✅ Step 5. Send Payments to 121",
     "send_payments": "Send payments",
     "payment_submit_success": "✅ Payments submitted successfully!",
-    "payment_submit_failed": "❌ Failed to submit"        
+    "payment_submit_failed": "❌ Failed to submit",
+    "voucher_generator": "Voucher Generator",
+    "csv_hint": "Upload a CSV with referenceId and any extra fields to print",
+    "choose_csv": "Choose CSV…",
+    "upload_csv": "Upload CSV",
+    "download_vouchers": "Download vouchers (PDF)",
+    "back": "Back to Dashboard",
+    "choose_csv_alert": "Please choose a CSV first.",
+    "upload_failed": "Upload failed",
+    "voucher_ready_singular": "voucher ready to download",
+    "voucher_ready_plural": "vouchers ready to download"        
 }
 ,
 "fr": {
@@ -186,7 +362,17 @@ translations = {
     "step_5_send": "✅ Étape 5. Envoyer les paiements à 121",
     "send_payments": "Envoyer les paiements",
     "payment_submit_success": "✅ Paiements envoyés avec succès !",
-    "payment_submit_failed": "❌ Échec de l'envoi"
+    "payment_submit_failed": "❌ Échec de l'envoi",
+    "voucher_generator": "Générateur de bons",
+    "csv_hint": "Téléversez un CSV avec referenceId et d’autres champs à imprimer",
+    "choose_csv": "Choisir un CSV…",
+    "upload_csv": "Téléverser un CSV",
+    "download_vouchers": "Télécharger les bons (PDF)",
+    "back": "Retour au tableau de bord",
+    "choose_csv_alert": "Veuillez d'abord choisir un fichier CSV.",
+    "upload_failed": "Échec du téléversement",
+    "voucher_ready_singular": "bon prêt à télécharger",
+    "voucher_ready_plural": "bons prêts à télécharger"
 }
 ,
 "ar": {
@@ -273,7 +459,17 @@ translations = {
     "step_5_send": "✅ الخطوة 5. إرسال الدفعات إلى 121",
     "send_payments": "إرسال الدفعات",
     "payment_submit_success": "✅ تم إرسال المدفوعات بنجاح!",
-    "payment_submit_failed": "❌ فشل الإرسال"
+    "payment_submit_failed": "❌ فشل الإرسال",
+    "voucher_generator": "مولّد القسائم",
+    "csv_hint": "قم بتحميل ملف CSV يحتوي على referenceId وأي حقول إضافية للطباعة",
+    "choose_csv": "اختر ملف CSV…",
+    "upload_csv": "تحميل ملف CSV",
+    "download_vouchers": "تنزيل القسائم (PDF)",
+    "back": "العودة إلى لوحة التحكم",
+    "choose_csv_alert": "يرجى اختيار ملف CSV أولاً.",
+    "upload_failed": "فشل الرفع",
+    "voucher_ready_singular": "قسيمة جاهزة للتنزيل",
+    "voucher_ready_plural": "قسائم جاهزة للتنزيل"
     }
 }
 
@@ -587,10 +783,14 @@ def sync_fsp():
             ["python", "offline_sync.py"],
             capture_output=True,
             text=True,
-            encoding='utf-8'
+            encoding='utf-8',
+            errors="replace"
         )
         output = result.stdout.strip()
         error_output = result.stderr.strip()
+
+        print("\n[DEBUG] STDOUT:\n", output)
+        print("\n[DEBUG] STDERR:\n", error_output)
 
         if result.returncode != 0:
             return jsonify({
@@ -598,7 +798,6 @@ def sync_fsp():
                 "message": f"❌ Script failed with error:\n{error_output or output}"
             })
 
-        # Look for any line that mentions 'beneficiaries'
         for line in output.splitlines():
             if "beneficiaries" in line.lower():
                 return jsonify({"success": True, "message": f"✅ {line.strip()}"})
@@ -737,20 +936,20 @@ def system_config_json():
 def submit_payments():
     import csv
     import io
-    from datetime import datetime
     import os
+    import json
+    from datetime import datetime
     from cryptography.fernet import Fernet
 
     config = load_config()
     program_id = config.get("programId")
-    payment_id = config.get("PAYMENT_ID")
     fernet_key = config.get("ENCRYPTION_KEY")
 
-    if not program_id or not payment_id:
-        return "❌ Missing programId or PAYMENT_ID in system_config.json", 400
+    if not program_id:
+        return "❌ Missing programId in system_config.json", 400
 
     if not fernet_key:
-        return "❌ Missing FERNET_KEY in system_config.json", 400
+        return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
 
     # Set up decryption
     try:
@@ -777,30 +976,103 @@ def submit_payments():
     if not rows:
         return "❌ CSV is empty", 400
 
-    # Prepare output CSV with decrypted values
-    output_buffer = io.StringIO()
-    writer = csv.DictWriter(output_buffer, fieldnames=['phoneNumber', 'status'])
-    writer.writeheader()
+    # --- Locate latest cache and read batch_info.json ---
+    # --- Load latest batch and build phone -> paymentId map ---
+    cache_base = "offline-cache"
 
+    import re
+
+    def extract_batch_number(name):
+        match = re.search(r"payment-recent-batch-(\d+)", name)
+        return int(match.group(1)) if match else -1
+
+    batch_dirs = sorted(
+        [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")],
+        key=extract_batch_number
+    )
+
+    if not batch_dirs:
+        return "❌ No recent payment batches found — run sync first.", 400
+
+    latest_batch = batch_dirs[-1]
+    print(f"[DEBUG] Using batch folder: {latest_batch}")
+
+    reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
+    if not os.path.exists(reg_cache_path):
+        return "❌ registrations_cache.json missing — run sync again.", 400
+
+    try:
+        with open(reg_cache_path, "r", encoding="utf-8") as f:
+            reg_data = json.load(f)
+    except Exception as e:
+        return f"❌ Failed to load registrations_cache.json — {e}", 500
+
+    phone_to_pid = {}
+    for record in reg_data:
+        uuid = record.get("uuid")
+        payment_id = record.get("paymentId")  # Make sure this exists in each record during sync!
+        encrypted_phone = record.get("data", {}).get("phoneNumber", "")
+        if encrypted_phone and payment_id:
+            try:
+                decrypted_phone = fernet.decrypt(encrypted_phone.encode()).decode().strip()
+                phone_to_pid[decrypted_phone] = payment_id
+            except Exception as e:
+                print(f"[!] Failed to decrypt phone for UUID {uuid}: {e}")
+
+    # --- Group rows by paymentId ---
+    grouped = {}
     for row in rows:
         phone = row.get('phoneNumber', '').strip()
         status = row.get('status', '').strip()
 
-        if phone.startswith("gAAAA") and fernet:
+        if phone.startswith("gAAAA"):
             try:
-                phone = fernet.decrypt(phone.encode()).decode()
+                phone = fernet.decrypt(phone.encode()).decode().strip()
             except Exception as e:
-                print("❌ Decryption failed for phoneNumber:", e)
+                print(f"[!] Failed to decrypt incoming phoneNumber: {phone} — {e}")
+                continue
 
-        writer.writerow({
-            'phoneNumber': phone,
-            'status': status
-        })
+        payment_id = phone_to_pid.get(phone)
+        if not payment_id:
+            print(f"[!] No paymentId found for phoneNumber: {phone}")
+            continue
 
-    # Submit to 121
+        grouped.setdefault(payment_id, []).append({"phoneNumber": phone, "status": status})
+
+    if not grouped:
+        return "❌ No valid rows to submit — check your CSV and sync data.", 400
+
+    # --- Submit to 121 by paymentId ---
     token = get_121_token()
     if not token:
         return "❌ Login to 121 failed", 401
+
+    success_count = 0
+    fail_count = 0
+
+    for pid, items in grouped.items():
+        output_buffer = io.StringIO()
+        writer = csv.DictWriter(output_buffer, fieldnames=["phoneNumber", "status"])
+        writer.writeheader()
+        for item in items:
+            writer.writerow(item)
+
+        upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
+        files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+        upload_resp = requests.post(upload_url, files=files, cookies={"access_token_general": token})
+
+        if upload_resp.status_code == 201:
+            success_count += 1
+            print(f"[OK] Submitted to paymentId {pid}")
+        else:
+            fail_count += 1
+            print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+
+    if success_count > 0:
+        return f"✅ Submitted to {success_count} paymentId(s). ❌ {fail_count} failed.", 200
+    else:
+        return "❌ All submissions failed.", 500
+
 
     upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{payment_id}/excel-reconciliation"
     files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
@@ -824,4 +1096,136 @@ def submit_payments():
     if upload_resp.status_code == 201:
         return "✅ Submission successful", 201
     else:
+        print(f"[ERROR] Upload to 121 failed: {upload_resp.status_code} — {upload_resp.text}")
         return f"❌ Submission failed: {upload_resp.text}", upload_resp.status_code
+
+@app.route('/invalid-qr')
+def invalid_qr():
+    reason = request.args.get('reason', 'Invalid QR code')
+    lang = request.args.get('lang', 'en')
+    return render_template('invalid-qr.html', reason=reason, lang=lang)
+
+@app.route("/vouchers", methods=["GET"])
+def vouchers_page():
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
+
+    lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])   # ✅ FIX
+
+    return render_template("vouchers.html", lang=lang, t=t)
+
+
+@app.route("/vouchers/upload", methods=["POST"])
+def vouchers_upload():
+    if not session.get("admin_logged_in"):
+        return jsonify({"success": False, "message": "Not authorized"}), 403
+
+    if "csv" not in request.files:
+        return jsonify({"success": False, "message": "No CSV uploaded"}), 400
+
+    f = request.files["csv"]
+
+    try:
+        # Ensure upload directory exists
+        import os
+        os.makedirs("uploads", exist_ok=True)
+
+        # Save raw CSV file to server (not session)
+        upload_path = os.path.join("uploads", "vouchers.csv")
+        f.save(upload_path)
+
+        # Re-open and parse (same as before)
+        with open(upload_path, "r", encoding="utf-8", errors="replace") as infile:
+            content = infile.read()
+
+        reader = csv.DictReader(content.splitlines())
+        rows = []
+
+        for row in reader:
+            clean_row = {}
+
+            # --- Normalize all header names ---
+            for key, value in row.items():
+                if key is None:
+                    continue
+                clean_key = key.strip().replace("\ufeff", "").lower()
+                clean_row[clean_key] = value.strip() if isinstance(value, str) else value
+
+            # --- Ensure 'referenceid' key exists ---
+            ref = (
+                clean_row.get("referenceid")
+                or clean_row.get("reference id")
+                or clean_row.get("reference_id")
+                or clean_row.get("refid")
+                or clean_row.get("id")
+                or clean_row.get("registrationReferenceId")
+                or ""
+            )
+
+            clean_row["referenceid"] = ref.strip()
+
+            rows.append(clean_row)
+
+        # ✅ Store ONLY the file path + row count in the session (small!)
+        session["voucher_file_path"] = upload_path
+        session["voucher_count"] = len(rows)
+
+        # ✅ Do NOT store rows in session — they can be reloaded from file whenever needed
+
+        return jsonify({"success": True, "count": len(rows)})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Failed to parse CSV: {e}"}), 400
+
+@app.route("/vouchers/download", methods=["GET"])
+def vouchers_download():
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
+
+    # Load file path saved during upload
+    csv_path = session.get("voucher_file_path")
+    if not csv_path or not os.path.exists(csv_path):
+        flash("No uploaded data to generate vouchers.", "error")
+        return redirect(url_for("vouchers_page"))
+
+    # Read and reconstruct voucher rows
+    rows = []
+    with open(csv_path, "r", encoding="utf-8", errors="replace") as infile:
+        reader = csv.DictReader(infile.read().splitlines())
+
+        for row in reader:
+            clean_row = {}
+
+            # Clean & normalize header keys
+            for key, value in row.items():
+                if key is None:
+                    continue
+                clean_key = key.strip().replace("\ufeff", "").lower()
+                clean_row[clean_key] = value.strip() if isinstance(value, str) else value
+
+            # Ensure referenceid always exists
+            ref = (
+                clean_row.get("referenceid")
+                or clean_row.get("reference id")
+                or clean_row.get("reference_id")
+                or clean_row.get("refid")
+                or clean_row.get("id")
+                or ""
+            )
+            clean_row["referenceid"] = ref.strip()
+
+            rows.append(clean_row)
+
+    # Now generate the PDF from reconstructed rows
+    pdf_io = generate_vouchers_pdf(
+        rows,
+        static_folder=os.path.join(app.root_path, "static")
+    )
+
+    return send_file(
+        pdf_io,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="vouchers.pdf"
+    )
