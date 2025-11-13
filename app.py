@@ -298,7 +298,8 @@ translations = {
     "choose_csv_alert": "Please choose a CSV first.",
     "upload_failed": "Upload failed",
     "voucher_ready_singular": "voucher ready to download",
-    "voucher_ready_plural": "vouchers ready to download"        
+    "voucher_ready_plural": "vouchers ready to download",
+    "generate_vouchers": "Generate Vouchers"        
 }
 ,
 "fr": {
@@ -330,8 +331,8 @@ translations = {
     "saved_successfully": "Enregistré avec succès",
     "failed_to_save": "Échec de l'enregistrement",
     "logout": "Déconnexion",
-    "config_system": "Configuration du système",
-    "config_display": "Configurer les champs à afficher",
+    "config_system": "Configurer le système ",
+    "config_display": "Congifuration des champs de vérification",
     "fsp_login": "Connexion pour les FSP",
     "fsp_sync_title": "📥 FSP : Synchroniser les enregistrements hors ligne",
     "sync_latest": "Synchroniser les derniers enregistrements",
@@ -387,15 +388,16 @@ translations = {
     "payment_submit_success": "✅ Paiements envoyés avec succès !",
     "payment_submit_failed": "❌ Échec de l'envoi",
     "voucher_generator": "Générateur de bons",
-    "csv_hint": "Téléversez un CSV avec referenceId et d’autres champs à imprimer",
-    "choose_csv": "Choisir un CSV…",
-    "upload_csv": "Téléverser un CSV",
+    "csv_hint": "Téléchargez un fichier CSV avec referenceId et d’autres champs à imprimer",
+    "choose_csv": "Télécharger un fichier CSV",
+    "upload_csv": "Importer le fichier",
     "download_vouchers": "Télécharger les bons (PDF)",
     "back": "Retour au tableau de bord",
     "choose_csv_alert": "Veuillez d'abord choisir un fichier CSV.",
     "upload_failed": "Échec du téléversement",
     "voucher_ready_singular": "bon prêt à télécharger",
-    "voucher_ready_plural": "bons prêts à télécharger"
+    "voucher_ready_plural": "bons prêts à télécharger",
+    "generate_vouchers": "Générer les coupons"      
 }
 ,
 "ar": {
@@ -492,7 +494,8 @@ translations = {
     "choose_csv_alert": "يرجى اختيار ملف CSV أولاً.",
     "upload_failed": "فشل الرفع",
     "voucher_ready_singular": "قسيمة جاهزة للتنزيل",
-    "voucher_ready_plural": "قسائم جاهزة للتنزيل"
+    "voucher_ready_plural": "قسائم جاهزة للتنزيل",
+    "generate_vouchers": "إصدار القسائم"      
     }
 }
 
