@@ -1099,32 +1099,6 @@ def submit_payments():
     else:
         return "❌ All submissions failed.", 500
 
-
-    upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{payment_id}/excel-reconciliation"
-    files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
-    upload_resp = requests.post(upload_url, files=files, cookies={"access_token_general": token})
-
-    # Log result
-    log_path = 'bulk_submit_log.csv'
-    log_exists = os.path.exists(log_path)
-    with open(log_path, "a", newline='', encoding="utf-8") as log_file:
-        log_writer = csv.DictWriter(log_file, fieldnames=["timestamp", "phoneNumber", "status", "success"])
-        if not log_exists:
-            log_writer.writeheader()
-        for row in rows:
-            log_writer.writerow({
-                "timestamp": datetime.utcnow().isoformat(),
-                "phoneNumber": row.get('phoneNumber'),
-                "status": row.get('status'),
-                "success": upload_resp.status_code == 201
-            })
-
-    if upload_resp.status_code == 201:
-        return "✅ Submission successful", 201
-    else:
-        print(f"[ERROR] Upload to 121 failed: {upload_resp.status_code} — {upload_resp.text}")
-        return f"❌ Submission failed: {upload_resp.text}", upload_resp.status_code
-
 @app.route('/invalid-qr')
 def invalid_qr():
     reason = request.args.get('reason', 'Invalid QR code')

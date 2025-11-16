@@ -72,34 +72,95 @@ def get_kobo_submission(uuid):
     return results[0] if results else None
 
 def download_and_encrypt_photo(uuid, save_path):
+    """
+    Download and encrypt the photo for a given submission UUID.
+    Saves the encrypted image bytes to save_path.
+    Handles:
+    - Kobo's direct *_URL field
+    - Kobo _attachments list
+    - IFRC Kobo /attachments/<uid>/ format
+    """
+
+    # --- 1) Fetch Kobo submission ---
     submission = get_kobo_submission(uuid)
     if not submission:
         print(f"[!] No Kobo submission found for UUID {uuid}")
         return
 
-    attachments = submission.get("_attachments", [])
-    if not attachments:
-        print(f"[!] No attachments found for UUID {uuid}")
+    photo_field = PHOTO_FIELD_NAME  # "photo"
+    photo_filename = submission.get(photo_field)
+
+    # --- 2) New Kobo way: direct photo URL (BEST METHOD) ---
+    photo_url_field = f"{photo_field}_URL"   # "photo_URL"
+    photo_url = submission.get(photo_url_field)
+
+    if photo_url:
+        print(f"[OK] Direct Kobo photo URL found for UUID {uuid}: {photo_url}")
+
+        # Download directly
+        res = requests.get(photo_url, headers=HEADERS_KOBO)
+        if res.status_code != 200:
+            print(f"[!] Direct photo download failed for UUID {uuid}: {res.status_code}")
+            return
+
+        encrypted_bytes = encrypt_photo(res.content)
+        with open(save_path, "wb") as f:
+            f.write(encrypted_bytes)
+
+        print(f"[OK] Photo downloaded & encrypted (direct URL) for UUID {uuid}")
         return
 
-    for attach in attachments:
-        media_file = attach.get("filename")
-        if not media_file:
-            continue
+    # --- 3) Fallback: match against _attachments (older Kobo submissions) ---
+    if not photo_filename:
+        print(f"[!] No '{photo_field}' value for UUID {uuid}")
+        return
 
-        ext = os.path.splitext(media_file)[1]
-        download_url = f"{KOBO_BASE}/media/original?media_file={media_file}"
+    attachments = submission.get("_attachments", [])
+    if not attachments:
+        print(f"[!] No attachments in submission for UUID {uuid}")
+        return
 
-        res = requests.get(download_url, headers=HEADERS_KOBO)
-        if res.status_code == 200:
-            encrypted_bytes = encrypt_photo(res.content)
-            with open(save_path, "wb") as f:
-                f.write(encrypted_bytes)
-            print(f"[OK] Encrypted photo saved for UUID {uuid}")
-            return
-        else:
-            print(f"[!] Failed to download photo for UUID {uuid}: {res.status_code}")
-            return
+    photo_base = photo_filename.split(".")[0]
+
+    matching = [
+        a for a in attachments
+        if photo_base in a.get("filename", "")
+    ]
+
+    if not matching:
+        print(f"[!] No matching attachment for '{photo_filename}' (UUID {uuid})")
+        return
+
+    att = matching[0]
+    attach_uid = att.get("uid")
+
+    if not attach_uid:
+        print(f"[!] Attachment UID missing for UUID {uuid}")
+        return
+
+    submission_id = submission["_id"]
+
+    # --- 4) Correct IFRC Kobo attachment URL format ---
+    file_url = (
+        f"{KOBO_BASE}/api/v2/assets/{ASSET_ID}/data/"
+        f"{submission_id}/attachments/{attach_uid}/"
+    )
+
+    print(f"[OK] Using IFRC Kobo attachment URL for UUID {uuid}: {file_url}")
+
+    # --- 5) Download ---
+    res = requests.get(file_url, headers=HEADERS_KOBO)
+    if res.status_code != 200:
+        print(f"[!] Failed to download from IFRC Kobo for UUID {uuid}: {res.status_code}")
+        return
+
+    # --- 6) Encrypt & save ---
+    encrypted_bytes = encrypt_photo(res.content)
+    with open(save_path, "wb") as f:
+        f.write(encrypted_bytes)
+
+    print(f"[OK] Photo downloaded & encrypted for UUID {uuid}")
+
 
 def get_next_batch_dir(base_path, payment_id):
     batch_number = 1
@@ -307,10 +368,12 @@ def download_recent_payments_cache(program_id):
             "uuid": uuid,
             "registrationId": reg_id,
             "photo_filename": photo_filename,
+            "paymentId": t.get("paymentId"),        # <-- ADD THIS BACK
             "data": encrypted_data,
             "valid": is_valid,
             "reason": reason
         }
+
 
         cache_data.append(record)
 
