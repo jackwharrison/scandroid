@@ -167,7 +167,29 @@
 
 
       <!-- Encryption Key Section -->
+      <div class="section-box">
+        <h3>{{ t.encryption_settings }}</h3>
 
+        <label for="ENCRYPTION_KEY">{{ t.encryption_key }}</label>
+        <input type="text"
+               id="encryptionKey"
+               name="ENCRYPTION_KEY"
+               value="{{ config.get('ENCRYPTION_KEY', '') }}"
+               readonly
+               placeholder="{{ t.encryption_key }}"
+               style="background-color: #e9ecef; cursor: not-allowed; font-family: monospace;">
+
+        <small style="color: #666; display: block; margin-top: 4px;">
+          {{ t.encryption_warning }}
+        </small>
+
+        <div style="margin-top: 12px;">
+          <input type="checkbox" id="editEncryptionKey" onclick="toggleEncryptionEdit()">
+          <label for="editEncryptionKey" style="font-weight: bold; color: #b30000;">
+            ⚠️ {{ t.encryption_toggle_warning }}
+          </label>
+        </div>
+      </div>
     </div>
 
 
