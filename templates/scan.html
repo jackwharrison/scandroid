@@ -93,41 +93,130 @@
       netPill.classList.toggle('offline', !isOnline);
       lastOnline = isOnline;
     }
+async function dbFindRecordByAnyId(db, scannedId) {
+  console.warn("[FALLBACK] dbFindRecordByAnyId called with:", scannedId);
+
+  return new Promise((resolve) => {
+    const tx = db.transaction("records", "readonly");
+    const store = tx.objectStore("records");
+
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      const all = req.result || [];
+      console.warn("[FALLBACK] Scanning", all.length, "records");
+
+      for (const r of all) {
+        if (!r) continue;
+
+        if (
+          r.uuid === scannedId ||
+          r.koboId === scannedId ||
+          r.regId === scannedId
+        ) {
+          console.warn("[FALLBACK] Match found:", r);
+          resolve(r);
+          return;
+        }
+      }
+
+      console.warn("[FALLBACK] No record matched in getAll()");
+      resolve(null);
+    };
+
+    req.onerror = () => {
+      console.warn("[FALLBACK] IndexedDB getAll error");
+      resolve(null);
+    };
+  });
+}
+async function dbCheckAlreadyScanned(db, scannedId) {
+  console.warn("[PAYMENT CHECK] Checking payments store for UUID:", scannedId);
+
+  return new Promise((resolve) => {
+    const tx = db.transaction("payments", "readonly");
+    const store = tx.objectStore("payments");
+
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const list = req.result || [];
+      console.warn("[PAYMENT CHECK] Loaded", list.length, "payment records");
+
+      for (const p of list) {
+        if (!p) continue;
+
+        if (p.uuid === scannedId && p.status === "success") {
+          console.warn("[PAYMENT CHECK] MATCH — already scanned:", p);
+          resolve(p);
+          return;
+        }
+      }
+      resolve(null);
+    };
+
+    req.onerror = () => {
+      console.warn("[PAYMENT CHECK] Error reading payments store");
+      resolve(null);
+    };
+  });
+}
+
 async function checkAndRouteRecord(scannedId) {
+  console.warn("[CHECK] checkAndRouteRecord() called with:", scannedId);
+
   const dbReq = indexedDB.open("scandroid");
 
   dbReq.onsuccess = async function () {
     const db = dbReq.result;
     let rec = null;
 
+    console.warn("[CHECK] DB opened successfully");
+
     // Step 1: Try direct lookup by UUID
+    console.warn("[CHECK] Step 1: Looking up record by direct UUID:", scannedId);
     rec = await new Promise((resolve) => {
       const tx = db.transaction("records", "readonly");
       const store = tx.objectStore("records");
       const req = store.get(String(scannedId));
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        console.warn("[CHECK] Direct lookup result:", req.result);
+        resolve(req.result);
+      };
       req.onerror = () => resolve(null);
     });
 
     // Step 2: If not found, try idIndex map
     if (!rec) {
+      console.warn("[CHECK] Step 2: Not found. Checking idIndex…");
+
       const tx = db.transaction("meta", "readonly");
       const metaStore = tx.objectStore("meta");
       const indexReq = metaStore.get("idIndex");
 
       const idx = await new Promise((resolve) => {
-        indexReq.onsuccess = () => resolve(indexReq.result?.value || {});
+        indexReq.onsuccess = () => {
+          console.warn("[CHECK] Loaded idIndex:", indexReq.result);
+          resolve(indexReq.result?.value || {});
+        };
         indexReq.onerror = () => resolve({});
       });
 
-      const mapped = idx['uuid:' + scannedId] || idx['reg:' + scannedId] || idx['kobo:' + scannedId];
+      const mapped =
+        idx['uuid:' + scannedId] ||
+        idx['reg:' + scannedId] ||
+        idx['kobo:' + scannedId];
+
+      console.warn("[CHECK] Mapped ID from idIndex:", mapped);
 
       if (mapped) {
         rec = await new Promise((resolve) => {
           const tx2 = db.transaction("records", "readonly");
           const store2 = tx2.objectStore("records");
           const getMapped = store2.get(mapped);
-          getMapped.onsuccess = () => resolve(getMapped.result);
+          getMapped.onsuccess = () => {
+            console.warn("[CHECK] Record loaded via idIndex:", getMapped.result);
+            resolve(getMapped.result);
+          };
           getMapped.onerror = () => resolve(null);
         });
       }
@@ -135,32 +224,79 @@ async function checkAndRouteRecord(scannedId) {
 
     // Step 3: If still not found, fallback scan
     if (!rec) {
+      console.warn("[CHECK] Step 3: Trying fallback dbFindRecordByAnyId");
       rec = await dbFindRecordByAnyId(db, scannedId);
+      console.warn("[CHECK] Fallback lookup result:", rec);
     }
 
     // Step 4: Redirect based on result
+    console.warn("[CHECK] Step 4: Final record result:", rec);
+
     if (!rec) {
-      console.warn(`[!] No record found for scanned ID: ${scannedId}`);
-      window.location.href = `/invalid-qr?reason=${encodeURIComponent("No offline record found")}&lang=${encodeURIComponent(lang)}`;
+      console.warn("[CHECK] ❌ No offline record found for:", scannedId);
+
+      const url = `/invalid-qr?reason=${encodeURIComponent(
+        "No offline record found"
+      )}&lang=${encodeURIComponent(lang)}`;
+
+      console.warn("[CHECK] Redirecting to:", url);
+
+      setTimeout(() => {
+        window.location.assign(url);
+        try { cleanup(); } catch (_) {}
+      }, 50);
+
+      return;
+    }
+// NEW STEP: Check if already scanned in payments DB
+const already = await dbCheckAlreadyScanned(db, scannedId);
+if (already) {
+  console.warn("[SCAN DEBUG] QR already scanned in this session:", scannedId);
+
+  const url = `/invalid-qr?reason=${encodeURIComponent("Already scanned")}&lang=${encodeURIComponent(lang)}`;
+
+  setTimeout(() => {
+      window.location.assign(url);
+      try { cleanup(); } catch(_) {}
+  }, 50);
+
+  return;
+}
+
+    console.warn("[CHECK] Record FOUND:", rec);
+
+    const isValid = String(rec.valid).toLowerCase() === "true";
+    console.warn("[CHECK] Record validity:", isValid);
+
+    if (!isValid) {
+      console.warn("[CHECK] ❌ Record marked INVALID:", rec);
+
+      const reason = rec.reason || "Invalid QR";
+      const url = `/invalid-qr?reason=${encodeURIComponent(
+        reason
+      )}&lang=${encodeURIComponent(lang)}`;
+
+      console.warn("[CHECK] Redirecting invalid record to:", url);
+
+      window.location.href = url;
+      setTimeout(() => cleanup(), 300);
       return;
     }
 
-    console.log('[DEBUG] Scanned record:', rec);
+    // VALID record
+    console.warn("[CHECK] ✅ Valid record — redirecting to beneficiary page:", rec.uuid);
 
-    const isValid = String(rec.valid).toLowerCase() === 'true';
-      if (!isValid) {
-        const reason = rec.reason || "Invalid QR";
-        console.warn(`[!] Invalid QR scanned: ${rec.uuid}, Reason: ${reason}`);
-        window.location.href = `/invalid-qr?reason=${encodeURIComponent(reason)}&lang=${encodeURIComponent(lang)}`;
-        return;
-      }
-    // ✅ Valid record, go to beneficiary page
-    window.location.href = `/beneficiary-offline?uuid=${encodeURIComponent(rec.uuid)}&lang=${encodeURIComponent(lang)}`;
+    window.location.href =
+      `/beneficiary-offline?uuid=${encodeURIComponent(
+        rec.uuid
+      )}&lang=${encodeURIComponent(lang)}`;
   };
 
   dbReq.onerror = function () {
-    console.warn('[!] IndexedDB error opening scandroid DB');
-    window.location.href = `/invalid-qr?reason=${encodeURIComponent("Database error")}&lang=${encodeURIComponent(lang)}`;
+    console.warn("[CHECK] ❌ IndexedDB error opening scandroid DB");
+    window.location.href = `/invalid-qr?reason=${encodeURIComponent(
+      "Database error"
+    )}&lang=${encodeURIComponent(lang)}`;
   };
 }
 
@@ -168,9 +304,16 @@ async function checkAndRouteRecord(scannedId) {
     // Decide destination after a successful scan
     function routeAfterScan(id) {
       const v = String(id || '').trim();
-      if (!v) return;
+      console.warn("[ROUTER] routeAfterScan called with:", v);
+
+      if (!v) {
+        console.error("[ROUTER] Empty QR value!");
+        return;
+      }
+
       checkAndRouteRecord(v);
     }
+
 
     async function startCamera() {
       setStatus(TXT.requesting);
@@ -215,9 +358,14 @@ async function checkAndRouteRecord(scannedId) {
         try {
           const codes = await detector.detect(video);
           if (codes && codes.length) {
-            cleanup();
-            const v = codes[0].rawValue || codes[0].value || '';
-            if (v) return routeAfterScan(v);
+              console.warn("[NATIVE] QR detected:", codes);
+
+              const v = codes[0].rawValue || codes[0].value || '';
+              console.warn("[NATIVE] Extracted value:", v);
+
+              cleanup();
+              if (v) return routeAfterScan(v);
+              console.error("[NATIVE] QR detected but no readable value");
           }
           setStatus(TXT.scanning);
         } catch (e) {
@@ -242,8 +390,9 @@ async function checkAndRouteRecord(scannedId) {
           const img = ctx.getImageData(0, 0, w, h);
           const qr = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
           if (qr && qr.data) {
-            cleanup();
-            return routeAfterScan(qr.data);
+              console.warn("[JSQR] QR detected:", qr.data);
+              cleanup();
+              return routeAfterScan(qr.data);
           }
           setStatus(TXT.scanning);
         } else {
