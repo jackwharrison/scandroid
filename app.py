@@ -316,7 +316,8 @@ translations = {
     "payments_ready": "Payments ready to push to 121:",
     "scan_next": "Scan next beneficiary",
     "go_home": "Finished scanning? Go to homepage",
-    "payment_prep": "Prepare to Send Payments"        
+    "payment_prep": "Prepare to Send Payments",
+    "login_error": "Incorrect username or password."        
 }
 ,
 "fr": {
@@ -430,7 +431,9 @@ translations = {
     "counter_label": "Paiements prêts à envoyer à 121 :",
     "scan_next": "Scanner le bénéficiaire suivant",
     "go_home": "Terminé le scan ? Aller à la page d’accueil",
-    "payment_prep": "Prepare to send payments" 
+    "payment_prep": "Prepare to send payments",
+    "login_error": "Nom d’utilisateur ou mot de passe incorrect."
+
 }
 ,
 "ar": {
@@ -544,7 +547,8 @@ translations = {
     "counter_label": "المدفوعات الجاهزة للإرسال إلى 121:",
     "scan_next": "مسح المستفيد التالي",
     "go_home": "هل انتهيت من المسح؟ اذهب إلى الصفحة الرئيسية",
-    "payment_prep": "Prepare to send payments"       
+    "payment_prep": "Prepare to send payments",
+    "login_error": "اسم المستخدم أو كلمة المرور غير صحيحة."       
     }
 }
 
@@ -559,6 +563,9 @@ def landing_page():
 def admin_login():
     from config import ADMIN_USERNAME, ADMIN_PASSWORD
     lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+
+    error = None
 
     if request.method == "POST":
         username = request.form.get("username")
@@ -568,9 +575,11 @@ def admin_login():
             session['admin_logged_in'] = True
             return redirect(url_for("admin_dashboard", lang=lang))
         else:
-            flash("Invalid credentials", "error")
+            # 🔹 Use translated error message
+            error = t.get("login_error", "Incorrect username or password.")
 
-    return render_template("admin_login.html", lang=lang, t=translations.get(lang, translations["en"]))
+    return render_template("admin_login.html", lang=lang, t=t, error=error)
+
 
 @app.route("/admin-dashboard")
 def admin_dashboard():
@@ -824,6 +833,9 @@ def update_status():
 def fsp_login():
     from config import FSP_USERNAME, FSP_PASSWORD
     lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+
+    error = None
 
     if request.method == "POST":
         username = request.form.get("username")
@@ -833,9 +845,10 @@ def fsp_login():
             session["fsp_logged_in"] = True
             return redirect(url_for("fsp_admin", lang=lang))
         else:
-            flash("Invalid credentials", "error")
+            error = t["login_error"]  # ← Translated error
 
-    return render_template("fsp_login.html", lang=lang, t=translations.get(lang, translations["en"]))
+    return render_template("fsp_login.html", lang=lang, t=t, error=error)
+
 
 
 
