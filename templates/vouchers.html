@@ -154,11 +154,24 @@
         <p class="hint">{{ t.csv_hint }}</p>
 
         <form id="uploadForm">
-          <input id="csv" name="csv" type="file" accept=".csv" />
+          
+          <!-- FIXED INPUT — STILL WORKS, NOW SHOWS ALL FILE TYPES -->
+          <input 
+            id="csv" 
+            name="csv" 
+            type="file"
+            accept=".csv, .xls, .xlsx,
+                    application/vnd.ms-excel,
+                    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          />
+
           <label for="csv" class="file">📄 {{ t.choose_csv }}</label>
 
           <div id="filename" class="hint" style="margin-top:8px;"></div>
-          <button type="submit" class="btn btn-primary">{{ t.upload_csv }}</button>
+
+          <button type="submit" class="btn btn-primary">
+            {{ t.upload_csv }}
+          </button>
         </form>
 
         <div id="counter" class="counter" style="display:none;">…</div>

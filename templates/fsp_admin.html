@@ -5,105 +5,364 @@
   <meta charset="UTF-8">
   <title>FSP Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    background-color: #f9f9f9;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-  }
-  header {
-    background-color: white;
-    padding: 20px 40px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 120px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  }
-  .header-left { display:flex; align-items:center; gap:10px; }
-  .header-left img { height: 60px; }
-  .scandroid-banner img { height: 100px; object-fit: contain; max-width: 100%; display: block; }
-  .right-controls { display: flex; align-items: center; gap: 10px; }
 
-  /* Online/Offline status pill */
-  .status-pill{
-    display:inline-flex; align-items:center; gap:6px;
-    padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700;
-    border:1px solid transparent; user-select:none;
-  }
-  .status-pill.online{ background:#e7f9ef; color:#0f5132; border-color:#b7ebcd; }
-  .status-pill.offline{ background:#fdecec; color:#842029; border-color:#f5c2c7; }
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --radius: 16px;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+    }
 
-  main { flex-grow: 1; padding: 40px; text-align: center; }
-  .sync-section { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px #ccc; max-width: 500px; margin: auto; }
-  .sync-section h2 { margin-bottom: 20px; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--ink);
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
 
-  /* Unified button styles */
-  #syncBtn, #importBtn, #scanBtn {
-    display: block;
-    width: 100%;
-    padding: 12px 20px;
-    font-size: 16px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    margin-bottom: 12px;
-  }
+    /* ---------- HEADER ---------- */
+    header {
+      background-color: #ffffff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
 
-  /* Individual colours */
-  #syncBtn { background-color: #007bff; color: white; }
-  #importBtn { background-color: #ffd580; color: #333; } /* peachy */
-  #scanBtn { background-color: #28a745; color: white; }
+    .header-left {
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
 
-  #statusMessage { font-size: 16px; margin-top: 10px; color: #333; }
-     footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  font-size: 0.9rem;
-  background-color: #f8f8f8;
-  border-top: 1px solid #ddd;
-  flex-wrap: wrap;
-}
+    .header-left img {
+      height: 50px;
+      object-fit: contain;
+    }
 
-.footer-left, .footer-right {
-  display: flex;
-  flex-direction: column;
-}
+    .scandroid-banner {
+      flex: 1;
+      text-align: center;
+    }
 
-.guide-button {
-  background-color: #d62828;
-  color: #fff;
-  text-decoration: none;
-  padding: 10px 16px;
-  border-radius: 5px;
-  font-weight: bold;
-  transition: background-color 0.2s ease;
-  max-width: fit-content;
-}
+    .scandroid-banner img {
+      height: 80px;
+      max-width: 60%;
+      object-fit: contain;
+      display: inline-block;
+    }
 
-.guide-button:hover {
-  background-color: #b81f1f;
-}
-  select { padding: 6px; }
-  .logout-button { padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    .right-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-  /* Mobile */
-  @media (max-width: 576px) {
-    header { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; height: auto; padding: 12px; }
-    .header-left img { height: 35px; }
-    .scandroid-banner img { height: 50px; max-width: 70%; }
-    .right-controls { flex-direction: row; width: 100%; justify-content: center; gap:8px; }
-    main { padding: 20px; }
-    .sync-section { padding: 20px; width: 100%; max-width: 420px; box-sizing: border-box; }
-    #syncBtn, #importBtn, #scanBtn { width: 100%; }
-    footer { flex-direction: column; text-align: center; padding: 12px 16px; }
-  }
-</style>
+    .right-controls select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .logout-button {
+      padding: 8px 14px;
+      background-color: #dc3545;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .logout-button:hover {
+      background-color: #b91c1c;
+    }
+
+    /* Online/Offline status pill */
+    .status-pill {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:700;
+      border:1px solid transparent;
+      user-select:none;
+    }
+    .status-pill.online {
+      background:#e7f9ef;
+      color:#0f5132;
+      border-color:#b7ebcd;
+    }
+    .status-pill.offline {
+      background:#fdecec;
+      color:#842029;
+      border-color:#f5c2c7;
+    }
+
+    /* ---------- MAIN LAYOUT ---------- */
+    main {
+      flex-grow: 1;
+      padding: 24px 16px 40px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .sync-section {
+      background: var(--card);
+      padding: 24px 20px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      max-width: 520px;
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--line);
+    }
+
+    .sync-section h2 {
+      margin: 0 0 16px 0;
+      font-size: 1.25rem;
+      color: var(--ink);
+    }
+
+    .sync-section p {
+      margin: 0 0 12px 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .sync-section + .sync-section {
+      margin-top: 4px; /* small visual gap; main already handles spacing */
+    }
+
+    /* ---------- BUTTONS ---------- */
+    #syncBtn, #importBtn, #scanBtn {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    #syncBtn {
+      background-color: #1d4ed8;
+      color: white;
+    }
+    #syncBtn:hover {
+      background-color: #1e40af;
+    }
+
+    #importBtn {
+      background-color: #facc15;
+      color: #4b5563;
+    }
+    #importBtn:hover {
+      background-color: #eab308;
+    }
+
+    #scanBtn {
+      background-color: #16a34a;
+      color: white;
+    }
+    #scanBtn:hover {
+      background-color: #15803d;
+    }
+
+    #generateCsvBtn {
+      width: 100%;
+      background-color:#facc15;
+      color:#333;
+      padding:12px 16px;
+      border:none;
+      border-radius:12px;
+      font-size:1rem;
+      cursor:pointer;
+      font-weight:700;
+      margin-top:8px;
+    }
+    #generateCsvBtn:hover {
+      background-color:#eab308;
+    }
+
+    #submitCsvBtn {
+      width: 100%;
+      background-color:#16a34a;
+      color:white;
+      padding:12px 16px;
+      border:none;
+      border-radius:12px;
+      font-size:1rem;
+      cursor:pointer;
+      font-weight:700;
+      margin-top:4px;
+    }
+    #submitCsvBtn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #submitCsvBtn:not(:disabled):hover {
+      background-color:#15803d;
+    }
+
+    #statusMessage {
+      font-size: 0.95rem;
+      margin-top: 8px;
+      color: var(--muted);
+    }
+
+    #csv-status {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    #csv-count {
+      font-weight: 700;
+      margin-left: 4px;
+      color: #111827;
+    }
+
+    #submit-status {
+      margin-top: 10px;
+      font-size: 0.95rem;
+      color: var(--ink);
+    }
+
+    /* ---------- OFFLINE POPUP ---------- */
+    #offline-popup {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff3cd;
+      color: #856404;
+      padding: 16px 24px;
+      font-weight: bold;
+      border: 1px solid #ffeeba;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      z-index: 9999;
+      max-width: 90%;
+      text-align: center;
+    }
+
+    #offline-popup button {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      font-weight: bold;
+      cursor: pointer;
+      color: #856404;
+    }
+
+    /* ---------- FOOTER ---------- */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px 16px 18px;
+      font-size: 0.9rem;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      flex-wrap: wrap;
+    }
+
+    .footer-left, .footer-right {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .guide-button {
+      background-color: #d62828;
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      transition: background-color 0.2s ease;
+      max-width: fit-content;
+      font-size: 0.9rem;
+    }
+
+    .guide-button:hover {
+      background-color: #b81f1f;
+    }
+
+    .footer-right a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+
+    .footer-right a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---------- MOBILE ---------- */
+    @media (max-width: 576px) {
+      header {
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+      }
+
+      .header-left img {
+        height: 40px;
+      }
+
+      .scandroid-banner img {
+        height: 60px;
+        max-width: 80%;
+      }
+
+      .right-controls {
+        flex-direction: row;
+        justify-content: center;
+        width: 100%;
+        gap: 8px;
+      }
+
+      main {
+        padding: 20px 12px 28px 12px;
+      }
+
+      .sync-section {
+        padding: 20px 16px;
+        max-width: 430px;
+      }
+
+      footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px 16px 16px 16px;
+      }
+    }
+  </style>
 
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#ffffff">
@@ -113,7 +372,6 @@
 <body>
 
 <header>
-
   <div class="header-left">
     <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
     <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
@@ -134,6 +392,7 @@
         <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
+
     <form method="get" action="/fsp-logout">
       <button type="submit" class="logout-button">{{ t.logout or "Logout" }}</button>
     </form>
@@ -141,60 +400,70 @@
 </header>
 
 <main>
-<div id="offline-popup" style="
-  display: none;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: #fff3cd;
-  color: #856404;
-  padding: 16px 24px;
-  font-weight: bold;
-  border: 1px solid #ffeeba;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  z-index: 9999;
-  max-width: 90%;
-  text-align: center;
-  position: fixed;
-">
-  <button onclick="closeOfflinePopup()" style="
-    position: absolute;
-    top: 4px;
-    right: 8px;
-    background: none;
-    border: none;
-    font-size: 20px;
-    font-weight: bold;
-    cursor: pointer;
-    color: #856404;
-  " aria-label="Close popup">&times;</button>
-  ⚠️ {{ t.must_be_online or "You must be online to perform this action." }}
-</div>
+  <div id="offline-popup">
+    <button onclick="closeOfflinePopup()" aria-label="Close popup">&times;</button>
+    ⚠️ {{ t.must_be_online or "You must be online to perform this action." }}
+  </div>
 
   <div class="sync-section">
     <h2>{{ t.fsp_sync_title or "📥 FSP: Sync Offline Records" }}</h2>
     <button id="syncBtn">{{ t.step1 or t.sync_latest or "Step 1. Sync Latest Records" }}</button>
     <button id="importBtn">{{ t.step2 or "Step 2. Import Offline Cache" }}</button>
     <button id="scanBtn" onclick="location.href='/scan?lang={{ lang }}'">{{ t.step3 or "Step 3. Scan QR Codes" }}</button>
-    <div id="statusMessage">{{ t.sync_initial or "Click sync to see how many beneficiaries are ready for offline validation." }}</div>
+    <div id="statusMessage">
+      {{ t.sync_initial or "Click sync to see how many beneficiaries are ready for offline validation." }}
+    </div>
   </div>
-<div class="sync-section" style="margin-top: 30px;">
-  <h2>{{t.step_4_generate}}</h2>
-  <p id="csv-status">{{t.payments_ready}}<span id="csv-count">0</span></p>
-  <button id="generateCsvBtn" style="background-color:#ffc107; color:#333; padding:12px 20px; border:none; border-radius:6px; font-size:16px; cursor:pointer;">
-    {{t.generate_csv}}
-  </button>
-</div>
 
-<div class="sync-section" style="margin-top: 20px;">
-  <h2>{{t.step_5_send}}</h2>
-  <button id="submitCsvBtn" disabled style="background-color:#28a745; color:white; padding:12px 20px; border:none; border-radius:6px; font-size:16px; cursor:pointer;">
-    {{t.send_payments}}
-  </button>
-  <p id="submit-status" style="margin-top: 10px; font-size: 16px;"></p>
-</div>
+<!-- 🔹 Unified Payments Sync Card -->
+  <div class="sync-section" style="margin-top: 30px;">
+
+    <h2 style="margin-bottom: 20px;">
+      {{ t.payment_prep}}
+    </h2>
+
+    <!-- Payment count -->
+    <p id="csv-status" style="margin-bottom: 10px;">
+      {{ t.payments_ready }}
+      <span id="csv-count">0</span>
+    </p>
+
+    <!-- Step 4 button -->
+    <button id="generateCsvBtn" style="
+        background-color:#ffc107;
+        color:#333;
+        padding:12px 20px;
+        border:none;
+        border-radius:6px;
+        font-size:16px;
+        cursor:pointer;
+        width: 100%;
+        margin-bottom: 20px;
+    ">
+      {{ t.generate_csv }}
+    </button>
+
+    <!-- Step 5 button -->
+    <button id="submitCsvBtn" disabled style="
+        background-color:#28a745;
+        color:white;
+        padding:12px 20px;
+        border:none;
+        border-radius:6px;
+        font-size:16px;
+        cursor:pointer;
+        width:100%;
+        margin-bottom: 10px;
+    ">
+        {{ t.send_payments }}
+    </button>
+
+    <!-- Status message -->
+    <p id="submit-status" style="font-size: 16px; margin-top: 10px;"></p>
+
+  </div>
+
+
 </main>
 
 <footer>
@@ -205,9 +474,12 @@
   </div>
   <div class="footer-right">
     <div>Developed by 510 @ The Netherlands Red Cross</div>
-    <div>If you need support, contact: <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a></div>
+    <div>If you need support, contact:
+      <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a>
+    </div>
   </div>
 </footer>
+
 <script>
   // JINJA TEMPLATE VARIABLE
   const t = {{ t | tojson | safe }};
@@ -218,17 +490,16 @@
 <!-- ZIP helper -->
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-
 <script>
   const ONLINE_TEXT = "{{ t.online or 'Online' }}";
   const OFFLINE_TEXT = "{{ t.offline or 'Offline' }}";
 
   // Sync button
   document.getElementById("syncBtn").addEventListener("click", function () {
-  if (!navigator.onLine) {
-    showOfflineWarningTemporarily();
-    return;
-  }
+    if (!navigator.onLine) {
+      showOfflineWarningTemporarily();
+      return;
+    }
     const btn = this;
     const statusDiv = document.getElementById("statusMessage");
     btn.disabled = true;
@@ -248,7 +519,7 @@
     });
   }
 
-  // Online detection -> update status pill (no dimming)
+  // Online detection -> update status pill
   const pill = document.getElementById('netStatus');
   function setOnlineState(isOnline) {
     pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
@@ -302,11 +573,11 @@
   const findJsonEntry = (zip) => Object.values(zip.files).find(f => /registrations_cache\.json$/i.test(f.name)) || null;
   const listPhotoEntries = (zip) => Object.values(zip.files).filter(f => /\.enc$/i.test(f.name));
 
- async function importLatestCache() {
-  if (!navigator.onLine) {
-    showOfflineWarningTemporarily();
-    return;
-  }
+  async function importLatestCache() {
+    if (!navigator.onLine) {
+      showOfflineWarningTemporarily();
+      return;
+    }
     const btn = document.getElementById('importBtn');
     const statusDiv = document.getElementById('statusMessage');
     const originalText = btn.textContent;
@@ -330,7 +601,7 @@
         await Promise.all(group.map(async rec => {
           const uuid = rec.uuid || rec._uuid;
           if (!uuid) return;
-        await db.put('records', rec);
+          await db.put('records', rec);
           written++;
         }));
       }
@@ -362,15 +633,16 @@
 
   document.getElementById('importBtn').addEventListener('click', importLatestCache);
 </script>
-<script>
 
-function showOfflineWarningTemporarily() {
-  const popup = document.getElementById('offline-popup');
-  popup.style.display = 'block';
-  setTimeout(() => {
-    popup.style.display = 'none';
-  }, 3000);
-}
+<script>
+  function showOfflineWarningTemporarily() {
+    const popup = document.getElementById('offline-popup');
+    popup.style.display = 'block';
+    setTimeout(() => {
+      popup.style.display = 'none';
+    }, 3000);
+  }
+
   const generateCsvBtn = document.getElementById('generateCsvBtn');
   const submitCsvBtn = document.getElementById('submitCsvBtn');
   const csvCountEl = document.getElementById('csv-count');
@@ -423,6 +695,7 @@ function showOfflineWarningTemporarily() {
 
     if (!payments.length) {
       submitStatus.textContent = "⚠️ No payments to export.";
+      generateCsvBtn.disabled = false;
       return;
     }
 
@@ -435,7 +708,7 @@ function showOfflineWarningTemporarily() {
     const csvRows = [['phoneNumber', 'status']];
     for (const p of payments) {
       let phone = p.match_value;
-      if (encKey && phone.startsWith('gAAAA')) {
+      if (encKey && phone && phone.startsWith('gAAAA')) {
         phone = await decrypt(phone, encKey);
       }
       csvRows.push([phone, p.status]);
@@ -447,24 +720,12 @@ function showOfflineWarningTemporarily() {
     submitStatus.textContent = "✅ CSV ready with " + (csvRows.length - 1) + " records.";
     submitCsvBtn.disabled = false;
   });
-// document.getElementById('downloadCsvBtn').addEventListener('click', () => {
-//   if (!cachedCsvBlob) {
-//     alert("No CSV generated yet.");
-//     return;
-//   }
 
-//   const url = URL.createObjectURL(cachedCsvBlob);
-//   const a = document.createElement("a");
-//   a.href = url;
-//   a.download = "payments_preview.csv";
-//   a.click();
-//   URL.revokeObjectURL(url);
-// });
-submitCsvBtn.addEventListener('click', async () => {
-  if (!navigator.onLine) {
-    showOfflineWarningTemporarily();
-    return;
-  }
+  submitCsvBtn.addEventListener('click', async () => {
+    if (!navigator.onLine) {
+      showOfflineWarningTemporarily();
+      return;
+    }
     if (!cachedCsvBlob) {
       alert("No CSV generated yet.");
       return;
@@ -474,53 +735,41 @@ submitCsvBtn.addEventListener('click', async () => {
     formData.append('csv', cachedCsvBlob, 'payments.csv');
 
     submitStatus.textContent = "📤 Sending...";
-try {
-  const res = await fetch('/submit-payments', {
-    method: 'POST',
-    body: formData
-  });
+    try {
+      const res = await fetch('/submit-payments', {
+        method: 'POST',
+        body: formData
+      });
 
-  const responseText = await res.text();
-  if (!res.ok) throw new Error(responseText || "Unknown error from server");
+      const responseText = await res.text();
+      if (!res.ok) throw new Error(responseText || "Unknown error from server");
 
-  submitStatus.textContent = t.payment_submit_success || "✅ Payments submitted successfully!";
+      submitStatus.textContent = t.payment_submit_success || "✅ Payments submitted successfully!";
 
-  const db = await openScandroidDB();
-  const tx = db.transaction('payments', 'readwrite');
-  await tx.objectStore('payments').clear();
+      const db = await openScandroidDB();
+      const tx = db.transaction('payments', 'readwrite');
+      await tx.objectStore('payments').clear();
 
-  csvCountEl.textContent = "0";
-  submitCsvBtn.disabled = true;
-  generateCsvBtn.disabled = false;
-  cachedCsvBlob = null;
-} catch (err) {
-  console.error(err);
-  submitStatus.textContent = (t.payment_submit_failed || "❌ Failed to submit") + ": " + (err.message || "Unknown error");
-}
-
+      csvCountEl.textContent = "0";
+      submitCsvBtn.disabled = true;
+      generateCsvBtn.disabled = false;
+      cachedCsvBlob = null;
+    } catch (err) {
+      console.error(err);
+      submitStatus.textContent =
+        (t.payment_submit_failed || "❌ Failed to submit") + ": " + (err.message || "Unknown error");
+    }
   });
 
   // Init on page load
   loadPaymentsAndCount();
 
   let popupTimeout;
-
-  function showOfflineWarningTemporarily() {
-    const popup = document.getElementById('offline-popup');
-    popup.style.display = 'block';
-
-    clearTimeout(popupTimeout);
-    popupTimeout = setTimeout(() => {
-      popup.style.display = 'none';
-    }, 3000);
-  }
-
   function closeOfflinePopup() {
     const popup = document.getElementById('offline-popup');
     popup.style.display = 'none';
     clearTimeout(popupTimeout);
   }
-
 </script>
 
 </body>

@@ -17,6 +17,7 @@ import csv
 from flask_session import Session
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from openpyxl import load_workbook
 
 # Register a Unicode-safe font
 pdfmetrics.registerFont(TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf")))
@@ -236,14 +237,14 @@ translations = {
     "config_system": "System Configuration",
     "config_display": "Configure Fields to Display",
     "fsp_login": "Login for FSP Admins",
-    "fsp_sync_title": "📥 FSP: Sync Offline Records",
+    "fsp_sync_title": "Prepare to Scan",
     "sync_latest": "Sync Latest Records",
     "syncing": "Syncing...",
     "sync_error": "❌ Failed to sync. Please try again.",
     "sync_initial": "Click sync to see how many beneficiaries are ready for offline validation.",
     "sync_complete": "✅ {count} beneficiaries ready for offline validation.",
-    "step1": "Step 1. Sync Latest Records",
-    "step2": "Step 2. Import Offline Cache",
+    "step1": "Step 1. Sync with 121",
+    "step2": "Step 2. Save Latest Records",
     "step3": "Step 3. Scan QR Codes",
     "online": "Online",
     "offline": "Offline",
@@ -283,23 +284,39 @@ translations = {
     "fsp_login": "Log in for Financial Service Provider",
     "step_4_generate": "📤 Step 4. Generate Payments to Send to 121",
     "payments_ready": "🔄 Payments ready to submit to 121:",
-    "generate_csv": "Generate CSV",
+    "generate_csv": "Step 4. Generate Payments CSV",
     "download_csv": "⬇️ Download CSV",
     "step_5_send": "✅ Step 5. Send Payments to 121",
-    "send_payments": "Send payments",
+    "send_payments": "Step 5. Send payments to 121",
     "payment_submit_success": "✅ Payments submitted successfully!",
     "payment_submit_failed": "❌ Failed to submit",
     "voucher_generator": "Voucher Generator",
-    "csv_hint": "Upload a CSV with referenceId and any extra fields to print",
-    "choose_csv": "Choose CSV…",
-    "upload_csv": "Upload CSV",
+    "csv_hint": "Upload a CSV or Excel file with referenceId and any extra fields to print",
+    "choose_csv": "Choose CSV or Excel file…",
+    "upload_csv": "Upload CSV or Excel file",
     "download_vouchers": "Download vouchers (PDF)",
     "back": "Back to Dashboard",
     "choose_csv_alert": "Please choose a CSV first.",
     "upload_failed": "Upload failed",
     "voucher_ready_singular": "voucher ready to download",
     "voucher_ready_plural": "vouchers ready to download",
-    "generate_vouchers": "Generate Vouchers"        
+    "generate_vouchers": "Generate Vouchers",
+    "invalid_qr_title": "Invalid QR Code",
+    "invalid_qr_message": "This QR code cannot be used.",
+    "checking_reason": "Checking reason…",
+    "scan_next": "Scan next beneficiary",
+    "go_home": "Go to homepage",
+    "reason_used": "This QR code has already been used.",
+    "reason_invalid": "The QR code is invalid or unrecognized.",
+    "reason_no_record": "This QR code does not match any stored beneficiary.",
+    "reason_database": "There was a problem reading offline data. Please try again.",
+    "success_title": "Successfully submitted",
+    "success_message": "You may now scan the next beneficiary.",
+    "loading_counter": "Payments ready to push to 121: ...",
+    "payments_ready": "Payments ready to push to 121:",
+    "scan_next": "Scan next beneficiary",
+    "go_home": "Finished scanning? Go to homepage",
+    "payment_prep": "Prepare to Send Payments"        
 }
 ,
 "fr": {
@@ -381,15 +398,15 @@ translations = {
     "fsp_login": "Connexion pour le prestataire de services financiers",
     "step_4_generate": "📤 Étape 4. Générer les paiements à envoyer à 121",
     "payments_ready": "🔄 Paiements prêts à être soumis à 121 :",
-    "generate_csv": "Générer un CSV",
+    "generate_csv": "Étape 4. Générer un CSV",
     "download_csv": "⬇️ Télécharger le CSV",
     "step_5_send": "✅ Étape 5. Envoyer les paiements à 121",
-    "send_payments": "Envoyer les paiements",
+    "send_payments": "Étape 5. Envoyer les paiements à 121",
     "payment_submit_success": "✅ Paiements envoyés avec succès !",
     "payment_submit_failed": "❌ Échec de l'envoi",
     "voucher_generator": "Générateur de bons",
-    "csv_hint": "Téléchargez un fichier CSV avec referenceId et d’autres champs à imprimer",
-    "choose_csv": "Télécharger un fichier CSV",
+    "csv_hint": "Téléchargez un fichier CSV ou Excel avec referenceId et d’autres champs à imprimer",
+    "choose_csv": "Télécharger un fichier CSV ou Excel",
     "upload_csv": "Importer le fichier",
     "download_vouchers": "Télécharger les bons (PDF)",
     "back": "Retour au tableau de bord",
@@ -397,7 +414,23 @@ translations = {
     "upload_failed": "Échec du téléversement",
     "voucher_ready_singular": "bon prêt à télécharger",
     "voucher_ready_plural": "bons prêts à télécharger",
-    "generate_vouchers": "Générer les coupons"      
+    "generate_vouchers": "Générer les coupons",
+    "invalid_qr_title": "Code QR invalide",
+    "invalid_qr_message": "Ce code QR ne peut pas être utilisé.",
+    "checking_reason": "Vérification de la raison…",
+    "scan_next": "Scanner le bénéficiaire suivant",
+    "go_home": "Aller à l'accueil",
+    "reason_used": "Ce code QR a déjà été utilisé.",
+    "reason_invalid": "Le code QR est invalide ou non reconnu.",
+    "reason_no_record": "Aucun bénéficiaire correspondant n’a été trouvé.",
+    "reason_database": "Problème de lecture des données hors ligne. Veuillez réessayer.",
+    "success_title": "Soumis avec succès",
+    "success_subtitle": "Vous pouvez maintenant scanner le bénéficiaire suivant.",
+    "counter_loading": "Paiements prêts à envoyer à 121 : ...",
+    "counter_label": "Paiements prêts à envoyer à 121 :",
+    "scan_next": "Scanner le bénéficiaire suivant",
+    "go_home": "Terminé le scan ? Aller à la page d’accueil",
+    "payment_prep": "Prepare to send payments" 
 }
 ,
 "ar": {
@@ -487,15 +520,31 @@ translations = {
     "payment_submit_failed": "❌ فشل الإرسال",
     "voucher_generator": "مولّد القسائم",
     "csv_hint": "قم بتحميل ملف CSV يحتوي على referenceId وأي حقول إضافية للطباعة",
-    "choose_csv": "اختر ملف CSV…",
-    "upload_csv": "تحميل ملف CSV",
+    "choose_csv": "اختر ملف CSV/Excel…",
+    "upload_csv": "تحميل ملف Excel/CSV",
     "download_vouchers": "تنزيل القسائم (PDF)",
     "back": "العودة إلى لوحة التحكم",
     "choose_csv_alert": "يرجى اختيار ملف CSV أولاً.",
     "upload_failed": "فشل الرفع",
     "voucher_ready_singular": "قسيمة جاهزة للتنزيل",
     "voucher_ready_plural": "قسائم جاهزة للتنزيل",
-    "generate_vouchers": "إصدار القسائم"      
+    "generate_vouchers": "إصدار القسائم",
+    "invalid_qr_title": "رمز QR غير صالح",
+    "invalid_qr_message": "لا يمكن استخدام رمز QR هذا.",
+    "checking_reason": "جارٍ التحقق من السبب…",
+    "scan_next": "مسح المستفيد التالي",
+    "go_home": "العودة إلى الصفحة الرئيسية",
+    "reason_used": "تم استخدام رمز QR هذا سابقًا.",
+    "reason_invalid": "رمز QR غير صالح أو غير معروف.",
+    "reason_no_record": "لا يوجد أي مستفيد مطابق لهذا الرمز.",
+    "reason_database": "حدثت مشكلة في قراءة البيانات دون اتصال. حاول مرة أخرى.",
+    "success_title": "تم الإرسال بنجاح",
+    "success_subtitle": "يمكنك الآن مسح المستفيد التالي.",
+    "counter_loading": "المدفوعات الجاهزة للإرسال إلى 121: ...",
+    "counter_label": "المدفوعات الجاهزة للإرسال إلى 121:",
+    "scan_next": "مسح المستفيد التالي",
+    "go_home": "هل انتهيت من المسح؟ اذهب إلى الصفحة الرئيسية",
+    "payment_prep": "Prepare to send payments"       
     }
 }
 
@@ -946,7 +995,8 @@ def beneficiary_offline():
 @app.route("/success-offline")
 def success_offline():
     lang = request.args.get("lang", "en")
-    return render_template("success_offline.html", lang=lang)
+    t = translations.get(lang, translations["en"])
+    return render_template("success_offline.html", lang=lang, t=t)
 
 @app.route("/system-config.json")
 def system_config_json():
@@ -1099,11 +1149,19 @@ def submit_payments():
     else:
         return "❌ All submissions failed.", 500
 
-@app.route('/invalid-qr')
+@app.route("/invalid-qr")
 def invalid_qr():
-    reason = request.args.get('reason', 'Invalid QR code')
-    lang = request.args.get('lang', 'en')
-    return render_template('invalid-qr.html', reason=reason, lang=lang)
+    # keep previously-selected language
+    lang = request.args.get("lang", "en")
+    reason = request.args.get("reason", "")
+
+    return render_template(
+        "invalid-qr.html",
+        reason=reason,
+        lang=lang,
+        t=translations.get(lang, translations["en"])
+    )
+
 
 @app.route("/vouchers", methods=["GET"])
 def vouchers_page():
@@ -1122,89 +1180,191 @@ def vouchers_upload():
         return jsonify({"success": False, "message": "Not authorized"}), 403
 
     if "csv" not in request.files:
-        return jsonify({"success": False, "message": "No CSV uploaded"}), 400
+        return jsonify({"success": False, "message": "No file uploaded"}), 400
 
     f = request.files["csv"]
+    filename = f.filename.lower()
 
     try:
-        # Ensure upload directory exists
-        import os
         os.makedirs("uploads", exist_ok=True)
-
-        # Save raw CSV file to server (not session)
-        upload_path = os.path.join("uploads", "vouchers.csv")
+        upload_path = os.path.join("uploads", filename)
         f.save(upload_path)
 
-        # Re-open and parse (same as before)
-        with open(upload_path, "r", encoding="utf-8", errors="replace") as infile:
-            content = infile.read()
-
-        reader = csv.DictReader(content.splitlines())
         rows = []
 
-        for row in reader:
-            clean_row = {}
+        # ---------------------------------------------------------------------
+        # CASE 1: CSV
+        # ---------------------------------------------------------------------
+        if filename.endswith(".csv"):
+            with open(upload_path, "r", encoding="utf-8", errors="replace") as infile:
+                reader = csv.DictReader(infile)
 
-            # --- Normalize all header names ---
-            for key, value in row.items():
-                if key is None:
+                for row in reader:
+                    clean_row = {}
+                    for key, value in row.items():
+                        if key is None:
+                            continue
+                        clean_key = key.strip().replace("\ufeff", "").lower()
+                        clean_row[clean_key] = value.strip() if isinstance(value, str) else value
+
+                    ref = (
+                        clean_row.get("referenceid")
+                        or clean_row.get("reference id")
+                        or clean_row.get("reference_id")
+                        or clean_row.get("refid")
+                        or clean_row.get("id")
+                        or ""
+                    )
+
+                    clean_row["referenceid"] = ref.strip()
+                    rows.append(clean_row)
+
+        # ---------------------------------------------------------------------
+        # CASE 2: XLSX
+        # ---------------------------------------------------------------------
+        elif filename.endswith(".xlsx"):
+            from openpyxl import load_workbook
+            wb = load_workbook(upload_path, read_only=True, data_only=True)
+            ws = wb.active
+
+            # Read header
+            header_row = next(ws.iter_rows(values_only=True))
+            headers = [str(h).strip().lower() if h else None for h in header_row]
+
+            # Read remaining rows (skip header)
+            is_header = True
+            for row in ws.iter_rows(values_only=True):
+                if is_header:
+                    is_header = False
                     continue
-                clean_key = key.strip().replace("\ufeff", "").lower()
-                clean_row[clean_key] = value.strip() if isinstance(value, str) else value
 
-            # --- Ensure 'referenceid' key exists ---
-            ref = (
-                clean_row.get("referenceid")
-                or clean_row.get("reference id")
-                or clean_row.get("reference_id")
-                or clean_row.get("refid")
-                or clean_row.get("id")
-                or clean_row.get("registrationReferenceId")
-                or ""
-            )
+                clean_row = {}
+                for key, value in zip(headers, row):
+                    if not key:
+                        continue
+                    clean_row[key] = value.strip() if isinstance(value, str) else value
 
-            clean_row["referenceid"] = ref.strip()
+                ref = (
+                    clean_row.get("referenceid")
+                    or clean_row.get("reference id")
+                    or clean_row.get("reference_id")
+                    or clean_row.get("refid")
+                    or clean_row.get("id")
+                    or ""
+                )
 
-            rows.append(clean_row)
+                clean_row["referenceid"] = str(ref).strip()
 
-        # ✅ Store ONLY the file path + row count in the session (small!)
+                # Skip empty rows (all None)
+                if any(v not in (None, "") for v in clean_row.values()):
+                    rows.append(clean_row)
+
+        # ---------------------------------------------------------------------
+        # CASE 3: XLS
+        # ---------------------------------------------------------------------
+        elif filename.endswith(".xls"):
+            import xlrd
+            wb = xlrd.open_workbook(upload_path)
+            sh = wb.sheet_by_index(0)
+
+            headers = [str(h).strip().lower() for h in sh.row_values(0)]
+
+            for rx in range(1, sh.nrows):  # start at row 1 (skip header)
+                values = sh.row_values(rx)
+                clean_row = {}
+
+                for key, value in zip(headers, values):
+                    clean_row[key] = value.strip() if isinstance(value, str) else value
+
+                ref = (
+                    clean_row.get("referenceid")
+                    or clean_row.get("reference id")
+                    or clean_row.get("reference_id")
+                    or clean_row.get("refid")
+                    or clean_row.get("id")
+                    or ""
+                )
+
+                clean_row["referenceid"] = str(ref).strip()
+
+                # Skip empty rows
+                if any(v not in (None, "") for v in clean_row.values()):
+                    rows.append(clean_row)
+
+        else:
+            return jsonify({"success": False, "message": "Unsupported file type"}), 400
+
+        # Save metadata
         session["voucher_file_path"] = upload_path
         session["voucher_count"] = len(rows)
-
-        # ✅ Do NOT store rows in session — they can be reloaded from file whenever needed
 
         return jsonify({"success": True, "count": len(rows)})
 
     except Exception as e:
-        return jsonify({"success": False, "message": f"Failed to parse CSV: {e}"}), 400
+        return jsonify({"success": False, "message": f"Failed to parse file: {e}"}), 400
 
 @app.route("/vouchers/download", methods=["GET"])
 def vouchers_download():
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
 
-    # Load file path saved during upload
-    csv_path = session.get("voucher_file_path")
-    if not csv_path or not os.path.exists(csv_path):
+    file_path = session.get("voucher_file_path")
+    if not file_path or not os.path.exists(file_path):
         flash("No uploaded data to generate vouchers.", "error")
         return redirect(url_for("vouchers_page"))
 
-    # Read and reconstruct voucher rows
     rows = []
-    with open(csv_path, "r", encoding="utf-8", errors="replace") as infile:
-        reader = csv.DictReader(infile.read().splitlines())
+    filename = file_path.lower()
 
-        for row in reader:
+    # -----------------------------
+    # CASE 1: CSV
+    # -----------------------------
+    if filename.endswith(".csv"):
+        with open(file_path, "r", encoding="utf-8", errors="replace") as infile:
+            reader = csv.DictReader(infile.read().splitlines())
+            for row in reader:
+                clean_row = {k.strip().lower(): (v.strip() if isinstance(v, str) else v)
+                             for k, v in row.items() if k}
+
+                ref = (
+                    clean_row.get("referenceid")
+                    or clean_row.get("reference id")
+                    or clean_row.get("reference_id")
+                    or clean_row.get("refid")
+                    or clean_row.get("id")
+                    or ""
+                )
+                clean_row["referenceid"] = str(ref).strip()
+                rows.append(clean_row)
+
+    # -----------------------------
+    # CASE 2: XLSX
+    # -----------------------------
+    elif filename.endswith(".xlsx"):
+        from openpyxl import load_workbook
+
+        wb = load_workbook(file_path, read_only=True)
+        ws = wb.active
+
+        rows_iter = ws.iter_rows(values_only=True)
+
+        # --- Read REAL header row only once ---
+        header_row = next(rows_iter)
+        headers = [str(h).strip().lower() if h else "" for h in header_row]
+
+        # --- Process all remaining rows (skips header correctly) ---
+        for row in rows_iter:
+            # skip empty rows
+            if not any(row):
+                continue
+
             clean_row = {}
+            for key, value in zip(headers, row):
+                if key:
+                    clean_row[key] = (
+                        str(value).strip() if isinstance(value, str) else value
+                    )
 
-            # Clean & normalize header keys
-            for key, value in row.items():
-                if key is None:
-                    continue
-                clean_key = key.strip().replace("\ufeff", "").lower()
-                clean_row[clean_key] = value.strip() if isinstance(value, str) else value
-
-            # Ensure referenceid always exists
             ref = (
                 clean_row.get("referenceid")
                 or clean_row.get("reference id")
@@ -1213,11 +1373,70 @@ def vouchers_download():
                 or clean_row.get("id")
                 or ""
             )
-            clean_row["referenceid"] = ref.strip()
+            clean_row["referenceid"] = str(ref).strip()
+            rows.append(clean_row)
+
+
+    # -----------------------------
+    # CASE 3: XLS
+    # -----------------------------
+    elif filename.endswith(".xls"):
+        import xlrd
+        wb = xlrd.open_workbook(upload_path)
+        sh = wb.sheet_by_index(0)
+
+        # --- Find the FIRST non-empty row → this is the real header row ---
+        header_row_index = None
+        for i in range(sh.nrows):
+            row = sh.row_values(i)
+            if any(str(c).strip() for c in row):   # Row contains at least 1 non-empty cell
+                header_row_index = i
+                break
+
+        if header_row_index is None:
+            return jsonify({"success": False, "message": "No valid header row found"}), 400
+
+        # Extract header names
+        headers = [
+            str(h).strip().lower() if h is not None else ""
+            for h in sh.row_values(header_row_index)
+        ]
+
+        # --- Process all rows AFTER the header row ---
+        for rx in range(header_row_index + 1, sh.nrows):
+            values = sh.row_values(rx)
+
+            # skip empty rows
+            if not any(str(v).strip() for v in values):
+                continue
+
+            clean_row = {}
+            for key, value in zip(headers, values):
+                if key:  # skip empty header columns
+                    clean_row[key] = (
+                        str(value).strip() if isinstance(value, str) else value
+                    )
+
+            # normalize referenceid
+            ref = (
+                clean_row.get("referenceid")
+                or clean_row.get("reference id")
+                or clean_row.get("reference_id")
+                or clean_row.get("refid")
+                or clean_row.get("id")
+                or ""
+            )
+            clean_row["referenceid"] = str(ref).strip()
 
             rows.append(clean_row)
 
-    # Now generate the PDF from reconstructed rows
+    else:
+        flash("Unsupported voucher file type.", "error")
+        return redirect(url_for("vouchers_page"))
+
+    # -----------------------------
+    # Generate PDF
+    # -----------------------------
     pdf_io = generate_vouchers_pdf(
         rows,
         static_folder=os.path.join(app.root_path, "static")
@@ -1229,3 +1448,4 @@ def vouchers_download():
         as_attachment=True,
         download_name="vouchers.pdf"
     )
+

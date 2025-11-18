@@ -1,45 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Payment Saved</title>
+  <title>{{ t["success_title"] }}</title>
   <link rel="stylesheet" href="/static/style.css" />
-  <style>
-    :root {
-      --pad: 16px;
-      --gap: 12px;
-      --radius: 16px;
-      --card: #fff;
-      --ink: #111;
-      --muted: #6b7280;
-      --line: #e5e7eb;
-      --bg: #f3f4f6;
-    }
 
-    html, body {
-      height: 100%;
-      margin: 0;
-    }
+  <style>
+    :root { --pad:16px; --gap:12px; --radius:16px; --card:#fff; --ink:#111; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6; }
 
     body {
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--ink);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      margin: 0;
       padding: 24px;
+    }
+
+    .page-wrapper {
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      min-height: calc(100vh - 80px);
     }
 
     .card {
       background: var(--card);
       border-radius: var(--radius);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      box-shadow: 0 10px 30px rgba(0,0,0,.06);
       border: 1px solid var(--line);
       width: 100%;
-      max-width: 460px;
+      max-width: 520px;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -60,37 +52,22 @@
       flex-wrap: wrap;
     }
 
-    .logos img {
-      height: 42px;
-    }
+    .logos img { height: 42px; }
 
-    .content {
-      padding: 24px;
-      text-align: center;
-    }
+    .content { padding: 24px; text-align:center; }
 
-    h2 {
-      color: #28a745;
-      margin: 0.5rem 0;
-      font-size: 1.6rem;
-    }
-
-    p {
-      color: #333;
-      margin: 0.4rem 0 1rem;
-    }
+    h2 { margin: .5rem 0; font-size: 1.6rem; color: #28a745; }
 
     .counter {
-      font-weight: bold;
+      font-weight: 700;
       color: #007bff;
-      margin-bottom: 1.5rem;
-      font-size: 1.1rem;
+      margin: .8rem 0 1.4rem;
     }
 
-    .actions {
-      display: grid;
-      gap: 12px;
-      margin-top: 12px;
+    .actions { 
+      display:grid; 
+      gap:12px; 
+      margin-top:12px;
     }
 
     .btn {
@@ -100,100 +77,144 @@
       border-radius: 12px;
       font-size: 1rem;
       cursor: pointer;
-      transition: background-color 0.3s;
     }
 
     .btn-scan {
-      background: #e8f9ef;
-      color: #065f46;
-      border: 1px solid #a7f3d0;
+      background:#e8f9ef;
+      color:#065f46;
+      border:1px solid #a7f3d0;
     }
 
-    .btn-scan:hover {
-      background: #d1fae5;
-    }
+    .btn-scan:hover { background:#d1fae5; }
 
     .btn-home {
-      background: #eff6ff;
-      color: #1d4ed8;
-      border: 1px solid #93c5fd;
+      background:#eff6ff;
+      color:#1d4ed8;
+      border:1px solid #93c5fd;
     }
 
-    .btn-home:hover {
-      background: #dbeafe;
+    .btn-home:hover { background:#dbeafe; }
+
+    /* Top bar */
+    .voucher-topbar {
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto 14px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
-    @media (max-width: 480px) {
-      .content {
-        padding: 16px;
-      }
-
-      .logos img {
-        height: 36px;
-      }
-
-      h2 {
-        font-size: 1.4rem;
-      }
-
-      .btn {
-        font-size: 0.95rem;
-      }
+    .topbar-back {
+      background-color: #dc3545;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: bold;
+      text-decoration: none;
+      border: 1px solid #b91c1c;
     }
+
+    .topbar-back:hover {
+      background-color: #b91c1c;
+    }
+
+    .lang-form select {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
   </style>
 </head>
+
 <body>
-  <div class="card">
-    <div class="header">
-      <div class="logos">
-        <img src="/static/ns1.png" alt="Logo 1" />
-        <img src="/static/scandroid_banner.png" alt="Scandroid" />
-        <img src="/static/ns2.png" alt="Logo 2" />
-      </div>
-    </div>
 
-    <div class="content">
-      <h2>✅ Successfully submitted</h2>
-      <p>You may now scan the next beneficiary.</p>
-      <div id="counter" class="counter">Payments ready to push to 121: ...</div>
+  <!-- 🔹 TOP BAR (matching voucher page) -->
+  <div class="voucher-topbar">
+    <form method="get" action="/success-offline" class="lang-form">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+  </div>
 
-      <div class="actions">
-        <button class="btn btn-scan" onclick="window.location.href='/scan?lang=en'">Scan next beneficiary</button>
-        <button class="btn btn-home" onclick="window.location.href='/fsp-admin'">Finished scanning? Go to homepage</button>
+  <div class="page-wrapper">
+    <div class="card">
+
+      <div class="header">
+        <div class="logos">
+          <img src="/static/ns1.png" alt="Logo 1" />
+          <img src="/static/scandroid_banner.png" alt="Scandroid" />
+          <img src="/static/ns2.png" alt="Logo 2" />
+        </div>
       </div>
+
+      <div class="content">
+
+        <h2>{{ t["success_title"] }}</h2>
+        <p>{{ t["success_message"] }}</p>
+
+        <div id="counter" class="counter">
+          {{ t["payments_ready"] }}: ...
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-scan" onclick="window.location.href='/scan?lang={{ lang }}'">
+            {{ t["scan_next"] }}
+          </button>
+
+          <button class="btn btn-home" onclick="window.location.href='/fsp-admin?lang={{ lang }}'">
+            {{ t["go_home"] }}
+          </button>
+        </div>
+
+      </div>
+
     </div>
   </div>
 
-  <script>
-    async function loadCounter() {
-      try {
-        const dbReq = indexedDB.open("scandroid");
-        dbReq.onsuccess = function () {
-          const db = dbReq.result;
-          if (!db.objectStoreNames.contains("payments")) {
-            document.getElementById("counter").textContent = "Payments ready to push to 121: 0";
-            return;
-          }
+<script>
+  async function loadCounter() {
+    try {
+      const dbReq = indexedDB.open("scandroid");
 
-          const tx = db.transaction("payments", "readonly");
-          const store = tx.objectStore("payments");
-          const countReq = store.count();
+      dbReq.onsuccess = function () {
+        const db = dbReq.result;
 
-          countReq.onsuccess = function () {
-            document.getElementById("counter").textContent =
-              "Payments ready to push to 121: " + countReq.result;
-          };
+        if (!db.objectStoreNames.contains("payments")) {
+          document.getElementById("counter").textContent =
+            "{{ t['payments_ready'] }}: 0";
+          return;
+        }
+
+        const tx = db.transaction("payments", "readonly");
+        const store = tx.objectStore("payments");
+        const countReq = store.count();
+
+        countReq.onsuccess = function () {
+          document.getElementById("counter").textContent =
+            "{{ t['payments_ready'] }}: " + countReq.result;
         };
+      };
 
-        dbReq.onerror = function () {
-          document.getElementById("counter").textContent = "Payments ready to push to 121: 0";
-        };
-      } catch (err) {
-        document.getElementById("counter").textContent = "Payments ready to push to 121: 0";
-      }
+      dbReq.onerror = function () {
+        document.getElementById("counter").textContent =
+          "{{ t['payments_ready'] }}: 0";
+      };
+    } catch (err) {
+      document.getElementById("counter").textContent =
+        "{{ t['payments_ready'] }}: 0";
     }
+  }
 
-    window.addEventListener("DOMContentLoaded", loadCounter);
-  </script>
+  window.addEventListener("DOMContentLoaded", loadCounter);
+</script>
+
 </body>
 </html>
