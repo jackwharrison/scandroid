@@ -5,3 +5,5 @@ reportlab
 qrcode[pil]
 Pillow
 Flask-Session
+openpyxl
+xlrd

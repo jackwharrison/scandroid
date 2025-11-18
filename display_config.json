@@ -12,7 +12,7 @@
       "key": "phoneNumber",
       "labels": {
         "en": "Phone Number",
-        "fr": "Le telefon",
+        "fr": "numero de telephone",
         "ar": "phone"
       }
     }
