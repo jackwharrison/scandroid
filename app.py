@@ -317,7 +317,26 @@ translations = {
     "scan_next": "Scan next beneficiary",
     "go_home": "Finished scanning? Go to homepage",
     "payment_prep": "Prepare to Send Payments",
-    "login_error": "Incorrect username or password."        
+    "login_error": "Incorrect username or password.",
+    "admin_dashboard_title": "Admin Dashboard",
+    "admin_dashboard_subtitle": "Manage your Scandroid configuration and voucher tools.",
+    "config_system_desc": "Edit API keys, endpoints, and system parameters.",
+    "config_display_desc": "Configure which fields and details are shown to FSPs.",
+    "generate_vouchers_desc": "Generate QR vouchers for printing and distribution.",
+    "program_information": "Program Information",
+    "credentials": "Credentials",
+    "url_121": "121 URL",
+    "program_id": "121 Program ID",
+    "username_121": "121 Username",
+    "password_121": "121 Password",
+    "field_name_121": "121 Field Name",
+    "matching_field_title": "121 Field for Matching Payments",
+    "matching_field_desc": "This field contains the unique ID from 121 used to match beneficiaries to payments.",
+    "matching_field_placeholder": "e.g. phoneNumber",
+    "wrong_credentials": "Incorrect username or password.",
+    "api_unreachable": "Unable to reach the login server. Please try again.",
+    "login_failed_generic": "Login failed. Please try again.",
+    "go_back": "Go Back"        
 }
 ,
 "fr": {
@@ -352,7 +371,7 @@ translations = {
     "config_system": "Configurer le système ",
     "config_display": "Congifuration des champs de vérification",
     "fsp_login": "Connexion pour les FSP",
-    "fsp_sync_title": "📥 FSP : Synchroniser les enregistrements hors ligne",
+    "fsp_sync_title": "Synchroniser les enregistrements hors ligne",
     "sync_latest": "Synchroniser les derniers enregistrements",
     "syncing": "Synchronisation...",
     "sync_error": "❌ Échec de la synchronisation. Veuillez réessayer.",
@@ -431,9 +450,27 @@ translations = {
     "counter_label": "Paiements prêts à envoyer à 121 :",
     "scan_next": "Scanner le bénéficiaire suivant",
     "go_home": "Terminé le scan ? Aller à la page d’accueil",
-    "payment_prep": "Prepare to send payments",
-    "login_error": "Nom d’utilisateur ou mot de passe incorrect."
-
+    "payment_prep": "Préparer l'envoi des paiements",
+    "login_error": "Nom d’utilisateur ou mot de passe incorrect.",
+    "admin_dashboard_title": "Tableau de bord Admin",
+    "admin_dashboard_subtitle": "Gérez la configuration de Scandroid et les outils de bons.",
+    "config_system_desc": "Modifier les clés API, les points d'accès et les paramètres du système.",
+    "config_display_desc": "Configurer les champs et informations affichés aux FSP.",
+    "generate_vouchers_desc": "Générer des bons QR pour impression et distribution.",
+    "program_information": "Informations du programme",
+    "credentials": "Identifiants",
+    "url_121": "URL 121",
+    "program_id": "ID du programme 121",
+    "username_121": "Nom d’utilisateur 121",
+    "password_121": "Mot de passe 121",
+    "field_name_121": "Nom du champ 121",
+    "matching_field_title": "Champ 121 pour l’appariement des paiements",
+    "matching_field_desc": "Ce champ contient l’identifiant unique de 121 utilisé pour faire correspondre les bénéficiaires aux paiements.",
+    "matching_field_placeholder": "ex. phoneNumber",
+    "wrong_credentials": "Nom d’utilisateur ou mot de passe incorrect.",
+    "api_unreachable": "Impossible de joindre le serveur. Veuillez réessayer.",
+    "login_failed_generic": "Échec de connexion. Veuillez réessayer.",
+    "go_back": "Retour"
 }
 ,
 "ar": {
@@ -548,7 +585,26 @@ translations = {
     "scan_next": "مسح المستفيد التالي",
     "go_home": "هل انتهيت من المسح؟ اذهب إلى الصفحة الرئيسية",
     "payment_prep": "Prepare to send payments",
-    "login_error": "اسم المستخدم أو كلمة المرور غير صحيحة."       
+    "login_error": "اسم المستخدم أو كلمة المرور غير صحيحة.",
+    "admin_dashboard_title": "لوحة تحكم المسؤول",
+    "admin_dashboard_subtitle": "إدارة إعدادات Scandroid وأدوات القسائم",
+    "config_system_desc": "تعديل مفاتيح API ونقاط النهاية ومعلمات النظام.",
+    "config_display_desc":"تكوين الحقول والمعلومات التي يتم عرضها لمقدمي الخدمات المالية.",
+    "generate_vouchers_desc": "إنشاء قسائم QR للطباعة والتوزيع.",
+    "program_information": "معلومات البرنامج",
+    "credentials": "بيانات تسجيل الدخول",
+    "url_121": "رابط 121",
+    "program_id": "معرّف البرنامج 121",
+    "username_121": "اسم المستخدم 121",
+    "password_121": "كلمة مرور 121",
+    "field_name_121": "اسم الحقل في 121",
+    "matching_field_title": "حقل 121 لمطابقة الدفعات",
+    "matching_field_desc": "يحتوي هذا الحقل على المعرّف الفريد من نظام 121 المستخدم لمطابقة المستفيدين مع الدفعات.",
+    "matching_field_placeholder": "مثال: phoneNumber",
+    "wrong_credentials": "اسم المستخدم أو كلمة المرور غير صحيحة.",
+    "api_unreachable": "تعذّر الاتصال بالخادم. يرجى المحاولة مرة أخرى.",
+    "login_failed_generic": "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.",
+    "go_back": "عودة"   
     }
 }
 
@@ -561,26 +617,61 @@ def landing_page():
 
 @app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
-    from config import ADMIN_USERNAME, ADMIN_PASSWORD
-    lang = request.args.get("lang", "en")
+    # language handling
+    lang = request.args.get("lang") or request.form.get("lang") or session.get("lang", "en")
+    session["lang"] = lang
     t = translations.get(lang, translations["en"])
 
-    error = None
+    # GET → just show the login page
+    if request.method == "GET":
+        return render_template("admin_login.html", lang=lang, t=t, error=None)
 
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+    # POST → authenticate against 121 API
+    username = request.form.get("username")
+    password = request.form.get("password")
 
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-            session['admin_logged_in'] = True
-            return redirect(url_for("admin_dashboard", lang=lang))
-        else:
-            # 🔹 Use translated error message
-            error = t.get("login_error", "Incorrect username or password.")
+    login_payload = {
+        "username": username,
+        "password": password
+    }
 
-    return render_template("admin_login.html", lang=lang, t=t, error=error)
+    try:
+        res = requests.post(
+            "https://chad.121.global/api/users/login",
+            json=login_payload,
+            timeout=10
+        )
 
+    except Exception as e:
+        # API unreachable
+        return render_template(
+            "admin_login.html",
+            lang=lang, t=t,
+            error=t.get("api_unreachable", "Unable to reach login server.")
+        )
 
+    # ✔ Success
+    if res.status_code == 201:
+        session["admin_logged_in"] = True
+        session["admin_username"] = username
+        return redirect(url_for("admin_dashboard", lang=lang))
+
+    # ❌ Wrong username/password
+    if res.status_code in (400,401):
+        return render_template(
+            "admin_login.html",
+            lang=lang,
+            t=t,
+            error=t.get("wrong_credentials", "Incorrect username or password.")
+        )
+
+    # ❌ Any other response
+    return render_template(
+        "admin_login.html",
+        lang=lang,
+        t=t,
+        error=f"Login failed ({res.status_code})."
+    )
 @app.route("/admin-dashboard")
 def admin_dashboard():
     lang = request.args.get("lang", "en")
@@ -831,7 +922,7 @@ def update_status():
 
 @app.route("/fsp-login", methods=["GET", "POST"])
 def fsp_login():
-    from config import FSP_USERNAME, FSP_PASSWORD
+    import requests
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
@@ -841,15 +932,27 @@ def fsp_login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        if username == FSP_USERNAME and password == FSP_PASSWORD:
-            session["fsp_logged_in"] = True
-            return redirect(url_for("fsp_admin", lang=lang))
-        else:
-            error = t["login_error"]  # ← Translated error
+        try:
+            res = requests.post(
+                "https://chad.121.global/api/users/login",
+                json={"username": username, "password": password},
+                timeout=8
+            )
+
+            if res.status_code == 201:
+                session["fsp_logged_in"] = True
+                return redirect(url_for("fsp_admin", lang=lang))
+
+            elif res.status_code == 400:
+                error = t["login_error"]  # "Incorrect username or password"
+
+            else:
+                error = f"Login failed ({res.status_code})."
+
+        except Exception:
+            error = t["login_error"]
 
     return render_template("fsp_login.html", lang=lang, t=t, error=error)
-
-
 
 
 @app.route("/fsp-admin")
@@ -973,8 +1076,8 @@ def ping():
 def beneficiary_offline():
     # expected: /beneficiary-offline?uuid=<registrationReferenceId>&lang=en
     uuid = request.args.get("uuid")
-    lang = request.args.get("lang", "en")
-
+    lang = request.args.get("lang", session.get("lang", "en"))
+    session["lang"] = lang
     # CHANGE: don't return 400; render a shell so the SW can precache a 200
     if not uuid:
         uuid = ""
@@ -1179,12 +1282,21 @@ def invalid_qr():
 @app.route("/vouchers", methods=["GET"])
 def vouchers_page():
     if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
+        # use incoming lang OR saved lang
+        lang = request.args.get("lang", session.get("lang", "en"))
+        return redirect(url_for("admin_login", lang=lang))
 
-    lang = request.args.get("lang", "en")
-    t = translations.get(lang, translations["en"])   # ✅ FIX
+    # 1️⃣ get lang from request or session (same behavior as /config + fallback)
+    lang = request.args.get("lang", session.get("lang", "en"))
+
+    # 2️⃣ remember language in session, so redirects keep it
+    session["lang"] = lang
+
+    # 3️⃣ get translations
+    t = translations.get(lang, translations["en"])
 
     return render_template("vouchers.html", lang=lang, t=t)
+
 
 
 @app.route("/vouchers/upload", methods=["POST"])

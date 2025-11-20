@@ -342,6 +342,20 @@ def download_recent_payments_cache(program_id):
             print("[SKIP] Missing reg_id or uuid")
             continue
 
+        # ✅ FIX — compute THIS RECORD'S status
+        status = (t.get("status") or t.get("transactionStatus") or "").lower()
+        deleted = (t.get("registrationStatus") or "").lower() == "deleted"
+
+        # ✅ FIX — compute THIS RECORD'S created date
+        created = t.get("created", "")
+        try:
+            try:
+                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            created_dt = datetime.min
+
         try:
             reg = get_registration(program_id, reg_id)
         except Exception as e:
@@ -354,7 +368,10 @@ def download_recent_payments_cache(program_id):
         photo_filename = f"{uuid}.enc"
         photo_path = os.path.join(batch_dir, "photos", photo_filename)
         download_and_encrypt_photo(uuid, photo_path)
+
+        # ✅ FIX — compute validity *correctly for this record*
         is_valid = status == "waiting" and not deleted and created_dt >= fourteen_days_ago
+
         reason = "ok"
         if not is_valid:
             if status != "waiting":
@@ -363,6 +380,7 @@ def download_recent_payments_cache(program_id):
                 reason = "deleted"
             elif created_dt < fourteen_days_ago:
                 reason = "too_old"
+
 
         record = {
             "uuid": uuid,

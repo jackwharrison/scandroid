@@ -2,189 +2,237 @@
 <html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Voucher Generator</title>
-  <link rel="stylesheet" href="/static/style.css" />
-<style>
-  :root { --pad:16px; --gap:12px; --radius:16px; --card:#fff; --ink:#111; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6; }
+  <title>{{ t.voucher_generator }}</title>
 
-  /* FIXED: removed flex centering */
-  body{
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg);
-    color:var(--ink);
-    margin:0;
-    padding:24px;
-  }
+  <style>
+    :root {
+      --pad: 20px;
+      --gap: 24px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+    }
 
-  /* NEW: wrapper to centre only the card */
-  .page-wrapper {
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    min-height: calc(100vh - 80px); /* leaves space for top bar */
-  }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
 
-  .card{
-    background:var(--card);
-    border-radius:var(--radius);
-    box-shadow:0 10px 30px rgba(0,0,0,.06);
-    border:1px solid var(--line);
-    width:100%;
-    max-width:520px;
-    overflow:hidden;
-    display:flex;
-    flex-direction:column;
-  }
+    /* HEADER (same as config page) */
+    header {
+      background-color: #ffffff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    .header-left img { height: 50px; }
+    .scandroid-banner img { height: 80px; object-fit: contain; }
 
-  .header{
-    padding:18px var(--pad);
-    border-bottom:1px solid var(--line);
-    display:grid;
-    gap:10px;
-    text-align:center;
-  }
+    .right-controls { display: flex; align-items: center; gap: 8px; }
+    .right-controls select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
+    }
 
-  .logos{
-    display:flex;
-    justify-content:center;
-    gap:16px;
-    flex-wrap:wrap;
-  }
+    .btn-header {
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-back { background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; }
+    .btn-logout { background:#dc3545; color:white; }
 
-  .logos img{height:42px}
+    /* WRAPPER */
+    .wrapper {
+      width: 100%;
+      max-width: 960px;
+      margin: 24px auto;
+      padding: 0 16px 40px 16px;
+      flex: 1;
+    }
 
-  .content{padding:24px;text-align:center}
+    /* CARD */
+    .card {
+      background: white;
+      padding: 24px 28px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--line);
+      margin-bottom: 24px;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
 
-  h2{margin:.5rem 0;font-size:1.4rem}
+    h2 {
+      text-align: center;
+      margin: 0;
+      font-size: 1.4rem;
+      margin-bottom: 6px;
+    }
 
-  .counter{font-weight:700;color:#007bff;margin:.6rem 0 1rem}
+    .hint {
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+      margin-bottom: 20px;
+    }
 
-  .actions{display:grid;gap:12px;margin-top:12px}
+    /* FILE INPUT */
+    input[type=file] { display: none; }
 
-  .btn{
-    padding:12px 16px;
-    font-weight:700;
-    border:none;
-    border-radius:12px;
-    font-size:1rem;
-    cursor:pointer;
-  }
+    label.file {
+      display: block;
+      border: 1px dashed #93c5fd;
+      padding: 16px;
+      border-radius: 12px;
+      background: #f8fbff;
+      cursor: pointer;
+      text-align: center;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
 
-  .btn-primary{background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd}
-  .btn-primary:hover{background:#dbeafe}
+    #filename {
+      text-align: center;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
 
-  .btn-success{background:#e8f9ef;color:#065f46;border:1px solid #a7f3d0}
-  .btn-success:hover{background:#d1fae5}
+    /* BUTTONS */
+    .btn {
+      padding: 12px 16px;
+      font-weight: 700;
+      border-radius: 12px;
+      font-size: 1rem;
+      cursor: pointer;
+      border: none;
+      width: 100%;
+      display: block;
+      margin-top: 8px;
+    }
 
-  input[type=file]{display:none}
+    .btn-primary {
+      background: #1d4ed8;
+      color: white;
+    }
+    .btn-primary:hover { background: #1d4fd8b6; }
 
-  label.file{
-    display:block;
-    border:1px dashed #93c5fd;
-    padding:14px;
-    border-radius:12px;
-    background:#f8fbff;
-    cursor:pointer;
-  }
+    .btn-success {
+      background: #e8f9ef;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+    .btn-success:hover { background:#d1fae5; }
 
-  .hint{color:var(--muted);font-size:.92rem}
+    .counter {
+      font-weight: 700;
+      color: #1d4ed8;
+      margin: 16px 0;
+      text-align: center;
+    }
 
-  .voucher-topbar {
-    width: 100%;
-    max-width: 520px;
-    margin: 0 auto 14px auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .topbar-back {
-    background-color: #dc3545;
-    color: white;
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-weight: bold;
-    text-decoration: none;
-    border: 1px solid #b91c1c;
-  }
-
-  .topbar-back:hover {
-    background-color: #b91c1c;
-  }
-
-  .lang-form select {
-    padding: 8px;
-    border-radius: 8px;
-    border: 1px solid #d1d5db;
-    background: white;
-    font-weight: 600;
-    cursor: pointer;
-  }
-</style>
-
+    footer {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      font-size: 0.9rem;
+    }
+  </style>
 </head>
+
 <body>
 
-  <div class="voucher-topbar">
-    <a href="/admin-dashboard?lang={{ lang }}" class="topbar-back">← {{ t.back }}</a>
+<header>
+  <div class="header-left">
+    <img src="{{ url_for('static', filename='ns1.png') }}" alt="">
+    <img src="{{ url_for('static', filename='ns2.png') }}" alt="">
+  </div>
 
-    <form method="get" action="/vouchers" class="lang-form">
+  <div class="scandroid-banner">
+    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="">
+  </div>
+
+  <div class="right-controls">
+    <a href="/admin-dashboard?lang={{ lang }}" class="btn-header btn-back">
+      &larr; {{ t.back }}
+    </a>
+
+    <form method="get" action="{{ url_for('vouchers_page', lang=lang) }}">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
         <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
         <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
+
+    <form action="/admin-logout" method="get">
+      <button class="btn-header btn-logout">{{ t.logout }}</button>
+    </form>
   </div>
+</header>
 
-  <div class="page-wrapper">
-    <div class="card">
-      <div class="header">
-        <div class="logos">
-          <img src="/static/ns1.png" alt="Logo 1" />
-          <img src="/static/scandroid_banner.png" alt="Scandroid" />
-          <img src="/static/ns2.png" alt="Logo 2" />
-        </div>
-      </div>
+<div class="wrapper">
+  <div class="card">
 
-      <div class="content">
-        <h2>{{ t.voucher_generator }}</h2>
-        <p class="hint">{{ t.csv_hint }}</p>
+    <h2>{{ t.voucher_generator }}</h2>
+    <p class="hint">{{ t.csv_hint }}</p>
 
-        <form id="uploadForm">
-          
-          <!-- FIXED INPUT — STILL WORKS, NOW SHOWS ALL FILE TYPES -->
-          <input 
-            id="csv" 
-            name="csv" 
-            type="file"
-            accept=".csv, .xls, .xlsx,
-                    application/vnd.ms-excel,
-                    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          />
+    <form id="uploadForm">
+      <input id="csv" name="csv" type="file"
+        accept=".csv, .xls, .xlsx,
+                application/vnd.ms-excel,
+                application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      />
 
-          <label for="csv" class="file">📄 {{ t.choose_csv }}</label>
+      <label for="csv" class="file">📄 {{ t.choose_csv }}</label>
 
-          <div id="filename" class="hint" style="margin-top:8px;"></div>
+      <div id="filename"></div>
 
-          <button type="submit" class="btn btn-primary">
-            {{ t.upload_csv }}
-          </button>
-        </form>
+      <button type="submit" class="btn btn-primary">
+        {{ t.upload_csv }}
+      </button>
+    </form>
 
-        <div id="counter" class="counter" style="display:none;">…</div>
+    <div id="counter" class="counter" style="display:none;">…</div>
 
-        <div class="actions">
-          <button id="downloadBtn" class="btn btn-success" disabled>
-            ⬇️ {{ t.download_vouchers }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <button id="downloadBtn" class="btn btn-success" disabled>
+      ⬇️ {{ t.download_vouchers }}
+    </button>
   </div>
+</div>
 
+<footer>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
+</footer>
 
 <script>
   const fileInput = document.getElementById('csv');
@@ -193,7 +241,6 @@
   const counter = document.getElementById('counter');
   const downloadBtn = document.getElementById('downloadBtn');
 
-  // Injected translations
   const TXT = {
     chooseCSV: "{{ t.choose_csv_alert }}",
     uploadFailed: "{{ t.upload_failed }}",
@@ -205,7 +252,7 @@
     filename.textContent = fileInput.files[0]?.name || '';
   });
 
-  form.addEventListener('submit', async (e) => {
+  form.addEventListener('submit', async e => {
     e.preventDefault();
 
     if (!fileInput.files[0]) {
@@ -225,7 +272,6 @@
     }
 
     counter.style.display = 'block';
-
     counter.textContent =
       data.count === 1
         ? `1 ${TXT.singular}`

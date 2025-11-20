@@ -4,27 +4,46 @@
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8">
   <title>{{ t.config_system }}</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
   <style>
+    :root {
+      --pad: 20px;
+      --gap: 24px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+    }
+
     html, body {
       height: 100%;
       margin: 0;
     }
 
     body {
-      font-family: Arial, sans-serif;
-      background: #f8f9fa;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;
     }
 
+    /* ---------- HEADER ---------- */
     header {
-      background-color: white;
-      padding: 20px 40px;
+      background-color: #ffffff;
+      padding: 16px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 120px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      width: 100%;
+      box-sizing: border-box;
     }
 
     .header-left {
@@ -34,216 +53,269 @@
     }
 
     .header-left img {
-      height: 60px;
+      height: 50px;
+      object-fit: contain;
     }
 
     .scandroid-banner {
-      flex-grow: 1;
+      flex: 1;
       text-align: center;
     }
 
     .scandroid-banner img {
-      height: 165px;
-      max-width: 25%;
+      height: 80px;
+      max-width: 60%;
       object-fit: contain;
+      display: inline-block;
     }
 
-    .lang-selector {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-    }
-
-    main {
-      flex: 1;
+    .right-controls {
       display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .right-controls select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-header {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
       justify-content: center;
-      gap: 40px;
-      padding: 40px;
+      white-space: nowrap;
+    }
+
+    .btn-back {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #93c5fd;
+    }
+
+    .btn-back:hover {
+      background: #dbeafe;
+    }
+
+    .btn-logout {
+      background-color: #dc3545;
+      color: #ffffff;
+      border: none;
+    }
+
+    .btn-logout:hover {
+      background-color: #b91c1c;
+    }
+
+    /* ---------- MAIN LAYOUT ---------- */
+    .wrapper {
+      width: 100%;
+      max-width: 960px;
+      margin: 24px auto 32px auto;
+      padding: 0 16px;
+      box-sizing: border-box;
+      flex: 1;
+    }
+
+    h1 {
+      margin: 0 0 12px 0;
+      font-size: 1.5rem;
+      text-align: center;
+    }
+
+    .subtitle {
+      margin: 0 0 20px 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: var(--pad);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--line);
       box-sizing: border-box;
     }
 
-    .column {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 30px;
-    }
-
-    .section-box {
-      background: white;
-      padding: 30px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px #ccc;
-    }
-
-    .section-box h3 {
+    .card h2 {
       margin-top: 0;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
+      font-size: 1.2rem;
     }
 
     label {
+      font-weight: 600;
+      margin-top: 14px;
       display: block;
-      margin-top: 12px;
-      font-weight: bold;
+      font-size: 0.95rem;
     }
 
     input[type="text"],
     input[type="password"] {
       width: 100%;
-      padding: 10px;
-      margin-top: 5px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      margin-top: 6px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      box-sizing: border-box;
     }
 
-    .submit-btn {
-      margin-top: 25px;
-      padding: 12px 20px;
-      background-color: #007bff;
+    .save-btn {
+      margin-top: 24px;
+      width: 100%;
+      max-width: 320px;
+      padding: 12px 16px;
+      font-size: 1rem;
+      font-weight: 700;
+      background: #1d4ed8;
+      color: #fff;
       border: none;
-      color: white;
-      border-radius: 5px;
+      border-radius: 12px;
       cursor: pointer;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
     }
 
-    .back-link {
-      margin: 20px 40px 0;
-      font-size: 16px;
-      text-decoration: none;
-      color: #007bff;
-    }
-
+    /* ---------- FOOTER ---------- */
     footer {
-      margin-top: auto;
-      background-color: #f1f1f1;
-      color: #666;
-      padding: 15px 30px;
-      font-size: 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      height: 50px;
+      padding: 12px 18px 16px 18px;
+      font-size: 0.9rem;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      flex-wrap: wrap;
       box-sizing: border-box;
       width: 100%;
     }
+
+    .footer-right a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
   </style>
 </head>
-<body>
-  <header>
-    <div class="header-left">
-      <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
-      <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
-    </div>
-    <div class="scandroid-banner">
-      <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
-    </div>
-  </header>
 
-  <div class="lang-selector">
+<body>
+
+<header>
+  <div class="header-left">
+    <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
+    <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
+  </div>
+
+  <div class="scandroid-banner">
+    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
+  </div>
+
+  <div class="right-controls">
+
+    <a href="/admin-dashboard?lang={{ lang }}" class="btn-header btn-back">
+      &larr; {{ t.back_to_dashboard }}
+    </a>
+
     <form method="get" action="/system-config">
-      <label for="lang">{{ t.language }}:</label>
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
         <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
         <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
+
+    <form action="/admin-logout" method="get">
+      <button type="submit" class="btn-header btn-logout">{{ t.logout }}</button>
+    </form>
+
   </div>
+</header>
 
-  <a class="back-link" href="/admin-dashboard?lang={{ lang }}">&larr; {{ t.back_to_dashboard or 'Back to Admin Dashboard' }}</a>
+<div class="wrapper">
+  <h1>{{ t.config_system }}</h1>
+  <p class="subtitle">{{ t.config_system_desc }}</p>
 
-<form method="post">
-  <main>
-    <div class="column">
-      <!-- Kobo Section -->
-      <div class="section-box">
-        <h3>{{ t.kobo_info }}</h3>
+  <form method="post">
+
+    <div class="cards-grid">
+
+      <!-- Kobo Card -->
+      <div class="card">
+        <h2>{{ t.kobo_info }}</h2>
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="text" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}" placeholder="{{ t.kobo_token }}">
+        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN"
+               value="{{ config['KOBO_TOKEN'] }}">
 
         <label for="ASSET_ID">{{ t.asset_id }}</label>
-        <input type="text" name="ASSET_ID" value="{{ config['ASSET_ID'] }}" placeholder="{{ t.asset_id }}">
+        <input type="text" id="ASSET_ID" name="ASSET_ID"
+               value="{{ config['ASSET_ID'] }}">
       </div>
 
+      <!-- 121 Card -->
+      <div class="card">
+        <h2>{{ t.info_121 }}</h2>
 
-      <!-- Encryption Key Section -->
-      <div class="section-box">
-        <h3>{{ t.encryption_settings }}</h3>
+        <h3>{{ t.program_information }}</h3>
 
-        <label for="ENCRYPTION_KEY">{{ t.encryption_key }}</label>
-        <input type="text"
-               id="encryptionKey"
-               name="ENCRYPTION_KEY"
-               value="{{ config.get('ENCRYPTION_KEY', '') }}"
-               readonly
-               placeholder="{{ t.encryption_key }}"
-               style="background-color: #e9ecef; cursor: not-allowed; font-family: monospace;">
+        <label for="url121">{{ t.url_121 }}</label>
+        <input type="text" id="url121" name="url121"
+               value="{{ config['url121'] }}">
 
-        <small style="color: #666; display: block; margin-top: 4px;">
-          {{ t.encryption_warning }}
-        </small>
+        <label for="programId">{{ t.program_id }}</label>
+        <input type="text" id="programId" name="programId"
+               value="{{ config['programId'] }}">
 
-        <div style="margin-top: 12px;">
-          <input type="checkbox" id="editEncryptionKey" onclick="toggleEncryptionEdit()">
-          <label for="editEncryptionKey" style="font-weight: bold; color: #b30000;">
-            ⚠️ {{ t.encryption_toggle_warning }}
-          </label>
-        </div>
+        <h3>{{ t.credentials }}</h3>
+
+        <label for="username121">{{ t.username_121 }}</label>
+        <input type="text" id="username121" name="username121"
+               value="{{ config['username121'] }}">
+
+        <label for="password121">{{ t.password_121 }}</label>
+        <input type="password" id="password121" name="password121"
+               value="{{ config['password121'] }}">
       </div>
+
     </div>
 
+    <!-- Hidden fields preserved -->
+    <input type="hidden" name="ENCRYPTION_KEY"
+           value="{{ config.get('ENCRYPTION_KEY', '') }}">
+    <input type="hidden" name="COLUMN_TO_MATCH"
+           value="{{ config.get('COLUMN_TO_MATCH', '') }}">
 
-<script>
-  function toggleEncryptionEdit() {
-    const checkbox = document.getElementById('editEncryptionKey');
-    const field = document.getElementById('encryptionKey');
-    if (checkbox.checked) {
-      field.removeAttribute('readonly');
-      field.style.backgroundColor = '#fff';
-      field.style.cursor = 'text';
-    } else {
-      field.setAttribute('readonly', true);
-      field.style.backgroundColor = '#e9ecef';
-      field.style.cursor = 'not-allowed';
-    }
-  }
-</script>
+    <button type="submit" class="save-btn">{{ t.save }}</button>
 
-
-      <div class="column">
-        <div class="section-box">
-          <h3>{{ t.info_121 }}</h3>
-
-          <label for="url121">{{ t.url_121 }}</label>
-          <input type="text" name="url121" value="{{ config['url121'] }}" placeholder="{{ t.url_121 }}">
-
-          <label for="username121">{{ t.username_121 }}</label>
-          <input type="text" name="username121" value="{{ config['username121'] }}" placeholder="{{ t.username_121 }}">
-
-          <label for="password121">{{ t.password_121 }}</label>
-          <input type="password" name="password121" value="{{ config['password121'] }}" placeholder="{{ t.password_121 }}">
-
-          <label for="programId">{{ t.program_id }}</label>
-          <input type="text" name="programId" value="{{ config['programId'] }}" placeholder="{{ t.program_id }}">
-
-          <label for="COLUMN_TO_MATCH">{{ t.column_to_match }}</label>
-          <input type="text" name="COLUMN_TO_MATCH" value="{{ config.get('COLUMN_TO_MATCH', '') }}" readonly style="background-color: #e9ecef; cursor: not-allowed;" placeholder="{{ t.column_to_match }}">
-
-          <small style="color: #666; display: block; margin-top: 4px;">
-            {{ t.column_to_match_note }} <a href="/config?lang={{ lang }}">{{ t.config_display }}</a>
-          </small>
-        </div>
-      </div>
-    </main>
-
-    <div style="text-align: center;">
-      <button type="submit" class="submit-btn">{{ t.save }}</button>
-    </div>
   </form>
+</div>
 
-  <footer>
-    <div class="footer-left">{{ t.footer_dev }}</div>
-    <div class="footer-right">{{ t.footer_support}}</div>
-  </footer>
+<footer>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
+</footer>
+
 </body>
 </html>
