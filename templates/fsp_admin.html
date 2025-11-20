@@ -526,7 +526,7 @@
   }
 
   checkOnline();
-  setInterval(checkOnline, 5000);
+  setInterval(checkOnline, 30000);
   window.addEventListener('online', () => setOnlineState(true));
   window.addEventListener('offline', () => setOnlineState(false));
   if ('serviceWorker' in navigator) {

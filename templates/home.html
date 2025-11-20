@@ -2,172 +2,212 @@
 <html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
-  <meta charset="UTF-8">
-  <title>Scandroid | Home</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>121 Scan | Home</title>
+
   <style>
-    * {
-      box-sizing: border-box;
+    :root {
+      --pad: 16px;
+      --gap: 12px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,.06);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
     }
 
     body {
-      font-family: Arial, sans-serif;
-      background: #f8f9fa;
-      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      padding: 24px;
     }
 
-    header {
+    /* ---- TOP BAR ---- */
+    .topbar {
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto 14px auto;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .lang-form select {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
       background: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* ---- CENTER WRAPPER ---- */
+    .page-wrapper {
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
-      padding: 20px 40px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-
-    .header-logos img {
-      height: 60px;
-      margin-right: 20px;
-    }
-
-    .scandroid-banner img {
-      height: 150px;
-      max-width: 300px;
-      object-fit: contain;
-    }
-
-    .lang-selector {
-      position: absolute;
-      top: 20px;
-      right: 40px;
-    }
-
-    main {
       flex: 1;
+      min-height: calc(100vh - 100px);
+    }
+
+    /* ---- CARD ---- */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--line);
+      width: 100%;
+      max-width: 460px;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 40px 20px;
     }
 
-    h1 {
-      font-size: 28px;
-      margin-bottom: 40px;
+    .header {
+      padding: 18px var(--pad);
+      border-bottom: 1px solid var(--line);
       text-align: center;
     }
 
-  .role-buttons {
-    display: flex;
-    gap: 30px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+    .logos {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
 
-  .role-buttons a {
-    text-decoration: none;
-    color: white;
-    padding: 18px 30px;
-    border-radius: 8px;
-    font-size: 18px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    transition: background-color 0.3s ease;
-    text-align: center;
-    min-width: 200px;
-    flex: 1 1 200px;
-    max-width: 240px;
-  }
+    .logos img {
+      height: 42px;
+      object-fit: contain;
+    }
 
-  .btn-admin {
-    background-color: #dc3545;
-  }
+    .content {
+      padding: 24px;
+      text-align: center;
+    }
 
-  .btn-admin:hover {
-    background-color: #a71d2a;
-  }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 24px;
+      font-size: 1.4rem;
+      color: var(--ink);
+    }
 
-  .btn-fsp {
-    background-color: #007bff;
-  }
+    .role-buttons {
+      display: grid;
+      gap: 14px;
+      margin-top: 20px;
+    }
 
-  .btn-fsp:hover {
-    background-color: #0056b3;
-  }
+    .btn {
+      padding: 12px 16px;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box; /* prevents overflow */
+      display: block;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    .btn-admin {
+      background: #fee2e2;
+      color: #7f1d1d;
+      border: 1px solid #fecaca;
+    }
+
+    .btn-admin:hover {
+      background: #fecaca;
+    }
+
+    .btn-fsp {
+      background: #e0ecff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+    }
+
+    .btn-fsp:hover {
+      background: #dbeafe;
+    }
 
 
     footer {
-      background-color: #f1f1f1;
-      color: #666;
-      padding: 15px 30px;
-      font-size: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      height: 50px;
-      box-sizing: border-box;
-      width: 100%;
+      text-align: center;
+      padding-top: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 20px;
     }
 
-    @media (max-width: 600px) {
-      .header-logos img {
-        height: 40px;
-        margin-right: 10px;
-      }
-
-      .scandroid-banner img {
-        height: 100px;
-        max-width: 60%;
-      }
-
-    .role-buttons a {
-      font-size: 16px;
-      padding: 14px 20px;
-      min-width: 150px;
-      flex: 1 1 150px;
-      max-width: 180px;
-      }
-
-      h1 {
-        font-size: 22px;
-      }
+    @media (max-width: 576px) {
+      body { padding: 16px; }
+      .card { max-width: 95%; }
+      .logos img { height: 34px; }
     }
   </style>
 </head>
-<body>
-  <header>
-    <div class="header-logos">
-      <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
-      <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
-    </div>
-    <div class="scandroid-banner">
-      <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid Banner">
-    </div>
-    <div class="lang-selector">
-      <form method="get" action="/">
-        <label for="lang">{{ t.language }}:</label>
-        <select name="lang" onchange="this.form.submit()">
-          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-          <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-          <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
-        </select>
-      </form>
-    </div>
-  </header>
 
-  <main>
-    <h1>{{ t.home_question or "Who are you?" }}</h1>
-    <div class="role-buttons">
-    <a class="btn-admin" href="/admin-login?lang={{ lang }}">{{ t.home_admin or "I am an Admin" }}</a>
-    <a class="btn-fsp" href="/fsp-login?lang={{ lang }}">{{ t.home_fsp or "I am an FSP" }}</a>
+<body>
+
+  <!-- 🔹 TOPBAR -->
+  <div class="topbar">
+    <form method="get" action="/" class="lang-form">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+  </div>
+
+  <!-- 🔹 MAIN CARD -->
+  <div class="page-wrapper">
+    <div class="card">
+
+      <div class="header">
+        <div class="logos">
+          <img src="{{ url_for('static', filename='ns1.png') }}" alt="NS1">
+          <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
+          <img src="{{ url_for('static', filename='ns2.png') }}" alt="NS2">
+        </div>
+      </div>
+
+      <div class="content">
+        <h1>{{ t.home_question or "Who are you?" }}</h1>
+
+        <div class="role-buttons">
+          <a class="btn btn-admin" href="/admin-login?lang={{ lang }}">
+            {{ t.home_admin or "I am an Admin" }}
+          </a>
+
+          <a class="btn btn-fsp" href="/fsp-login?lang={{ lang }}">
+            {{ t.home_fsp or "I am an FSP" }}
+          </a>
+        </div>
+      </div>
+
     </div>
-  </main>
+  </div>
 
   <footer>
-    <div class="footer-left">{{ t.footer_dev }}</div>
-    <div class="footer-right">{{ t.footer_support}}</div>
+    <div>{{ t.footer_dev }}</div>
+    <div>{{ t.footer_support }}</div>
   </footer>
+
 </body>
 </html>

@@ -175,6 +175,23 @@
 
   <!-- 🔹 TOPBAR -->
   <div class="topbar">
+
+    <!-- 🔹 Return Home Button -->
+    <a href="/?lang={{ lang }}"
+      style="
+        background:#eff6ff;
+        color:#1d4ed8;
+        border:1px solid #93c5fd;
+        padding:8px 14px;
+        border-radius:8px;
+        font-weight:600;
+        text-decoration:none;
+        margin-right:auto;
+      ">
+      ← {{ t.go_back }}
+    </a>
+
+
     <form method="get" action="/admin-login" class="lang-form">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
@@ -182,6 +199,7 @@
         <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
+
   </div>
 
   <!-- 🔹 CENTER LOGIN CARD -->

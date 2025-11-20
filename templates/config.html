@@ -4,289 +4,407 @@
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8">
   <title>{{ t.config_title }}</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
   <style>
+    :root {
+      --pad: 20px;
+      --gap: 24px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+    }
+
     html, body {
       height: 100%;
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f8f9fa;
-    }
-
-    .page-wrapper {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
-      padding: 20px 40px 60px 40px;
+      overflow-x: hidden;
     }
 
-    .back-button {
-      margin-bottom: 20px;
+    /* HEADER */
+    header {
+      background-color: #ffffff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
-    .back-button a {
-      text-decoration: none;
-      background-color: #007bff;
-      color: white;
+    .header-left img { height: 50px; }
+
+    .scandroid-banner img {
+      height: 80px;
+      object-fit: contain;
+    }
+
+    .right-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .right-controls select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-header {
       padding: 8px 14px;
-      border-radius: 6px;
-      font-size: 14px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    .lang-selector {
-      position: absolute;
-      top: 20px;
-      right: 20px;
+    .btn-back {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #93c5fd;
     }
 
-    .logo-container {
-      text-align: center;
-      margin-bottom: 30px;
+    .btn-logout {
+      background: #dc3545;
+      color: white;
     }
 
-    .logo-container img {
-      height: 60px;
-      margin: 0 10px;
+    /* WRAPPER */
+    .wrapper {
+      width: 100%;
+      max-width: 960px;
+      margin: 24px auto;
+      padding: 0 16px 40px 16px;
+      flex: 1;
     }
 
     h1 {
       text-align: center;
-      margin-bottom: 30px;
+      margin-bottom: 12px;
     }
 
+    /* TABLE */
     table {
       width: 100%;
       border-collapse: collapse;
       background: white;
-      box-shadow: 0 0 10px #ccc;
-      margin-bottom: 30px;
-    }
-
-    th, td {
-      border: 1px solid #aaa;
-      padding: 10px;
-      text-align: left;
-      vertical-align: middle;
+      border-radius: 12px;
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+      margin-bottom: 24px;
     }
 
     th {
-      background-color: #f0f0f0;
+      background: #f9fafb;
+      padding: 12px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--line);
+    }
+
+    td {
+      padding: 10px;
+      border-bottom: 1px solid #e5e7eb;
     }
 
     input[type="text"] {
-      width: 100%;
-      padding: 8px;
-      box-sizing: border-box;
+      width: 95%;
+      max-width: 250px;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.9rem;
     }
 
-    input[type="radio"] {
-      margin: 0 auto;
-      display: block;
-    }
-
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin-top: 10px;
+    /* DELETE BUTTON */
+    .delete-btn {
+      background: #fee2e2;
+      color: #b91c1c;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 8px;
       cursor: pointer;
+      font-weight: 700;
+    }
+    .delete-btn:hover { background: #fecaca; }
+
+    /* CARD SECTIONS */
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--line);
+      margin-bottom: 24px;
     }
 
-    fieldset {
-      margin-top: 30px;
-      padding: 25px 30px;
-      background: #fff;
-      box-shadow: 0 0 10px #ccc;
-      border: 1px solid #aaa;
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 14px;
+      font-size: 1.2rem;
     }
 
-    legend {
-      font-size: 18px;
-      font-weight: bold;
-      padding: 0 10px;
+    .save-btn:hover {
+      background: #1d4fd8b6;
     }
 
-    .photo-config label {
+    .save-btn {
+      width: 100%;
+      max-width: 300px;
+      margin: 24px auto 0 auto;
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 1rem;
+      color: #fff;
+      background: #1d4ed8;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
       display: block;
-      margin: 10px 0 5px;
     }
 
-        footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  font-size: 0.9rem;
-  background-color: #f8f8f8;
-  border-top: 1px solid #ddd;
-  flex-wrap: wrap;
-}
+    footer {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 30px 16px 18px;
+      font-size: 0.9rem;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    /* Fix photo config table overflow */
+    #photoCard table {
+      width: 100%;
+      table-layout: fixed;      /* Ensures all 4 columns fit the card */
+    }
 
-.footer-left, .footer-right {
-  display: flex;
-  flex-direction: column;
-}
+    #photoCard th,
+    #photoCard td {
+      padding: 6px;
+      overflow: hidden;
+    }
 
-.guide-button {
-  background-color: #d62828;
-  color: #fff;
-  text-decoration: none;
-  padding: 10px 16px;
-  border-radius: 5px;
-  font-weight: bold;
-  transition: background-color 0.2s ease;
-  max-width: fit-content;
-}
+    #photoCard input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;   /* Prevents right overflow */
+    }
 
-.guide-button:hover {
-  background-color: #b81f1f;
-}
   </style>
 </head>
+
 <body>
-  <div class="page-wrapper">
-    <div class="back-button">
-      <a href="/admin-dashboard?lang={{ lang }}">&larr; {{ t.back_to_dashboard}}</a>
-    </div>
 
-    <div class="lang-selector">
-      <form method="get" action="/config">
-        <label for="lang">{{ t.language }}:</label>
-        <select name="lang" onchange="this.form.submit()">
-          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-          <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-          <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
-        </select>
-      </form>
-    </div>
+<header>
+  <div class="header-left">
+    <img src="{{ url_for('static', filename='ns1.png') }}" alt="">
+    <img src="{{ url_for('static', filename='ns2.png') }}" alt="">
+  </div>
 
-    <div class="logo-container">
-      <img src="{{ url_for('static', filename='ns1.png') }}" alt="National Society 1">
-      <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid Logo">
-      <img src="{{ url_for('static', filename='ns2.png') }}" alt="National Society 2">
-    </div>
+  <div class="scandroid-banner">
+    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="">
+  </div>
 
-    <h1>{{ t.config_title or 'Configure Fields to Display' }}</h1>
+  <div class="right-controls">
+    <a href="/admin-dashboard?lang={{ lang }}" class="btn-header btn-back">
+      &larr; {{ t.back_to_dashboard }}
+    </a>
 
-    <form id="configForm">
-      <!-- Fields Table -->
-      <table id="fieldTable">
-        <thead>
-          <tr>
-            <th>Field Key (from Kobo)</th>
-            <th>{{ t.label_en}}</th>
-            <th>{{ t.label_fr}}</th>
-            <th>{{ t.label_ar}}</th>
-            <th>{{ t.use_for_matching}}</th>
-            <th>{{ t.remove}}</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-
-      <button type="button" onclick="addRow()">{{ t.add_field or 'Add Field' }}</button>
-
-      <!-- Photo Field Configuration -->
-      <fieldset class="photo-config">
-        <legend>{{ t.photo_config_title or "Photo Field Configuration" }}</legend>
-
-        <label>
-          <input type="checkbox" id="photoEnabled"> {{ t.enable_photo_field or "Enable photo field display" }}
-        </label>
-
-        <label>{{ t.field_key or "Field Key (from Kobo)" }}:</label>
-        <input type="text" id="photoKey">
-
-        <label>{{ t.label_en or "Label (EN)" }}:</label>
-        <input type="text" id="photoLabelEn">
-
-        <label>{{ t.label_fr or "Label (FR)" }}:</label>
-        <input type="text" id="photoLabelFr">
-
-        <label>{{ t.label_ar or "Label (AR)" }}:</label>
-        <input type="text" id="photoLabelAr">
-      </fieldset>
-
-      <br>
-      <button type="submit">{{ t.save or 'Save' }}</button>
+    <form method="get" action="/config">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang=='fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang=='ar' %}selected{% endif %}>العربية</option>
+      </select>
     </form>
 
+    <form action="/admin-logout" method="get">
+      <button class="btn-header btn-logout">{{ t.logout }}</button>
+    </form>
+  </div>
+</header>
+
+<div class="wrapper">
+
+  <h1>{{ t.config_title }}</h1>
+
+  <form id="configForm">
+
+    <!-- TABLE OF DISPLAYED FIELDS -->
+    <table id="fieldTable">
+      <thead>
+        <tr>
+          <th>{{ t.field_name_121 }}</th>
+          <th>{{ t.label_en }}</th>
+          <th>{{ t.label_fr }}</th>
+          <th>{{ t.label_ar }}</th>
+          <th>{{ t.remove }}</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <button type="button" onclick="addRow()" class="btn-header btn-back" style="margin-bottom:24px;">
+      + {{ t.add_field }}
+    </button>
+
+    <!-- MATCHING FIELD CARD -->
+    <div class="card">
+      <h2>{{ t.matching_field_title }}</h2>
+      <p style="margin-top:-6px; color:#6b7280; font-size:0.9rem;">
+        {{ t.matching_field_desc }}
+      </p>
+
+      <label for="matchField">{{ t.matching_field_label }}</label>
+      <input type="text"
+             id="matchField"
+             name="matchField"
+             value="{{ system_config.get('COLUMN_TO_MATCH', '') }}"
+             placeholder="{{ t.matching_field_placeholder }}">
+    </div>
+
+    <!-- PHOTO CONFIG SECTION -->
+    <!-- PHOTO CONFIG SECTION -->
+    <div class="card" id="photoCard">
+      <h2>{{ t.photo_config_title }}</h2>
+
+      <label style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
+        <input type="checkbox" id="photoEnabled" onchange="togglePhotoFields()">
+        {{ t.enable_photo_field }}
+      </label>
+
+      <table style="width:100%; border-collapse:collapse; background:#fff;">
+        <thead>
+          <tr>
+            <th style="text-align:center; padding:8px;">{{ t.field_key }}</th>
+            <th style="text-align:center; padding:8px;">{{ t.label_en }}</th>
+            <th style="text-align:center; padding:8px;">{{ t.label_fr }}</th>
+            <th style="text-align:center; padding:8px;">{{ t.label_ar }}</th>
+          </tr>
+        </thead>
+
+        <tbody id="photoTableBody">
+          <tr>
+            <td><input type="text" id="photoKey"></td>
+            <td><input type="text" id="photoLabelEn"></td>
+            <td><input type="text" id="photoLabelFr"></td>
+            <td><input type="text" id="photoLabelAr"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <script>
+    function togglePhotoFields() {
+      const enabled = document.getElementById('photoEnabled').checked;
+      const row = document.querySelector('#photoTableBody tr');
+      const inputs = row.querySelectorAll('input');
+
+      // Grey out full row
+      row.style.opacity = enabled ? "1" : "0.5";
+
+      // Enable/disable inputs
+      inputs.forEach(i => {
+        i.disabled = !enabled;
+        i.style.backgroundColor = enabled ? "#fff" : "#f3f4f6";
+        i.style.cursor = enabled ? "text" : "not-allowed";
+      });
+    }
+
+    // Ensure correct state on page load
+    window.addEventListener("load", togglePhotoFields);
+    </script>
+
+
+    <button type="submit" class="save-btn">{{ t.save }}</button>
+
+  </form>
+</div>
+
 <footer>
-  <div class="footer-left">
-    <a href="https://jackwharrison.github.io/scandroid-user-guide/" target="_blank" class="guide-button">
-      📘 Open 121 Scan User Guide
-    </a>
-  </div>
-  <div class="footer-right">
-    <div>Developed by 510 @ The Netherlands Red Cross</div>
-    <div>If you need support, contact: <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a></div>
-  </div>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
 
-  </div>
 
-  <script>
-    const matchFieldKey = {{ system_config.get("COLUMN_TO_MATCH", "null") | tojson }};
+<script>
+  let matchFieldKey = {{ system_config.get("COLUMN_TO_MATCH","") | tojson }};
 
-    function addRowFromData(item = { key: '', labels: { en: '', fr: '', ar: '' } }) {
-      const row = document.createElement('tr');
-      const isMatch = item.key === matchFieldKey;
+  function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
+    const row = document.createElement('tr');
 
-      row.innerHTML = `
-        <td><input type="text" name="key" value="${item.key || ''}"></td>
-        <td><input type="text" name="label_en" value="${item.labels.en || ''}"></td>
-        <td><input type="text" name="label_fr" value="${item.labels.fr || ''}"></td>
-        <td><input type="text" name="label_ar" value="${item.labels.ar || ''}"></td>
-        <td><input type="radio" name="match_field" value="${item.key}" ${isMatch ? 'checked' : ''}></td>
-        <td><button type="button" onclick="removeRow(this)">X</button></td>
-      `;
-      document.querySelector('#fieldTable tbody').appendChild(row);
+    row.innerHTML = `
+      <td><input type="text" name="key" value="${item.key}"></td>
+      <td><input type="text" name="label_en" value="${item.labels.en}"></td>
+      <td><input type="text" name="label_fr" value="${item.labels.fr}"></td>
+      <td><input type="text" name="label_ar" value="${item.labels.ar}"></td>
+      <td><button class="delete-btn" type="button" onclick="removeRow(this)">🗑️</button></td>
+    `;
+
+    document.querySelector('#fieldTable tbody').appendChild(row);
+  }
+
+  function addRow() {
+    addRowFromData();
+  }
+
+  function removeRow(button) {
+    button.closest('tr').remove();
+  }
+
+  async function loadConfig() {
+    const config = {{ config | tojson }};
+
+    if (config.fields) {
+      config.fields.forEach(addRowFromData);
     }
 
-    function addRow() {
-      addRowFromData();
+    if (config.photo) {
+      document.getElementById('photoEnabled').checked = config.photo.enabled;
+      document.getElementById('photoKey').value = config.photo.field_name;
+      document.getElementById('photoLabelEn').value = config.photo.labels.en;
+      document.getElementById('photoLabelFr').value = config.photo.labels.fr;
+      document.getElementById('photoLabelAr').value = config.photo.labels.ar;
     }
+  }
 
-    function removeRow(button) {
-      button.closest('tr').remove();
-    }
+  document.getElementById('configForm').addEventListener('submit', async e => {
+    e.preventDefault();
 
-    async function loadConfig() {
-      const config = {{ config | tojson }};
-      if (config.fields) {
-        config.fields.forEach(addRowFromData);
-      }
+    const rows = document.querySelectorAll('#fieldTable tbody tr');
 
-      if (config.photo) {
-        document.getElementById('photoEnabled').checked = config.photo.enabled;
-        document.getElementById('photoKey').value = config.photo.field_name || 'photo';
-        document.getElementById('photoLabelEn').value = config.photo.labels.en || '';
-        document.getElementById('photoLabelFr').value = config.photo.labels.fr || '';
-        document.getElementById('photoLabelAr').value = config.photo.labels.ar || '';
-      }
-    }
+    const fields = Array.from(rows).map(row => {
+      const inputs = row.querySelectorAll('input');
+      return {
+        key: inputs[0].value,
+        labels: {
+          en: inputs[1].value,
+          fr: inputs[2].value,
+          ar: inputs[3].value
+        }
+      };
+    });
 
-    document.getElementById('configForm').addEventListener('submit', async function (e) {
-      e.preventDefault();
-
-      const rows = document.querySelectorAll('#fieldTable tbody tr');
-      const fields = Array.from(rows).map(row => {
-        const inputs = row.querySelectorAll('input');
-        return {
-          key: inputs[0].value,
-          labels: {
-            en: inputs[1].value,
-            fr: inputs[2].value,
-            ar: inputs[3].value
-          }
-        };
-      });
-
-      const selectedMatchField = document.querySelector('input[name="match_field"]:checked');
-      if (!selectedMatchField) {
-        alert("Please select one field to match for payment.");
-        return;
-      }
-
-      const photoConfig = {
+    const result = {
+      fields,
+      photo: {
         enabled: document.getElementById('photoEnabled').checked,
         field_name: document.getElementById('photoKey').value,
         labels: {
@@ -294,28 +412,22 @@
           fr: document.getElementById('photoLabelFr').value,
           ar: document.getElementById('photoLabelAr').value
         }
-      };
+      },
+      COLUMN_TO_MATCH: document.getElementById('matchField').value
+    };
 
-      const result = {
-        fields: fields,
-        photo: photoConfig,
-        COLUMN_TO_MATCH: selectedMatchField.value
-      };
-
-      const res = await fetch('/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(result)
-      });
-
-      if (res.ok) {
-        alert('{{ t.saved_successfully or "Saved successfully" }}');
-      } else {
-        alert('{{ t.failed_to_save or "Failed to save." }}');
-      }
+    const res = await fetch('/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(result)
     });
 
-    window.onload = loadConfig;
-  </script>
+    if (res.ok) alert('{{ t.saved_successfully }}');
+    else alert('{{ t.failed_to_save }}');
+  });
+
+  window.onload = loadConfig;
+</script>
+
 </body>
 </html>

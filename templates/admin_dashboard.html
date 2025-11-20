@@ -3,26 +3,43 @@
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8">
-  <title>121 Scan</title>
+  <title>121 Scan | Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f8f9fa;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
+    :root {
+      --pad: 16px;
+      --gap: 12px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
     }
 
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---------- HEADER ---------- */
     header {
-      background-color: white;
-      padding: 20px 40px;
+      background-color: #ffffff;
+      padding: 16px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 120px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
     .header-left {
@@ -32,100 +49,220 @@
     }
 
     .header-left img {
-      height: 60px;
+      height: 50px;
+      object-fit: contain;
     }
 
     .scandroid-banner {
-      flex-grow: 1;
+      flex: 1;
       text-align: center;
     }
 
     .scandroid-banner img {
-      height: 165px;
-      max-width: 25%;
+      height: 80px;
+      max-width: 60%;
       object-fit: contain;
+      display: inline-block;
     }
 
     .lang-logout {
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 10px;
     }
 
-    select {
-      padding: 6px;
+    .lang-logout select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-weight: 600;
+      cursor: pointer;
     }
 
     .logout-btn {
+      padding: 8px 14px;
       background-color: #dc3545;
-      color: white;
+      color: #ffffff;
       border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       font-size: 14px;
+      font-weight: 600;
     }
 
+    .logout-btn:hover {
+      background-color: #b91c1c;
+    }
+
+    /* ---------- MAIN ---------- */
     main {
-      flex-grow: 1;
-      padding: 40px;
-      padding-bottom: 80px;
+      flex: 1;
+      padding: 24px 16px 32px 16px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .dashboard-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--line);
+      width: 100%;
+      max-width: 720px;
+      padding: 24px;
+    }
+
+    .dashboard-header {
       text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .dashboard-header h1 {
+      margin: 0 0 4px 0;
+      font-size: 1.5rem;
+    }
+
+    .dashboard-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .sections {
+      display: grid;
+      gap: 16px;
+      margin-top: 20px;
     }
 
     .section {
-      background: white;
-      padding: 30px;
-      border-radius: 10px;
-      margin: 20px auto;
-      max-width: 500px;
-      box-shadow: 0 0 10px #ccc;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      padding: 16px 18px;
+      background: #f9fafb;
+      text-align: left;
     }
 
     .section h2 {
-      margin-bottom: 20px;
+      margin: 0 0 6px 0;
+      font-size: 1.1rem;
+    }
+
+    .section p {
+      margin: 0 0 12px 0;
+      color: var(--muted);
+      font-size: 0.9rem;
     }
 
     .section a {
       display: inline-block;
-      padding: 12px 20px;
-      background-color: #007bff;
+      padding: 10px 14px;
+      background-color: #1d4ed8;
       color: white;
       text-decoration: none;
-      border-radius: 6px;
-      font-size: 16px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-align: center;
     }
 
+    .section a:hover {
+      background-color: #1e40af;
+    }
+
+    /* ---------- FOOTER ---------- */
     footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  font-size: 0.9rem;
-  background-color: #f8f8f8;
-  border-top: 1px solid #ddd;
-  flex-wrap: wrap;
-}
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px 16px 18px;
+      font-size: 0.9rem;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      flex-wrap: wrap;
+    }
 
-.footer-left, .footer-right {
-  display: flex;
-  flex-direction: column;
-}
+    .footer-left, .footer-right {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
 
-.guide-button {
-  background-color: #d62828;
-  color: #fff;
-  text-decoration: none;
-  padding: 10px 16px;
-  border-radius: 5px;
-  font-weight: bold;
-  transition: background-color 0.2s ease;
-  max-width: fit-content;
-}
+    .guide-button {
+      background-color: #d62828;
+      color: #fff;
+      text-decoration: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      transition: background-color 0.2s ease;
+      max-width: fit-content;
+      font-size: 0.9rem;
+    }
 
-.guide-button:hover {
-  background-color: #b81f1f;
-}
+    .guide-button:hover {
+      background-color: #b81f1f;
+    }
+
+    .footer-right a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+
+    .footer-right a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---------- MOBILE ---------- */
+    @media (max-width: 576px) {
+      header {
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+      }
+
+      .header-left img {
+        height: 40px;
+      }
+
+      .scandroid-banner img {
+        height: 60px;
+        max-width: 80%;
+      }
+
+      .lang-logout {
+        gap: 8px;
+      }
+
+      main {
+        padding: 20px 12px 24px 12px;
+      }
+
+      .dashboard-card {
+        padding: 20px 16px;
+      }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px 16px 18px;
+      font-size: 0.9rem;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      flex-wrap: wrap;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    .footer-right a {
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+    }
   </style>
 </head>
 <body>
@@ -156,36 +293,38 @@
 </header>
 
 <main>
-  <div class="section">
-    <h2>{{ t.config_system }}</h2>
-    <a href="/system-config?lang={{ lang }}">{{ t.config_system }}</a>
-  </div>
+  <div class="dashboard-card">
+    <div class="dashboard-header">
+      <h1>{{ t.admin_dashboard_title or "Admin Dashboard" }}</h1>
+      <p>{{ t.admin_dashboard_subtitle or "Manage your Scandroid configuration and voucher tools." }}</p>
+    </div>
 
-  <div class="section">
-    <h2>{{ t.config_display }}</h2>
-    <a href="/config?lang={{ lang }}">{{ t.config_display }}</a>
-  </div>
+    <div class="sections">
+      <div class="section">
+        <h2>{{ t.config_system }}</h2>
+        <p>{{ t.config_system_desc or "Edit API keys, endpoints, and system parameters." }}</p>
+        <a href="/system-config?lang={{ lang }}">{{ t.config_system }}</a>
+      </div>
 
-  <div class="section">
-    <h2>{{ t.generate_vouchers }}</h2>
-    <a href="/vouchers">{{ t.generate_vouchers }}</a>
+      <div class="section">
+        <h2>{{ t.config_display }}</h2>
+        <p>{{ t.config_display_desc or "Configure which fields and details are shown to FSPs." }}</p>
+        <a href="/config?lang={{ lang }}">{{ t.config_display }}</a>
+      </div>
+
+      <div class="section">
+        <h2>{{ t.generate_vouchers }}</h2>
+        <p>{{ t.generate_vouchers_desc or "Generate QR vouchers for printing and distribution." }}</p>
+        <a href="/vouchers">{{ t.generate_vouchers }}</a>
+      </div>
+    </div>
   </div>
 </main>
 
-
 <footer>
-  <div class="footer-left">
-    <a href="https://jackwharrison.github.io/scandroid-user-guide/" target="_blank" class="guide-button">
-      📘 Open 121 Scan User Guide
-    </a>
-  </div>
-  <div class="footer-right">
-    <div>Developed by 510 @ The Netherlands Red Cross</div>
-    <div>If you need support, contact: <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a></div>
-  </div>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
-
-
 
 </body>
 </html>
