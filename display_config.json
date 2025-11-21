@@ -15,6 +15,14 @@
         "fr": "numero de telephone",
         "ar": "phone"
       }
+    },
+    {
+      "key": "test",
+      "labels": {
+        "en": "test",
+        "fr": "test",
+        "ar": "test"
+      }
     }
   ],
   "photo": {

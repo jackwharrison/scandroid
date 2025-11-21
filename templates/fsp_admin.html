@@ -151,40 +151,41 @@
     }
 
     /* ---------- BUTTONS ---------- */
-    #syncBtn, #importBtn, #scanBtn {
+    #syncBtn, #scanBtn {
       display: block;
       width: 100%;
-      padding: 12px 16px;
+      padding: 14px 18px;
       font-size: 1rem;
       border: none;
-      border-radius: 12px;
+      border-radius: 14px;
       cursor: pointer;
       margin-bottom: 10px;
       font-weight: 700;
+      box-shadow: var(--shadow-soft);
+      transition: transform 0.05s ease, box-shadow 0.1s ease, background-color 0.1s ease;
     }
 
     #syncBtn {
       background-color: #1d4ed8;
       color: white;
     }
-    #syncBtn:hover {
+    #syncBtn:hover:not(:disabled) {
       background-color: #1e40af;
+      transform: translateY(-1px);
     }
-
-    #importBtn {
-      background-color: #facc15;
-      color: #4b5563;
-    }
-    #importBtn:hover {
-      background-color: #eab308;
+    #syncBtn:disabled {
+      opacity: 0.8;
+      cursor: not-allowed;
     }
 
     #scanBtn {
       background-color: #16a34a;
       color: white;
+      margin-top: 18px; /* clearer separation from Sync */
     }
     #scanBtn:hover {
       background-color: #15803d;
+      transform: translateY(-1px);
     }
 
     #generateCsvBtn {
@@ -244,6 +245,37 @@
       margin-top: 10px;
       font-size: 0.95rem;
       color: var(--ink);
+    }
+
+    /* Last synced card */
+    .last-synced-card {
+      background: #ffffff;
+      padding: 10px 14px;
+      border-radius: 12px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--line);
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    /* Spinner */
+    .spinner {
+      border: 3px solid #e5e7eb;
+      border-top: 3px solid #ffffff;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
 
     /* ---------- OFFLINE POPUP ---------- */
@@ -355,11 +387,22 @@
         max-width: 430px;
       }
 
+      /* Footer duplicated for mobile (kept as in original) */
       footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 18px 16px 18px;
+        font-size: 0.9rem;
+        background-color: #f9fafb;
+        border-top: 1px solid #e5e7eb;
+        flex-wrap: wrap;
+      }
+
+      .footer-left, .footer-right {
+        display: flex;
         flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-        padding: 12px 16px 16px 16px;
+        gap: 4px;
       }
     }
   </style>
@@ -405,21 +448,27 @@
     ⚠️ {{ t.must_be_online or "You must be online to perform this action." }}
   </div>
 
+  <!-- Last synced bar -->
+  <div id="lastSyncedBar" class="last-synced-card">
+    Last synced: <span id="lastSyncedText">Not synced yet</span>
+  </div>
+
   <div class="sync-section">
     <h2>{{ t.fsp_sync_title or "📥 FSP: Sync Offline Records" }}</h2>
-    <button id="syncBtn">{{ t.step1 or t.sync_latest or "Step 1. Sync Latest Records" }}</button>
-    <button id="importBtn">{{ t.step2 or "Step 2. Import Offline Cache" }}</button>
-    <button id="scanBtn" onclick="location.href='/scan?lang={{ lang }}'">{{ t.step3 or "Step 3. Scan QR Codes" }}</button>
+    <button id="syncBtn">Step 1. Sync &amp; Import</button>
+    <button id="scanBtn" onclick="location.href='/scan?lang={{ lang }}'">
+      {{ t.step3 or "Step 3. Scan QR Codes" }}
+    </button>
     <div id="statusMessage">
       {{ t.sync_initial or "Click sync to see how many beneficiaries are ready for offline validation." }}
     </div>
   </div>
 
-<!-- 🔹 Unified Payments Sync Card -->
+  <!-- 🔹 Unified Payments Sync Card -->
   <div class="sync-section" style="margin-top: 30px;">
 
     <h2 style="margin-bottom: 20px;">
-      {{ t.payment_prep}}
+      {{ t.payment_prep }}
     </h2>
 
     <!-- Payment count -->
@@ -435,29 +484,18 @@
 
     <!-- Step 5 button -->
     <button id="submitCsvBtn">
-        {{ t.send_payments }}
+      {{ t.send_payments }}
     </button>
 
     <!-- Status message -->
     <p id="submit-status" style="font-size: 16px; margin-top: 10px;"></p>
 
   </div>
-
-
 </main>
 
 <footer>
-  <div class="footer-left">
-    <a href="https://jackwharrison.github.io/scandroid-user-guide/" target="_blank" class="guide-button">
-      📘 Open 121 Scan User Guide
-    </a>
-  </div>
-  <div class="footer-right">
-    <div>Developed by 510 @ The Netherlands Red Cross</div>
-    <div>If you need support, contact:
-      <a href="mailto:jharrison@redcross.nl">jharrison@redcross.nl</a>
-    </div>
-  </div>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
 
 <script>
@@ -474,22 +512,71 @@
   const ONLINE_TEXT = "{{ t.online or 'Online' }}";
   const OFFLINE_TEXT = "{{ t.offline or 'Offline' }}";
 
-  // Sync button
-  document.getElementById("syncBtn").addEventListener("click", function () {
+  // -----------------------------
+  // UPDATED SYNC BUTTON HANDLER
+  // -----------------------------
+  document.getElementById("syncBtn").addEventListener("click", async function () {
     if (!navigator.onLine) {
       showOfflineWarningTemporarily();
       return;
     }
+
     const btn = this;
     const statusDiv = document.getElementById("statusMessage");
-    btn.disabled = true;
-    btn.innerText = "{{ t.syncing or 'Syncing...' }}";
 
-    fetch("/sync-fsp?lang={{ lang }}")
-      .then(r => r.json())
-      .then(data => { statusDiv.textContent = data.message; })
-      .catch(() => { statusDiv.textContent = "{{ t.sync_error or '❌ Failed to sync. Please try again.' }}"; })
-      .finally(() => { btn.disabled = false; btn.innerText = "{{ t.step1 or t.sync_latest or 'Step 1. Sync Latest Records' }}"; });
+    // show spinner + disable
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Syncing…';
+
+    try {
+      // STEP 1 — SYNC WITH SERVER
+      const syncRes = await fetch("/sync-fsp?lang={{ lang }}");
+      const syncJson = await syncRes.json();
+      const syncMessage = syncJson.message || "Synced";
+
+      statusDiv.textContent = syncMessage + " → Importing…";
+
+      // STEP 2 — IMPORT LATEST CACHE SILENTLY
+      const importResult = await importLatestCache(true);
+
+      const finalMessage =
+        `Sync complete: ${syncMessage} → Imported ${importResult.written} beneficiaries and ${importResult.photosWritten} photos.`;
+
+      // FINAL COMBINED MESSAGE
+      statusDiv.textContent = "✅ " + finalMessage;
+
+      // UPDATE LAST SYNCED BAR
+      // UPDATE LAST SYNCED BAR WITH COUNT
+      const now = new Date();
+
+      function formatDate(d) {
+        const dd = String(d.getDate()).padStart(2, "0");
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const yyyy = d.getFullYear();
+        const hh = String(d.getHours()).padStart(2, "0");
+        const min = String(d.getMinutes()).padStart(2, "0");
+        return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+      }
+
+      const formatted = formatDate(now);
+
+      // Combine into full summary including count
+      const syncSummary = `${formatted} · ${importResult.written} beneficiaries`;
+
+      const lastSyncedEl = document.getElementById("lastSyncedText");
+      if (lastSyncedEl) lastSyncedEl.textContent = syncSummary;
+
+      // Save to localStorage exactly as displayed
+      localStorage.setItem("scandroid_last_synced", syncSummary);
+
+
+    } catch (err) {
+      console.error(err);
+      statusDiv.textContent = "❌ Failed to sync & import. Please try again.";
+    }
+
+    btn.disabled = false;
+    btn.textContent = "Step 1. Sync & Import";
   });
 
   // Service worker
@@ -549,19 +636,25 @@
     });
   }
 
-  const chunk = (arr, size) => Array.from({length: Math.ceil(arr.length/size)}, (_,i)=>arr.slice(i*size, i*size+size));
-  const findJsonEntry = (zip) => Object.values(zip.files).find(f => /registrations_cache\.json$/i.test(f.name)) || null;
-  const listPhotoEntries = (zip) => Object.values(zip.files).filter(f => /\.enc$/i.test(f.name));
+  const chunk = (arr, size) =>
+    Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size));
 
-  async function importLatestCache() {
+  const findJsonEntry = (zip) =>
+    Object.values(zip.files).find(f => /registrations_cache\.json$/i.test(f.name)) || null;
+
+  const listPhotoEntries = (zip) =>
+    Object.values(zip.files).filter(f => /\.enc$/i.test(f.name));
+
+  // -----------------------------------------------------
+  // UPDATED importLatestCache() SUPPORTS SILENT MODE + RETURNS COUNTS
+  // -----------------------------------------------------
+  async function importLatestCache(silent = false) {
     if (!navigator.onLine) {
-      showOfflineWarningTemporarily();
-      return;
+      if (!silent) showOfflineWarningTemporarily();
+      return { written: 0, photosWritten: 0 };
     }
-    const btn = document.getElementById('importBtn');
+
     const statusDiv = document.getElementById('statusMessage');
-    const originalText = btn.textContent;
-    btn.disabled = true; btn.textContent = '{{ (lang=="fr") and "Importation…" or (lang=="ar") and "جاري الاستيراد…" or "Importing…" }}';
 
     try {
       const res = await fetch('/api/offline/latest.zip', { cache: 'no-store' });
@@ -576,6 +669,7 @@
 
       const db = await openScandroidDB();
 
+      // Import records
       let written = 0;
       for (const group of chunk(records, 50)) {
         await Promise.all(group.map(async rec => {
@@ -586,6 +680,7 @@
         }));
       }
 
+      // Import photos
       const photos = listPhotoEntries(zip);
       let photosWritten = 0;
       for (const group of chunk(photos, 10)) {
@@ -600,18 +695,30 @@
         photosWritten += items.filter(Boolean).length;
       }
 
-      statusDiv.textContent = `✅ ${written} {{ (lang=='fr') and "bénéficiaires" or (lang=='ar') and "مستفيد" or "beneficiaries" }} · ${photosWritten} {{ (lang=='fr') and "photos" or (lang=='ar') and "صور" or "photos" }}.`;
-      await db.put('meta', { key: 'batchInfo', value: { importedAt: Date.now(), recordCount: written, photos: photosWritten } });
+      if (!silent) {
+        statusDiv.textContent =
+          `✅ ${written} beneficiaries · ${photosWritten} photos imported.`;
+      }
+
+      await db.put('meta', {
+        key: 'batchInfo',
+        value: { importedAt: Date.now(), recordCount: written, photos: photosWritten }
+      });
+
+      // RETURN COUNTS
+      return { written, photosWritten };
 
     } catch (err) {
       console.error(err);
-      statusDiv.textContent = `❌ {{ (lang=='fr') and "Échec de l’import" or (lang=='ar') and "فشل الاستيراد" or "Import failed" }}: ${err.message || err}`;
-    } finally {
-      btn.disabled = false; btn.textContent = originalText;
+      if (!silent) {
+        statusDiv.textContent = `❌ Import failed: ${err.message || err}`;
+      }
+      return { written: 0, photosWritten: 0 };
     }
   }
 
-  document.getElementById('importBtn').addEventListener('click', importLatestCache);
+  // (old importBtn listener removed)
+  // document.getElementById('importBtn').addEventListener('click', importLatestCache);
 </script>
 
 <script>
@@ -640,7 +747,7 @@
     return allPayments;
   }
 
-  // Decrypt helper (must match what you're using elsewhere)
+  // Decrypt helper
   async function decrypt(encrypted, keyHex) {
     try {
       const key = await crypto.subtle.importKey(
@@ -658,7 +765,7 @@
       return new TextDecoder().decode(decrypted);
     } catch (err) {
       console.error("Decryption failed:", err);
-      return encrypted; // fallback
+      return encrypted;
     }
   }
 
@@ -679,7 +786,6 @@
       return;
     }
 
-    // Load encryption key from meta
     const metaTx = db.transaction('meta', 'readonly');
     const metaStore = metaTx.objectStore('meta');
     const encKeyObj = await metaStore.get('encryptionKey');
@@ -724,7 +830,8 @@
       const responseText = await res.text();
       if (!res.ok) throw new Error(responseText || "Unknown error from server");
 
-      submitStatus.textContent = t.payment_submit_success || "✅ Payments submitted successfully!";
+      submitStatus.textContent =
+        t.payment_submit_success || "✅ Payments submitted successfully!";
 
       const db = await openScandroidDB();
       const tx = db.transaction('payments', 'readwrite');
@@ -750,6 +857,17 @@
     popup.style.display = 'none';
     clearTimeout(popupTimeout);
   }
+
+  // Load last synced time from localStorage on page load
+  // Load "Last synced" summary on page load
+  (function () {
+    const last = localStorage.getItem("scandroid_last_synced");
+    if (last) {
+      const el = document.getElementById("lastSyncedText");
+      if (el) el.textContent = last;
+    }
+  })();
+
 </script>
 
 </body>
