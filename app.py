@@ -336,7 +336,8 @@ translations = {
     "wrong_credentials": "Incorrect username or password.",
     "api_unreachable": "Unable to reach the login server. Please try again.",
     "login_failed_generic": "Login failed. Please try again.",
-    "go_back": "Go Back"        
+    "go_back": "Go Back",
+    "program_title": "Program Title"        
 }
 ,
 "fr": {
@@ -470,7 +471,8 @@ translations = {
     "wrong_credentials": "Nom d’utilisateur ou mot de passe incorrect.",
     "api_unreachable": "Impossible de joindre le serveur. Veuillez réessayer.",
     "login_failed_generic": "Échec de connexion. Veuillez réessayer.",
-    "go_back": "Retour"
+    "go_back": "Retour",
+    "program_title": "Titre du programme"
 }
 ,
 "ar": {
@@ -604,7 +606,8 @@ translations = {
     "wrong_credentials": "اسم المستخدم أو كلمة المرور غير صحيحة.",
     "api_unreachable": "تعذّر الاتصال بالخادم. يرجى المحاولة مرة أخرى.",
     "login_failed_generic": "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.",
-    "go_back": "عودة"   
+    "go_back": "عودة",
+    "program_title": "عنوان البرنامج"   
     }
 }
 
@@ -687,6 +690,11 @@ def admin_logout():
     return redirect(url_for("admin_login", lang=lang))
 
 
+from flask import request, session, redirect, url_for, flash, render_template, jsonify
+import requests
+from requests.auth import HTTPBasicAuth
+import json
+
 @app.route("/system-config", methods=["GET", "POST"])
 def system_config():
     if not session.get("admin_logged_in"):
@@ -695,8 +703,10 @@ def system_config():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
+    # -------------------- POST: Save Config --------------------
     if request.method == "POST":
         updated_config = {
+            "KOBO_SERVER": request.form.get("KOBO_SERVER", ""),
             "KOBO_TOKEN": request.form.get("KOBO_TOKEN", ""),
             "ASSET_ID": request.form.get("ASSET_ID", ""),
             "PASSWORD": request.form.get("PASSWORD", ""),
@@ -705,15 +715,84 @@ def system_config():
             "password121": request.form.get("password121", ""),
             "programId": request.form.get("programId", ""),
             "PAYMENT_ID": request.form.get("PAYMENT_ID", ""),
-            "COLUMN_TO_MATCH": request.form.get("COLUMN_TO_MATCH", ""),            
+            "COLUMN_TO_MATCH": request.form.get("COLUMN_TO_MATCH", ""),
             "ENCRYPTION_KEY": request.form.get("ENCRYPTION_KEY", "")
         }
+
         save_config(updated_config)
         flash(t["saved_successfully"])
         return redirect(url_for("system_config", lang=lang))
 
+    # -------------------- GET: Load System Config --------------------
     config = load_config()
-    return render_template("system_config.html", config=config, lang=lang, t=t)
+
+    # -------------------- NEW: Login to 121 to get token --------------------
+    token = None
+    try:
+        login_payload = {
+            "username": config.get("username121", ""),
+            "password": config.get("password121", "")
+        }
+        login_url = f"{config['url121']}/api/users/login"
+        login_resp = requests.post(login_url, json=login_payload)
+
+        if login_resp.status_code == 201:
+            token = login_resp.json().get("access_token_general")
+    except Exception as e:
+        print("Failed to log in to 121 API:", e)
+
+    # -------------------- NEW: Fetch COLUMN_TO_MATCH --------------------
+    column_to_match_121 = None
+    if token:
+        try:
+            fsp_url = f"{config['url121']}/api/programs/{config['programId']}/fsp-configurations"
+            resp = requests.get(fsp_url, cookies={"access_token_general": token})
+
+            if resp.status_code == 200:
+                data = resp.json()
+
+                # Correct JSON structure: inside properties[]
+                for fsp in data:
+                    for prop in fsp.get("properties", []):
+                        if prop.get("name") == "columnToMatch":
+                            column_to_match_121 = prop.get("value")
+                            break
+        except Exception as e:
+            print("Failed to fetch columnToMatch:", e)
+
+    # -------------------- NEW: Fetch Program TitlePortal --------------------
+    program_title = None
+    if token:
+        try:
+            program_url = f"{config['url121']}/api/programs/{config['programId']}"
+            resp = requests.get(program_url, cookies={"access_token_general": token})
+
+            if resp.status_code == 200:
+                program_data = resp.json()
+                title_dict = program_data.get("titlePortal", {})
+
+                # Match selected UI language
+                if lang in title_dict:
+                    program_title = title_dict[lang]
+                else:
+                    # Fallback to first available language
+                    if isinstance(title_dict, dict) and title_dict:
+                        program_title = next(iter(title_dict.values()))
+                    else:
+                        program_title = ""
+        except Exception as e:
+            print("Failed to fetch program titlePortal:", e)
+
+    # -------------------- Render Template --------------------
+    return render_template(
+        "system_config.html",
+        config=config,
+        column_to_match_121=column_to_match_121,
+        program_title=program_title,
+        lang=lang,
+        t=t
+    )
+
 
 
 @app.route("/config", methods=["GET", "POST"])
@@ -723,6 +802,7 @@ def config_page():
 
     lang = request.args.get("lang", "en")
 
+    # -------------------- POST (save) --------------------
     if request.method == "POST":
         config_data = request.get_json()
         try:
@@ -732,7 +812,9 @@ def config_page():
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
 
-    # Handle GET request
+    # -------------------- GET (load page) --------------------
+
+    # Load display config JSON
     try:
         with open("display_config.json", "r", encoding="utf-8") as f:
             config_data = json.load(f)
@@ -762,41 +844,57 @@ def config_page():
             }
         }
 
-    # 🧠 This is the missing part:
+    # Load system_config.json
     try:
         with open("system_config.json", "r", encoding="utf-8") as f:
             system_config = json.load(f)
     except Exception:
         system_config = {}
 
+    # -------------------- NEW: Fetch COLUMN_TO_MATCH from 121 API --------------------
+    # NEW: Load COLUMN_TO_MATCH from 121 API (token-based login + correct parsing)
+    column_to_match_121 = None
+
+    try:
+        # First: log in to get token
+        login_payload = {
+            "username": system_config.get("username121", ""),
+            "password": system_config.get("password121", "")
+        }
+        login_url = f"{system_config['url121']}/api/users/login"
+        login_resp = requests.post(login_url, json=login_payload)
+
+        if login_resp.status_code == 201:
+            token = login_resp.json().get("access_token_general")
+
+            # Now fetch fsp-configurations using cookie auth
+            config_url = f"{system_config['url121']}/api/programs/{system_config['programId']}/fsp-configurations"
+            resp = requests.get(config_url, cookies={"access_token_general": token})
+
+            if resp.status_code == 200:
+                data = resp.json()
+
+                # CORRECT PARSING: columnToMatch is inside properties[]
+                for fsp in data:
+                    for prop in fsp.get("properties", []):
+                        if prop.get("name") == "columnToMatch":
+                            column_to_match_121 = prop.get("value")
+                            break
+
+    except Exception as e:
+        print("Error loading columnToMatch:", e)
+
+    # ------------------------------------------------------------------------------
+
     return render_template(
         "config.html",
         config=config_data,
-        system_config=system_config,  # ← You need to pass this!
+        system_config=system_config,
+        column_to_match_121=column_to_match_121,  # <<< IMPORTANT
         lang=lang,
         t=translations.get(lang, translations["en"])
     )
 
-def get_121_token():
-    config = load_config()
-    payload = {"username": config["username121"], "password": config["password121"]}
-    response = requests.post(f"{config['url121']}/api/users/login", json=payload)
-    if response.status_code == 201:
-        return response.json().get("access_token_general")
-    return None
-
-def get_registration_data(reference_id, token):
-    config = load_config()
-    headers = {'Content-Type': 'application/json'}
-    cookies = {'access_token_general': token}
-    params = {'referenceId': reference_id}
-    url = f"{config['url121']}/api/programs/{config['programId']}/registrations/"
-    response = requests.get(url, headers=headers, cookies=cookies, params=params)
-    if response.status_code == 200:
-        for entry in response.json().get("data", []):
-            if entry.get("referenceId") == reference_id:
-                return entry
-    return None
 
 @app.route("/")
 def home():

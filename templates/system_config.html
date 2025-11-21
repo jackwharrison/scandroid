@@ -34,7 +34,6 @@
       overflow-x: hidden;
     }
 
-    /* ---------- HEADER ---------- */
     header {
       background-color: #ffffff;
       padding: 16px 24px;
@@ -105,21 +104,12 @@
       border-color: #93c5fd;
     }
 
-    .btn-back:hover {
-      background: #dbeafe;
-    }
-
     .btn-logout {
       background-color: #dc3545;
       color: #ffffff;
       border: none;
     }
 
-    .btn-logout:hover {
-      background-color: #b91c1c;
-    }
-
-    /* ---------- MAIN LAYOUT ---------- */
     .wrapper {
       width: 100%;
       max-width: 960px;
@@ -172,7 +162,8 @@
     }
 
     input[type="text"],
-    input[type="password"] {
+    input[type="password"],
+    select {
       width: 100%;
       padding: 10px 12px;
       font-size: 0.95rem;
@@ -199,7 +190,6 @@
       margin-right: auto;
     }
 
-    /* ---------- FOOTER ---------- */
     footer {
       display: flex;
       justify-content: space-between;
@@ -211,11 +201,6 @@
       flex-wrap: wrap;
       box-sizing: border-box;
       width: 100%;
-    }
-
-    .footer-right a {
-      color: #1d4ed8;
-      text-decoration: none;
     }
   </style>
 </head>
@@ -233,7 +218,6 @@
   </div>
 
   <div class="right-controls">
-
     <a href="/admin-dashboard?lang={{ lang }}" class="btn-header btn-back">
       &larr; {{ t.back_to_dashboard }}
     </a>
@@ -249,7 +233,6 @@
     <form action="/admin-logout" method="get">
       <button type="submit" class="btn-header btn-logout">{{ t.logout }}</button>
     </form>
-
   </div>
 </header>
 
@@ -264,6 +247,20 @@
       <!-- Kobo Card -->
       <div class="card">
         <h2>{{ t.kobo_info }}</h2>
+
+        <!-- NEW: Kobo Server Dropdown -->
+        <label for="KOBO_SERVER">Kobo Server</label>
+        <select id="KOBO_SERVER" name="KOBO_SERVER">
+          <option value="https://kobo.ifrc.org"
+            {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>
+            IFRC
+          </option>
+
+          <option value="https://kf.kobotoolbox.org"
+            {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>
+            KF Toolbox
+          </option>
+        </select>
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
         <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN"
@@ -282,12 +279,18 @@
 
         <label for="url121">{{ t.url_121 }}</label>
         <input type="text" id="url121" name="url121"
-               value="{{ config['url121'] }}">
+              value="{{ config['url121'] }}"
+              readonly
+              style="background:#f3f4f6; cursor:not-allowed;">
 
         <label for="programId">{{ t.program_id }}</label>
         <input type="text" id="programId" name="programId"
                value="{{ config['programId'] }}">
-
+        <label for="programTitle">{{ t.program_title }}</label>
+        <input type="text" id="programTitle"
+              value="{{ program_title or '' }}"
+              readonly
+              style="background:#f3f4f6; cursor:not-allowed;">
         <h3>{{ t.credentials }}</h3>
 
         <label for="username121">{{ t.username_121 }}</label>
@@ -301,7 +304,6 @@
 
     </div>
 
-    <!-- Hidden fields preserved -->
     <input type="hidden" name="ENCRYPTION_KEY"
            value="{{ config.get('ENCRYPTION_KEY', '') }}">
     <input type="hidden" name="COLUMN_TO_MATCH"
