@@ -716,17 +716,20 @@ def system_config():
             "programId": request.form.get("programId", ""),
             "PAYMENT_ID": request.form.get("PAYMENT_ID", ""),
             "COLUMN_TO_MATCH": request.form.get("COLUMN_TO_MATCH", ""),
-            "ENCRYPTION_KEY": request.form.get("ENCRYPTION_KEY", "")
+            "ENCRYPTION_KEY": request.form.get("ENCRYPTION_KEY", ""),
+
+            # keep currency stored (even though it's read-only UI)
+            "programCurrency": request.form.get("programCurrency", "")
         }
 
         save_config(updated_config)
         flash(t["saved_successfully"])
         return redirect(url_for("system_config", lang=lang))
 
-    # -------------------- GET: Load System Config --------------------
+    # -------------------- GET: Load Config --------------------
     config = load_config()
 
-    # -------------------- NEW: Login to 121 to get token --------------------
+    # -------------------- Login to 121 API --------------------
     token = None
     try:
         login_payload = {
@@ -741,7 +744,7 @@ def system_config():
     except Exception as e:
         print("Failed to log in to 121 API:", e)
 
-    # -------------------- NEW: Fetch COLUMN_TO_MATCH --------------------
+    # -------------------- Fetch columnToMatch --------------------
     column_to_match_121 = None
     if token:
         try:
@@ -749,10 +752,7 @@ def system_config():
             resp = requests.get(fsp_url, cookies={"access_token_general": token})
 
             if resp.status_code == 200:
-                data = resp.json()
-
-                # Correct JSON structure: inside properties[]
-                for fsp in data:
+                for fsp in resp.json():
                     for prop in fsp.get("properties", []):
                         if prop.get("name") == "columnToMatch":
                             column_to_match_121 = prop.get("value")
@@ -760,8 +760,10 @@ def system_config():
         except Exception as e:
             print("Failed to fetch columnToMatch:", e)
 
-    # -------------------- NEW: Fetch Program TitlePortal --------------------
+    # -------------------- Fetch Program Title + Currency --------------------
     program_title = None
+    program_currency = config.get("programCurrency", "")  # fallback
+
     if token:
         try:
             program_url = f"{config['url121']}/api/programs/{config['programId']}"
@@ -771,27 +773,33 @@ def system_config():
                 program_data = resp.json()
                 title_dict = program_data.get("titlePortal", {})
 
-                # Match selected UI language
+                # title
                 if lang in title_dict:
                     program_title = title_dict[lang]
                 else:
-                    # Fallback to first available language
-                    if isinstance(title_dict, dict) and title_dict:
-                        program_title = next(iter(title_dict.values()))
-                    else:
-                        program_title = ""
-        except Exception as e:
-            print("Failed to fetch program titlePortal:", e)
+                    program_title = next(iter(title_dict.values()), "")
 
-    # -------------------- Render Template --------------------
+                # currency
+                program_currency = program_data.get("currency", program_currency)
+
+                # save into config so it's persistent
+                config["programCurrency"] = program_currency
+                save_config(config)
+
+        except Exception as e:
+            print("Failed to fetch program info:", e)
+
+    # -------------------- Render --------------------
     return render_template(
         "system_config.html",
         config=config,
-        column_to_match_121=column_to_match_121,
         program_title=program_title,
+        program_currency=program_currency,
+        column_to_match_121=column_to_match_121,
         lang=lang,
         t=t
     )
+
 
 
 
@@ -1060,7 +1068,17 @@ def fsp_admin():
 
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
-    return render_template("fsp_admin.html", lang=lang, t=t)
+
+    # 🔥 LOAD system_config.json
+    config = load_config()
+
+    # 🔥 PASS config to template
+    return render_template(
+        "fsp_admin.html",
+        lang=lang,
+        t=t,
+        config=config
+    )
 
 
 @app.route("/sync-fsp")

@@ -212,6 +212,7 @@ def download_cache(program_id, payment_id):
             "registrationId": reg_id,
             "photo_filename": photo_filename,
             "paymentId": t.get("paymentId"),
+            "amount": t.get("amount", 0),   
             "data": encrypted_data,
             "valid": is_valid,
             "reason": reason
@@ -222,6 +223,10 @@ def download_cache(program_id, payment_id):
     json_path = os.path.join(batch_dir, "registrations_cache.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(cache_data, f, indent=2)
+    
+    tx_path = os.path.join(batch_dir, "transactions.json")
+    with open(tx_path, "w", encoding="utf-8") as f:
+        json.dump(transactions, f, indent=2)
 
     print(f"\n[OK] Done. Batch saved to: {batch_dir}")
     print(f"{len(cache_data)} beneficiaries ready for offline validation.")
@@ -386,7 +391,8 @@ def download_recent_payments_cache(program_id):
             "uuid": uuid,
             "registrationId": reg_id,
             "photo_filename": photo_filename,
-            "paymentId": t.get("paymentId"),        # <-- ADD THIS BACK
+            "paymentId": t.get("paymentId"),
+            "amount": t.get("amount", 0),         # <-- ADD THIS BACK
             "data": encrypted_data,
             "valid": is_valid,
             "reason": reason
@@ -399,6 +405,11 @@ def download_recent_payments_cache(program_id):
     json_path = os.path.join(batch_dir, "registrations_cache.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(cache_data, f, indent=2)
+    # NEW: save filtered transactions for amount lookup
+    tx_path = os.path.join(batch_dir, "transactions.json")
+    with open(tx_path, "w", encoding="utf-8") as f:
+        json.dump(list(latest_by_uuid.values()), f, indent=2)
+
 
     print(f"\n[OK] Batch saved to: {batch_dir}")
     print(f"{len(cache_data)} beneficiaries ready.")
