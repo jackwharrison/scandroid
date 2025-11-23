@@ -291,6 +291,14 @@
               value="{{ program_title or '' }}"
               readonly
               style="background:#f3f4f6; cursor:not-allowed;">
+        <label for="programCurrency">{{ t.program_currency or "Currency" }}</label>
+        <input 
+          type="text"
+          id="programCurrency"
+          name="programCurrency"
+          value="{{ program_currency or config.get('programCurrency','') }}"
+          readonly
+          style="background:#f3f4f6; cursor:not-allowed;">
         <h3>{{ t.credentials }}</h3>
 
         <label for="username121">{{ t.username_121 }}</label>

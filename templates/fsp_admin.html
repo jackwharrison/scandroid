@@ -326,6 +326,11 @@
   const t = {{ t | tojson | safe }};
 </script>
 
+<script>
+  const PROGRAM_CURRENCY = "{{ config.get('programCurrency', '') }}";
+</script>
+
+
 <!-- IndexedDB helper -->
 <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
 <!-- ZIP helper -->
@@ -521,6 +526,23 @@
         await Promise.all(items.filter(Boolean).map(item => db.put('photos', item)));
         photosWritten += items.filter(Boolean).length;
       }
+      // ---- NEW: import transactions.json ----
+      const txEntry = Object.values(zip.files).find(f => /transactions\.json$/i.test(f.name));
+      if (txEntry) {
+        const txText = await txEntry.async("string");
+        const txList = JSON.parse(txText) || [];
+
+        for (const t of txList) {
+          const uuid = t.registrationReferenceId || t.uuid;
+          if (!uuid) continue;
+
+          await db.put("transaction", {
+            uuid: uuid,
+            amount: t.amount || 0,
+            paymentId: t.paymentId
+          });
+        }
+      }
 
       if (!silent) {
         statusDiv.textContent =
@@ -702,6 +724,96 @@
     }
   })();
 
+</script>
+<script>
+  async function loadPeopleScannedCount() {
+    try {
+      const dbReq = indexedDB.open("scandroid");
+
+      dbReq.onsuccess = function () {
+        const db = dbReq.result;
+
+        if (!db.objectStoreNames.contains("payments")) {
+          document.getElementById("peopleScannedCount").textContent = "0";
+          return;
+        }
+
+        const tx = db.transaction("payments", "readonly");
+        const store = tx.objectStore("payments");
+        const countReq = store.count();
+
+        countReq.onsuccess = function () {
+          document.getElementById("peopleScannedCount").textContent =
+            countReq.result;
+        };
+      };
+
+      dbReq.onerror = () =>
+        (document.getElementById("peopleScannedCount").textContent = "0");
+    } catch {
+      document.getElementById("peopleScannedCount").textContent = "0";
+    }
+  }
+
+  // ✅ RUN ON PAGE LOAD
+  window.addEventListener("DOMContentLoaded", loadPeopleScannedCount);
+</script>
+<script>
+async function loadTotalAmount() {
+  try {
+    const req = indexedDB.open("scandroid");
+
+    req.onsuccess = () => {
+      const db = req.result;
+
+      // Ensure stores exist
+      if (!db.objectStoreNames.contains("transaction") ||
+          !db.objectStoreNames.contains("payments")) {
+        document.getElementById("totalAmountText").textContent = "0";
+        return;
+      }
+
+      // 1. Load scanned beneficiaries (payments store)
+      const payTx = db.transaction("payments", "readonly");
+      const payStore = payTx.objectStore("payments");
+      const scannedReq = payStore.getAll();
+
+      scannedReq.onsuccess = () => {
+        const scanned = scannedReq.result || [];
+        const scannedSet = new Set(scanned.map(x => x.uuid));
+
+        // 2. Load all transactions
+        const tx = db.transaction("transaction", "readonly");
+        const store = tx.objectStore("transaction");
+        const getAllReq = store.getAll();
+
+        getAllReq.onsuccess = () => {
+          const items = getAllReq.result || [];
+
+          // 3. SUM ONLY IF UUID WAS SCANNED
+          let total = 0;
+          for (const t of items) {
+            if (scannedSet.has(t.uuid)) {
+              total += t.amount || 0;
+            }
+          }
+
+          document.getElementById("totalAmountText").textContent =
+              PROGRAM_CURRENCY
+                ? total.toLocaleString() + " " + PROGRAM_CURRENCY
+                : total.toLocaleString();
+
+        };
+      };
+    };
+
+  } catch (e) {
+    console.error("Total amount calc error:", e);
+    document.getElementById("totalAmountText").textContent = "0";
+  }
+}
+
+window.addEventListener("DOMContentLoaded", loadTotalAmount);
 </script>
 
 </body>
