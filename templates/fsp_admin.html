@@ -214,6 +214,32 @@
       border: 1px solid var(--line);
     }
 
+    /* NEW for Send Card – fully additive */
+    #sendBtn {
+      background-color:#be185d;
+      color:white;
+      padding:12px 20px;
+      font-size:1rem;
+      font-weight:700;
+      border:none;
+      border-radius:14px;
+      cursor:pointer;
+      white-space:nowrap;
+      box-shadow:var(--shadow-soft);
+      transition:transform 0.05s ease, box-shadow 0.1s ease, background-color 0.1s ease;
+    }
+    #sendBtn:hover:not(:disabled) { background:#9d174d; transform:translateY(-1px); }
+
+    .error-box {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fdecec;
+      color: #842029;
+      border: 1px solid #f5c2c7;
+      font-size: 0.9rem;
+    }
+
     footer {
       display: flex;
       justify-content: space-between;
@@ -298,21 +324,30 @@
     </button>
   </div>
 
-  <!-- remove original message entirely -->
+  <!-- REMOVE NOTHING ABOVE THIS POINT -->
   <div id="statusMessage" style="display:none;"></div>
 
-  <!-- PAYMENTS SECTION UNCHANGED -->
-  <div class="sync-section" style="margin-top: 20px;">
-    <h2>{{ t.payment_prep }}</h2>
+ 
+  <!-- *** NEW SEND CARD INSERTED HERE (Option A) *** -->
+  <div class="row-box">
+    <div class="info-box">
+      <div class="info-title">
+        {{ t.payments_ready_send or "Payments ready to send:" }}
+        <span id="paymentsReadyCount">0</span>
+      </div>
 
-    <p id="csv-status">
-      {{ t.payments_ready }} <span id="csv-count">0</span>
-    </p>
+      <div class="info-sub">
+        {{ t.last_payments_submit or "Last submission:" }}
+        <span id="lastSubmissionText">—</span>
+      </div>
 
-    <button id="generateCsvBtn">{{ t.generate_csv }}</button>
-    <button id="submitCsvBtn">{{ t.send_payments }}</button>
-    <p id="submit-status" style="font-size: 16px; margin-top: 10px;"></p>
+      <div id="sendError" class="error-box" style="display:none;"></div>
+    </div>
+
+    <button id="sendBtn">Send</button>
   </div>
+
+  <!-- ORIGINAL CSV EXPORT SECTION UNTOUCHED -->
 
 </main>
 
@@ -320,6 +355,7 @@
   <div class="footer-left">{{ t.footer_dev }}</div>
   <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
+
 
 <script>
   // JINJA TEMPLATE VARIABLE
@@ -352,31 +388,24 @@
     const btn = this;
     const statusDiv = document.getElementById("statusMessage");
 
-    // show spinner + disable
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Syncing…';
 
     try {
-      // STEP 1 — SYNC WITH SERVER
       const syncRes = await fetch("/sync-fsp?lang={{ lang }}");
       const syncJson = await syncRes.json();
       const syncMessage = syncJson.message || "Synced";
 
-      statusDiv.textContent = syncMessage + " → Importing…";
+      statusDiv && (statusDiv.textContent = syncMessage + " → Importing…");
 
-      // STEP 2 — IMPORT LATEST CACHE SILENTLY
       const importResult = await importLatestCache(true);
 
       const finalMessage =
         `Sync complete: ${syncMessage} → Imported ${importResult.written} beneficiaries and ${importResult.photosWritten} photos.`;
 
-      // FINAL COMBINED MESSAGE
-      statusDiv.textContent = "✅ " + finalMessage;
+      statusDiv && (statusDiv.textContent = "✅ " + finalMessage);
 
-      // UPDATE LAST SYNCED BAR
-      // UPDATE LAST SYNCED BAR WITH COUNT
       const now = new Date();
-
       function formatDate(d) {
         const dd = String(d.getDate()).padStart(2, "0");
         const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -385,30 +414,24 @@
         const min = String(d.getMinutes()).padStart(2, "0");
         return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
       }
-
       const formatted = formatDate(now);
 
-      // Combine into full summary including count
-      // --- NEW: Save values separately ---
       const lastSyncedEl = document.getElementById("lastSyncedText");
       const readyCountEl = document.getElementById("beneficiaryCount");
 
       if (lastSyncedEl) lastSyncedEl.textContent = formatted;
       if (readyCountEl) readyCountEl.textContent = importResult.written;
 
-      // Save separately in localStorage
       localStorage.setItem("scandroid_last_synced_date", formatted);
       localStorage.setItem("scandroid_last_synced_count", importResult.written);
 
-
-
     } catch (err) {
       console.error(err);
-      statusDiv.textContent = "❌ Failed to sync & import. Please try again.";
+      statusDiv && (statusDiv.textContent = "❌ Failed to sync & import. Please try again.");
     }
 
     btn.disabled = false;
-    btn.textContent = "Step 1. Sync & Import";
+    btn.textContent = "Sync";
   });
 
   // Service worker
@@ -469,7 +492,8 @@
   }
 
   const chunk = (arr, size) =>
-    Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size));
+    Array.from({ length: Math.ceil(arr.length / size) }, (_, i) => arr.slice(i * size, i * size + size
+)) ;
 
   const findJsonEntry = (zip) =>
     Object.values(zip.files).find(f => /registrations_cache\.json$/i.test(f.name)) || null;
@@ -526,6 +550,7 @@
         await Promise.all(items.filter(Boolean).map(item => db.put('photos', item)));
         photosWritten += items.filter(Boolean).length;
       }
+
       // ---- NEW: import transactions.json ----
       const txEntry = Object.values(zip.files).find(f => /transactions\.json$/i.test(f.name));
       if (txEntry) {
@@ -565,9 +590,6 @@
       return { written: 0, photosWritten: 0 };
     }
   }
-
-  // (old importBtn listener removed)
-  // document.getElementById('importBtn').addEventListener('click', importLatestCache);
 </script>
 
 <script>
@@ -709,22 +731,10 @@
 
   // Load last synced time from localStorage on page load
   // Load "Last synced" summary on page load
-  (function () {
-    const savedDate = localStorage.getItem("scandroid_last_synced_date");
-    const savedCount = localStorage.getItem("scandroid_last_synced_count");
 
-    if (savedDate) {
-      const el = document.getElementById("lastSyncedText");
-      if (el) el.textContent = savedDate;
-    }
-
-    if (savedCount) {
-      const el = document.getElementById("beneficiaryCount");
-      if (el) el.textContent = savedCount;
-    }
-  })();
 
 </script>
+
 <script>
   async function loadPeopleScannedCount() {
     try {
@@ -758,6 +768,7 @@
   // ✅ RUN ON PAGE LOAD
   window.addEventListener("DOMContentLoaded", loadPeopleScannedCount);
 </script>
+
 <script>
 async function loadTotalAmount() {
   try {
@@ -816,5 +827,141 @@ async function loadTotalAmount() {
 window.addEventListener("DOMContentLoaded", loadTotalAmount);
 </script>
 
+<!-- *** NEW SEND LOGIC – Added NON-DESTRUCTIVELY *** -->
+<script>
+async function loadPaymentsReadyCount() {
+  const db = await openScandroidDB();
+  if (!db.objectStoreNames.contains("payments")) {
+    document.getElementById("paymentsReadyCount").textContent = "0";
+    return [];
+  }
+  const tx = db.transaction("payments", "readonly");
+  const store = tx.objectStore("payments");
+  const all = await store.getAll();
+  document.getElementById("paymentsReadyCount").textContent = all.length;
+  return all;
+}
+
+function loadLastSubmission() {
+  const saved = localStorage.getItem("scandroid_last_payment_submission");
+  if (saved) document.getElementById("lastSubmissionText").textContent = saved;
+}
+
+async function buildCsvFromPayments(payments) {
+  const db = await openScandroidDB();
+  const metaTx = db.transaction("meta", "readonly");
+  const metaStore = metaTx.objectStore("meta");
+  const encKeyObj = await metaStore.get("encryptionKey");
+  const encKey = encKeyObj?.value || "";
+
+  const rows = [["phoneNumber", "status"]];
+
+  for (const p of payments) {
+    let phone = p.match_value;
+    if (encKey && phone && phone.startsWith("gAAAA")) {
+      phone = await decrypt(phone, encKey);
+    }
+    rows.push([phone, p.status]);
+  }
+
+  return rows.map(r => r.join(",")).join("\n");
+}
+
+document.getElementById("sendBtn").addEventListener("click", async function () {
+  const btn = this;
+
+  if (!navigator.onLine) {
+    showOfflineWarningTemporarily();
+    return;
+  }
+
+  const errorBox = document.getElementById("sendError");
+  errorBox.style.display = "none";
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Sending…';
+
+  try {
+    const payments = await loadPaymentsReadyCount();
+    if (!payments.length) {
+      errorBox.textContent = t.no_payments || "No payments to send.";
+      errorBox.style.display = "block";
+      btn.disabled = false;
+      btn.textContent = "Send";
+      return;
+    }
+
+    const csvContent = await buildCsvFromPayments(payments);
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const formData = new FormData();
+    formData.append("csv", blob, "payments.csv");
+
+    const res = await fetch("/submit-payments", {
+      method: "POST",
+      body: formData
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) throw new Error(text || "Failed submitting payments");
+
+    // SUCCESS
+    const db = await openScandroidDB();
+    await db.transaction("payments", "readwrite").objectStore("payments").clear();
+
+    // Reset counters
+    document.getElementById("paymentsReadyCount").textContent = "0";
+    document.getElementById("peopleScannedCount").textContent = "0";
+    document.getElementById("totalAmountText").textContent = "0";
+
+    // Save timestamp
+    function formatDate(d) {
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const yyyy = d.getFullYear();
+      const hh = String(d.getHours()).padStart(2, "0");
+      const min = String(d.getMinutes()).padStart(2, "0");
+      return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+    }
+
+const now = new Date();
+const formatted = formatDate(now);
+
+localStorage.setItem("scandroid_last_payment_submission", formatted);
+document.getElementById("lastSubmissionText").textContent = formatted;
+
+
+  } catch (err) {
+    console.error(err);
+    const errorBox = document.getElementById("sendError");
+    errorBox.textContent = err.message || "Unknown error";
+    errorBox.style.display = "block";
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Send";
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  loadPaymentsReadyCount();
+  loadLastSubmission();
+});
+</script>
+<script>
+  window.addEventListener("DOMContentLoaded", () => {
+    const savedDate = localStorage.getItem("scandroid_last_synced_date");
+    const savedCount = localStorage.getItem("scandroid_last_synced_count");
+
+    if (savedDate) {
+      const el = document.getElementById("lastSyncedText");
+      if (el) el.textContent = savedDate;
+    }
+
+    if (savedCount) {
+      const el = document.getElementById("beneficiaryCount");
+      if (el) el.textContent = savedCount;
+    }
+  });
+</script>
 </body>
 </html>

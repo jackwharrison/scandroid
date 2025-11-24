@@ -1238,6 +1238,41 @@ def system_config_json():
     })
 
 
+def get_121_token():
+    import requests
+    config = load_config()
+
+    username = config.get("username121")
+    password = config.get("password121")
+    base_url = config.get("url121")
+
+    if not username or not password or not base_url:
+        print("❌ Missing 121 credentials in system_config.json")
+        return None
+
+    login_url = f"{base_url}/api/users/login"
+
+    try:
+        resp = requests.post(
+            login_url,
+            json={"username": username, "password": password},
+            timeout=8
+        )
+
+        # Your FSP login returns 201 on success
+        if resp.status_code == 201:
+            token = resp.cookies.get("access_token_general") or resp.cookies.get("access_token")
+            if not token:
+                print("❌ Login succeeded but no token cookie returned")
+                return None
+            return token
+
+        print(f"❌ Login failed ({resp.status_code}): {resp.text}")
+        return None
+
+    except Exception as e:
+        print(f"❌ Error contacting 121 login endpoint: {e}")
+        return None
 
 
 @app.route('/submit-payments', methods=['POST'])
