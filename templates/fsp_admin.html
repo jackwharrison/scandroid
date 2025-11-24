@@ -907,7 +907,15 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
 
     // SUCCESS
     const db = await openScandroidDB();
-    await db.transaction("payments", "readwrite").objectStore("payments").clear();
+    const tx = db.transaction("payments", "readwrite");
+    const store = tx.objectStore("payments");
+
+    for (const p of payments) {
+        if (p.status === "success") {
+            p.status = "submitted";
+            await store.put(p);
+        }
+    }
 
     // Reset counters
     document.getElementById("paymentsReadyCount").textContent = "0";
