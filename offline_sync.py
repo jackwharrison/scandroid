@@ -10,10 +10,9 @@ from cryptography.fernet import Fernet
 config = load_config()
 API_BASE = config["url121"] + "/api"
 KOBO_TOKEN = config["KOBO_TOKEN"]
-KOBO_BASE = "https://kobo.ifrc.org"
+KOBO_BASE = config.get("KOBO_SERVER")
 ASSET_ID = config["ASSET_ID"]
 PROGRAM_ID = config["programId"]
-PAYMENT_ID = config["PAYMENT_ID"]
 ENCRYPTION_KEY = config["ENCRYPTION_KEY"]
 
 # Load display config

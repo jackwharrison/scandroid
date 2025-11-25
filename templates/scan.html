@@ -145,11 +145,12 @@ async function dbCheckAlreadyScanned(db, scannedId) {
       for (const p of list) {
         if (!p) continue;
 
-        if (p.uuid === scannedId && p.status === "success") {
-          console.warn("[PAYMENT CHECK] MATCH — already scanned:", p);
-          resolve(p);
-          return;
+        if (p.uuid === scannedId && (p.status === "success" || p.status === "submitted")) {
+            console.warn("[PAYMENT CHECK] Already processed:", p);
+            resolve(p);
+            return;
         }
+
       }
       resolve(null);
     };

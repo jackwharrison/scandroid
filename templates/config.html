@@ -381,30 +381,7 @@
   }
 
   /* NEW: Get COLUMN_TO_MATCH from 121 API */
-/* NEW: Get COLUMN_TO_MATCH from 121 API */
-  async function loadColumnToMatch() {
-    try {
-      const resp = await fetch("https://chad.121.global/api/programs/2/fsp-configurations");
-      const data = await resp.json();
 
-      let match = null;
-
-      data.forEach(fsp => {
-        (fsp.properties || []).forEach(prop => {
-          if (prop.name === "columnToMatch") {
-            match = prop.value;
-          }
-        });
-      });
-
-      if (match) {
-        document.getElementById("matchField").value = match;
-      }
-
-    } catch (err) {
-      console.error("Failed to load columnToMatch from 121 API:", err);
-    }
-  }
 
 
   document.getElementById('configForm').addEventListener('submit', async e => {
@@ -448,10 +425,10 @@
     else alert('{{ t.failed_to_save }}');
   });
 
-  window.onload = async () => {
-    await loadColumnToMatch();
+  window.onload = () => {
     loadConfig();
   };
+
 </script>
 
 </body>

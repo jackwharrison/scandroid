@@ -284,12 +284,6 @@
 
 <main>
 
-  <!-- online popup unchanged -->
-  <div id="offline-popup" style="display:none;">
-    <button onclick="closeOfflinePopup()" aria-label="Close popup">&times;</button>
-    ⚠️ {{ t.must_be_online }}
-  </div>
-
   <!-- NEW sync info box -->
   <div class="row-box">
     <div class="info-box">
@@ -381,7 +375,6 @@
   // -----------------------------
   document.getElementById("syncBtn").addEventListener("click", async function () {
     if (!navigator.onLine) {
-      showOfflineWarningTemporarily();
       return;
     }
 
@@ -593,13 +586,6 @@
 </script>
 
 <script>
-  function showOfflineWarningTemporarily() {
-    const popup = document.getElementById('offline-popup');
-    popup.style.display = 'block';
-    setTimeout(() => {
-      popup.style.display = 'none';
-    }, 3000);
-  }
 
   const generateCsvBtn = document.getElementById('generateCsvBtn');
   const submitCsvBtn = document.getElementById('submitCsvBtn');
@@ -680,7 +666,6 @@
 
   submitCsvBtn.addEventListener('click', async () => {
     if (!navigator.onLine) {
-      showOfflineWarningTemporarily();
       return;
     }
     if (!cachedCsvBlob) {
@@ -838,8 +823,11 @@ async function loadPaymentsReadyCount() {
   const tx = db.transaction("payments", "readonly");
   const store = tx.objectStore("payments");
   const all = await store.getAll();
-  document.getElementById("paymentsReadyCount").textContent = all.length;
-  return all;
+  const pending = all.filter(p => p.status === "success");
+
+  document.getElementById("paymentsReadyCount").textContent = pending.length;
+  return pending;
+
 }
 
 function loadLastSubmission() {
@@ -871,7 +859,6 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
   const btn = this;
 
   if (!navigator.onLine) {
-    showOfflineWarningTemporarily();
     return;
   }
 
@@ -881,8 +868,10 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Sending…';
 
+  // 🔥 MOVE THIS OUTSIDE TRY: needed by both success + catch
+  const payments = await loadPaymentsReadyCount();
+
   try {
-    const payments = await loadPaymentsReadyCount();
     if (!payments.length) {
       errorBox.textContent = t.no_payments || "No payments to send.";
       errorBox.style.display = "block";
@@ -902,27 +891,24 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     });
 
     const text = await res.text();
-
     if (!res.ok) throw new Error(text || "Failed submitting payments");
 
-    // SUCCESS
+    // SUCCESS → update status = submitted
     const db = await openScandroidDB();
     const tx = db.transaction("payments", "readwrite");
     const store = tx.objectStore("payments");
 
     for (const p of payments) {
-        if (p.status === "success") {
-            p.status = "submitted";
-            await store.put(p);
-        }
+      if (p.status === "success") {
+        p.status = "submitted";
+        await store.put(p);
+      }
     }
 
-    // Reset counters
     document.getElementById("paymentsReadyCount").textContent = "0";
     document.getElementById("peopleScannedCount").textContent = "0";
     document.getElementById("totalAmountText").textContent = "0";
 
-    // Save timestamp
     function formatDate(d) {
       const dd = String(d.getDate()).padStart(2, "0");
       const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -932,17 +918,35 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
       return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
     }
 
-const now = new Date();
-const formatted = formatDate(now);
-
-localStorage.setItem("scandroid_last_payment_submission", formatted);
-document.getElementById("lastSubmissionText").textContent = formatted;
-
+    const now = new Date();
+    const formatted = formatDate(now);
+    localStorage.setItem("scandroid_last_payment_submission", formatted);
+    document.getElementById("lastSubmissionText").textContent = formatted;
 
   } catch (err) {
     console.error(err);
+
+    // FAIL → mark all as submitted anyway
+    const db = await openScandroidDB();
+    const tx = db.transaction("payments", "readwrite");
+    const store = tx.objectStore("payments");
+
+    for (const p of payments) {
+      await store.put({ ...p, status: "submitted" });
+    }
+
+    // FAIL → produce backup CSV
+    const backupCsv = await buildCsvFromPayments(payments);
+    const blob = new Blob([backupCsv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
     const errorBox = document.getElementById("sendError");
-    errorBox.textContent = err.message || "Unknown error";
+    errorBox.innerHTML = `
+      There was a temporary issue sending payments.<br>
+      <a href="${url}" download="payments_backup.csv">
+        Download backup CSV for Chad Red Cross
+      </a>
+    `;
     errorBox.style.display = "block";
   }
 

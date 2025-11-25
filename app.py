@@ -617,7 +617,6 @@ def landing_page():
     lang = request.args.get("lang", "en")
     return render_template("home.html", lang=lang, t=translations.get(lang, translations["en"]))
 
-
 @app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
     # language handling
@@ -625,27 +624,30 @@ def admin_login():
     session["lang"] = lang
     t = translations.get(lang, translations["en"])
 
-    # GET → just show the login page
+    # GET → show login page
     if request.method == "GET":
         return render_template("admin_login.html", lang=lang, t=t, error=None)
 
-    # POST → authenticate against 121 API
+    # POST → authenticate against 121 API using system_config.json
     username = request.form.get("username")
     password = request.form.get("password")
 
-    login_payload = {
-        "username": username,
-        "password": password
-    }
-
-    try:
-        res = requests.post(
-            "https://chad.121.global/api/users/login",
-            json=login_payload,
-            timeout=10
+    config = load_config()
+    base_url = config.get("url121")
+    if not base_url:
+        return render_template(
+            "admin_login.html",
+            lang=lang, t=t,
+            error="❌ Missing url121 in system configuration."
         )
 
-    except Exception as e:
+    login_url = f"{base_url}/api/users/login"
+    login_payload = {"username": username, "password": password}
+
+    try:
+        res = requests.post(login_url, json=login_payload, timeout=10)
+
+    except Exception:
         # API unreachable
         return render_template(
             "admin_login.html",
@@ -660,7 +662,7 @@ def admin_login():
         return redirect(url_for("admin_dashboard", lang=lang))
 
     # ❌ Wrong username/password
-    if res.status_code in (400,401):
+    if res.status_code in (400, 401):
         return render_template(
             "admin_login.html",
             lang=lang,
@@ -675,6 +677,9 @@ def admin_login():
         t=t,
         error=f"Login failed ({res.status_code})."
     )
+
+
+
 @app.route("/admin-dashboard")
 def admin_dashboard():
     lang = request.args.get("lang", "en")
@@ -695,6 +700,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 
+
 @app.route("/system-config", methods=["GET", "POST"])
 def system_config():
     if not session.get("admin_logged_in"):
@@ -705,22 +711,17 @@ def system_config():
 
     # -------------------- POST: Save Config --------------------
     if request.method == "POST":
-        updated_config = {
-            "KOBO_SERVER": request.form.get("KOBO_SERVER", ""),
-            "KOBO_TOKEN": request.form.get("KOBO_TOKEN", ""),
-            "ASSET_ID": request.form.get("ASSET_ID", ""),
-            "PASSWORD": request.form.get("PASSWORD", ""),
-            "url121": request.form.get("url121", ""),
-            "username121": request.form.get("username121", ""),
-            "password121": request.form.get("password121", ""),
-            "programId": request.form.get("programId", ""),
-            "PAYMENT_ID": request.form.get("PAYMENT_ID", ""),
-            "COLUMN_TO_MATCH": request.form.get("COLUMN_TO_MATCH", ""),
-            "ENCRYPTION_KEY": request.form.get("ENCRYPTION_KEY", ""),
+        updated_config = load_config()
 
-            # keep currency stored (even though it's read-only UI)
-            "programCurrency": request.form.get("programCurrency", "")
-        }
+        # Only update fields actually shown/editable in system_config.html
+        keys = [
+            "KOBO_SERVER", "KOBO_TOKEN", "ASSET_ID",
+            "url121", "username121", "password121",
+            "programId", "ENCRYPTION_KEY", "programCurrency"
+        ]
+
+        for key in keys:
+            updated_config[key] = request.form.get(key, updated_config.get(key, ""))
 
         save_config(updated_config)
         flash(t["saved_successfully"])
@@ -729,26 +730,40 @@ def system_config():
     # -------------------- GET: Load Config --------------------
     config = load_config()
 
-    # -------------------- Login to 121 API --------------------
+    # Prevent missing keys from breaking downstream logic
+    def safe_get(key):
+        val = config.get(key)
+        if val is None or val == "":
+            return None
+        return val
+
+    url121 = safe_get("url121")
+    username121 = safe_get("username121")
+    password121 = safe_get("password121")
+    program_id = safe_get("programId")
+
     token = None
-    try:
-        login_payload = {
-            "username": config.get("username121", ""),
-            "password": config.get("password121", "")
-        }
-        login_url = f"{config['url121']}/api/users/login"
-        login_resp = requests.post(login_url, json=login_payload)
-
-        if login_resp.status_code == 201:
-            token = login_resp.json().get("access_token_general")
-    except Exception as e:
-        print("Failed to log in to 121 API:", e)
-
-    # -------------------- Fetch columnToMatch --------------------
     column_to_match_121 = None
-    if token:
+    program_title = None
+    program_currency = config.get("programCurrency", "")
+
+    # -------------------- Login to 121 API (safe) --------------------
+    if url121 and username121 and password121:
         try:
-            fsp_url = f"{config['url121']}/api/programs/{config['programId']}/fsp-configurations"
+            login_payload = {"username": username121, "password": password121}
+            login_url = f"{url121}/api/users/login"
+            login_resp = requests.post(login_url, json=login_payload)
+
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+
+        except Exception as e:
+            print("Failed to log in to 121 API:", e)
+
+    # -------------------- Fetch columnToMatch (B1 auto-save) --------------------
+    if token and program_id:
+        try:
+            fsp_url = f"{url121}/api/programs/{program_id}/fsp-configurations"
             resp = requests.get(fsp_url, cookies={"access_token_general": token})
 
             if resp.status_code == 200:
@@ -756,33 +771,35 @@ def system_config():
                     for prop in fsp.get("properties", []):
                         if prop.get("name") == "columnToMatch":
                             column_to_match_121 = prop.get("value")
-                            break
+
+            # Auto-save (B1)
+            if column_to_match_121:
+                config["COLUMN_TO_MATCH"] = column_to_match_121
+                save_config(config)
+
         except Exception as e:
             print("Failed to fetch columnToMatch:", e)
 
     # -------------------- Fetch Program Title + Currency --------------------
-    program_title = None
-    program_currency = config.get("programCurrency", "")  # fallback
-
-    if token:
+    if token and program_id:
         try:
-            program_url = f"{config['url121']}/api/programs/{config['programId']}"
+            program_url = f"{url121}/api/programs/{program_id}"
             resp = requests.get(program_url, cookies={"access_token_general": token})
 
             if resp.status_code == 200:
                 program_data = resp.json()
-                title_dict = program_data.get("titlePortal", {})
 
-                # title
+                # Title (multilingual)
+                title_dict = program_data.get("titlePortal", {})
                 if lang in title_dict:
                     program_title = title_dict[lang]
                 else:
                     program_title = next(iter(title_dict.values()), "")
 
-                # currency
+                # Currency
                 program_currency = program_data.get("currency", program_currency)
 
-                # save into config so it's persistent
+                # Persist currency
                 config["programCurrency"] = program_currency
                 save_config(config)
 
@@ -795,13 +812,10 @@ def system_config():
         config=config,
         program_title=program_title,
         program_currency=program_currency,
-        column_to_match_121=column_to_match_121,
+        column_to_match_121=column_to_match_121 or config.get("COLUMN_TO_MATCH"),
         lang=lang,
         t=t
     )
-
-
-
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
@@ -859,9 +873,19 @@ def config_page():
     except Exception:
         system_config = {}
 
-    # -------------------- NEW: Fetch COLUMN_TO_MATCH from 121 API --------------------
-    # NEW: Load COLUMN_TO_MATCH from 121 API (token-based login + correct parsing)
+    # -------------------- Fetch COLUMN_TO_MATCH from 121 API --------------------
     column_to_match_121 = None
+
+    # Guard against missing fields (prevents crashes)
+    if not system_config.get("url121") or not system_config.get("programId"):
+        return render_template(
+            "config.html",
+            config=config_data,
+            system_config=system_config,
+            column_to_match_121=system_config.get("COLUMN_TO_MATCH"),
+            lang=lang,
+            t=translations.get(lang, translations["en"])
+        )
 
     try:
         # First: log in to get token
@@ -869,25 +893,29 @@ def config_page():
             "username": system_config.get("username121", ""),
             "password": system_config.get("password121", "")
         }
+
         login_url = f"{system_config['url121']}/api/users/login"
         login_resp = requests.post(login_url, json=login_payload)
 
         if login_resp.status_code == 201:
             token = login_resp.json().get("access_token_general")
 
-            # Now fetch fsp-configurations using cookie auth
+            # Now fetch fsp-configurations
             config_url = f"{system_config['url121']}/api/programs/{system_config['programId']}/fsp-configurations"
             resp = requests.get(config_url, cookies={"access_token_general": token})
 
             if resp.status_code == 200:
-                data = resp.json()
-
-                # CORRECT PARSING: columnToMatch is inside properties[]
-                for fsp in data:
+                for fsp in resp.json():
                     for prop in fsp.get("properties", []):
                         if prop.get("name") == "columnToMatch":
                             column_to_match_121 = prop.get("value")
                             break
+
+        # -------- AUTO-SAVE (B1 behaviour) --------
+        if column_to_match_121:
+            system_config["COLUMN_TO_MATCH"] = column_to_match_121
+            with open("system_config.json", "w", encoding="utf-8") as f:
+                json.dump(system_config, f, ensure_ascii=False, indent=2)
 
     except Exception as e:
         print("Error loading columnToMatch:", e)
@@ -898,15 +926,12 @@ def config_page():
         "config.html",
         config=config_data,
         system_config=system_config,
-        column_to_match_121=column_to_match_121,  # <<< IMPORTANT
+        column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
         lang=lang,
         t=translations.get(lang, translations["en"])
     )
 
 
-@app.route("/")
-def home():
-    return redirect("/login")
 
 
 @app.route("/logout")
@@ -916,123 +941,18 @@ def logout():
     return redirect(url_for("login", lang=lang))
 
 
-@app.route("/update_status", methods=["POST"])
-def update_status():
-    import csv
-    import io
-    from datetime import datetime
-    import os
-
-    config = load_config()
-    ben_id = request.form.get("id")
-    status = request.form.get("status")
-    rejection_reason = request.form.get("rejection_reason", "")
-    lang = request.form.get("lang", "en")
-
-    column_to_match = config.get("COLUMN_TO_MATCH", "phoneNumber")
-    payment_id = config.get("PAYMENT_ID")
-    program_id = config.get("programId")
-
-    if not payment_id or not program_id:
-        flash("Missing Payment ID or Program ID in system config", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    # Step 1: Get Kobo UUID
-    headers = {"Authorization": f"Token {config['KOBO_TOKEN']}"}
-    kobo_resp = requests.get(
-        f"https://kobo.ifrc.org/api/v2/assets/{config['ASSET_ID']}/data/{ben_id}/?format=json", 
-        headers=headers
-    )
-    if kobo_resp.status_code != 200:
-        flash("Could not retrieve data from Kobo", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    kobo_data = kobo_resp.json()
-    uuid = kobo_data.get("_uuid")
-    if not uuid:
-        flash("UUID not found in Kobo record", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    # Step 2: Get payment transactions
-    token = get_121_token()
-    if not token:
-        flash("Login to 121 failed", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    tx_url = f"{config['url121']}/api/programs/{program_id}/payments/{payment_id}/transactions"
-    tx_resp = requests.get(tx_url, cookies={"access_token_general": token})
-    if tx_resp.status_code != 200:
-        flash(f"Failed to fetch transactions: {tx_resp.text}", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    transactions = tx_resp.json()
-    tx = next((t for t in transactions if t.get("registrationReferenceId") == uuid), None)
-    if not tx:
-        flash("No transaction found for this beneficiary in the payment", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    registration_id = tx.get("registrationId")
-    if not registration_id:
-        flash("No registrationId found in matching transaction", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    # Step 3: Get full registration using ID (numeric)
-    reg_url = f"{config['url121']}/api/programs/{program_id}/registrations/{registration_id}"
-    reg_resp = requests.get(reg_url, cookies={"access_token_general": token})
-    if reg_resp.status_code != 200:
-        flash(f"Could not fetch registration details: {reg_resp.text}", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    registration = reg_resp.json()
-    match_value = registration.get(column_to_match)
-    if not match_value:
-        flash(f"Field '{column_to_match}' not found in registration", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
-    # Step 4: Build reconciliation CSV
-    status_value = "success" if status == "Payment Approved" else "error"
-    csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=[column_to_match, "status"])
-    writer.writeheader()
-    writer.writerow({column_to_match: match_value, "status": status_value})
-
-    # Step 5: Upload to reconciliation endpoint
-    upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{payment_id}/excel-reconciliation"
-    files = {"file": ("reconciliation.csv", csv_buffer.getvalue(), "text/csv")}
-    upload_resp = requests.post(upload_url, files=files, cookies={"access_token_general": token})
-
-    # Step 6: Log result
-    log_row = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "beneficiary_id": ben_id,
-        "uuid": uuid,
-        "match_column": column_to_match,
-        "match_value": match_value,
-        "status": status,
-        "rejection_reason": rejection_reason,
-        "success": upload_resp.status_code == 201
-    }
-
-    log_exists = os.path.exists("reconciliation_log.csv")
-    with open("reconciliation_log.csv", "a", newline='', encoding="utf-8") as log_file:
-        writer = csv.DictWriter(log_file, fieldnames=log_row.keys())
-        if not log_exists:
-            writer.writeheader()
-        writer.writerow(log_row)
-
-    if upload_resp.status_code == 201:
-        return redirect(f"/success?lang={lang}")
-    else:
-        flash(f"Reconciliation upload failed: {upload_resp.text}", "error")
-        return redirect(f"/beneficiary?id={ben_id}&lang={lang}")
-
 @app.route("/fsp-login", methods=["GET", "POST"])
 def fsp_login():
-    import requests
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
-
     error = None
+
+    config = load_config()
+    base_url = config.get("url121")
+    if not base_url:
+        return render_template("fsp_login.html", lang=lang, t=t, error="❌ Missing url121")
+
+    login_url = f"{base_url}/api/users/login"
 
     if request.method == "POST":
         username = request.form.get("username")
@@ -1040,7 +960,7 @@ def fsp_login():
 
         try:
             res = requests.post(
-                "https://chad.121.global/api/users/login",
+                login_url,
                 json={"username": username, "password": password},
                 timeout=8
             )
@@ -1049,8 +969,8 @@ def fsp_login():
                 session["fsp_logged_in"] = True
                 return redirect(url_for("fsp_admin", lang=lang))
 
-            elif res.status_code == 400:
-                error = t["login_error"]  # "Incorrect username or password"
+            elif res.status_code in (400, 401):
+                error = t["login_error"]
 
             else:
                 error = f"Login failed ({res.status_code})."
@@ -1211,7 +1131,10 @@ def beneficiary_offline():
     # pass Fernet key for client-side decrypt when we add it
     config = load_config()
     enc_key = config.get("ENCRYPTION_KEY", "")
-    column_to_match = config.get("COLUMN_TO_MATCH", "phoneNumber")
+    column_to_match = config.get("COLUMN_TO_MATCH")
+    if not column_to_match:
+        raise ValueError("❌ COLUMN_TO_MATCH missing in system_config.json")
+
 
     return render_template(
         "beneficiary_offline.html",
@@ -1233,21 +1156,23 @@ def success_offline():
 @app.route("/system-config.json")
 def system_config_json():
     config = load_config()
-    return jsonify({
-        "COLUMN_TO_MATCH": config.get("COLUMN_TO_MATCH", "phoneNumber")
-    })
+    column = config.get("COLUMN_TO_MATCH")
+    if not column:
+        return jsonify({"error": "COLUMN_TO_MATCH missing"}), 500
+
+    return jsonify({"COLUMN_TO_MATCH": column})
+
 
 
 def get_121_token():
     import requests
     config = load_config()
-
     username = config.get("username121")
     password = config.get("password121")
     base_url = config.get("url121")
 
     if not username or not password or not base_url:
-        print("❌ Missing 121 credentials in system_config.json")
+        print("❌ Missing 121 credentials")
         return None
 
     login_url = f"{base_url}/api/users/login"
@@ -1259,19 +1184,20 @@ def get_121_token():
             timeout=8
         )
 
-        # Your FSP login returns 201 on success
-        if resp.status_code == 201:
-            token = resp.cookies.get("access_token_general") or resp.cookies.get("access_token")
-            if not token:
-                print("❌ Login succeeded but no token cookie returned")
-                return None
-            return token
+        if resp.status_code != 201:
+            print(f"❌ Login failed ({resp.status_code}): {resp.text}")
+            return None
 
-        print(f"❌ Login failed ({resp.status_code}): {resp.text}")
-        return None
+        # 121 API returns token in JSON (correct behaviour)
+        token = resp.json().get("access_token_general")
+        if not token:
+            print("❌ Login succeeded but no token returned")
+            return None
+
+        return token
 
     except Exception as e:
-        print(f"❌ Error contacting 121 login endpoint: {e}")
+        print(f"❌ 121 API error: {e}")
         return None
 
 
@@ -1354,7 +1280,8 @@ def submit_payments():
     for record in reg_data:
         uuid = record.get("uuid")
         payment_id = record.get("paymentId")  # Make sure this exists in each record during sync!
-        encrypted_phone = record.get("data", {}).get("phoneNumber", "")
+        column_to_match = config.get("COLUMN_TO_MATCH")
+        encrypted_phone = record.get("data", {}).get(column_to_match, "")
         if encrypted_phone and payment_id:
             try:
                 decrypted_phone = fernet.decrypt(encrypted_phone.encode()).decode().strip()
@@ -1365,7 +1292,8 @@ def submit_payments():
     # --- Group rows by paymentId ---
     grouped = {}
     for row in rows:
-        phone = row.get('phoneNumber', '').strip()
+        column_to_match = config.get("COLUMN_TO_MATCH")
+        phone = row.get(column_to_match, '').strip()
         status = row.get('status', '').strip()
 
         if phone.startswith("gAAAA"):
