@@ -400,7 +400,7 @@ async function handleDecision(status) {
       return;
     }
 
-    const columnKey = COLUMN_TO_MATCH || "phoneNumber";
+    const columnKey = COLUMN_TO_MATCH || "";
     const matchValue = rec.data?.[columnKey] || "";
 
 
