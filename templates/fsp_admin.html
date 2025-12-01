@@ -27,7 +27,6 @@
       min-height: 100vh;
     }
 
-    /* ---------- HEADER ---------- */
     header {
       background-color: #ffffff;
       padding: 16px 24px;
@@ -90,7 +89,6 @@
       background-color: #b91c1c;
     }
 
-    /* Online/Offline indicator */
     .status-pill {
       display:inline-flex;
       align-items:center;
@@ -108,7 +106,6 @@
       background:#fdecec; color:#842029; border-color:#f5c2c7;
     }
 
-    /* ---------- MAIN ---------- */
     main {
       flex-grow: 1;
       padding: 24px 16px 40px 16px;
@@ -118,20 +115,6 @@
       gap: 24px;
     }
 
-    /* last synced card */
-    .last-synced-card {
-      background: #ffffff;
-      padding: 10px 14px;
-      border-radius: 12px;
-      max-width: 520px;
-      width: 100%;
-      box-shadow: var(--shadow-soft);
-      border: 1px solid var(--line);
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-
-    /* NEW rows for Sync + Scan */
     .row-box {
       max-width: 520px;
       width: 100%;
@@ -161,9 +144,10 @@
       font-size: 0.9rem;
     }
 
-    /* Original button styles preserved */
-    #syncBtn, #scanBtn {
-      display: inline-block;
+    #syncBtn, #scanBtn, #sendBtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       padding: 12px 20px;
       font-size: 1rem;
       font-weight: 700;
@@ -180,7 +164,6 @@
       color: #fff;
     }
     #syncBtn:hover:not(:disabled) { background:#1e40af; transform:translateY(-1px); }
-    #syncBtn:disabled { opacity:0.8; cursor:not-allowed; }
 
     #scanBtn {
       background-color:#16a34a;
@@ -188,57 +171,11 @@
     }
     #scanBtn:hover { background:#15803d; transform:translateY(-1px); }
 
-    /* spinner */
-    .spinner {
-      border: 3px solid #e5e7eb;
-      border-top: 3px solid #ffffff;
-      border-radius: 50%;
-      width: 16px;
-      height: 16px;
-      animation: spin 0.8s linear infinite;
-      display: inline-block;
-      vertical-align: middle;
-      margin-right: 8px;
-    }
-
-    @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
-
-    /* payments section unchanged */
-    .sync-section {
-      background: var(--card);
-      padding: 24px 20px;
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-soft);
-      max-width: 520px;
-      width: 100%;
-      border: 1px solid var(--line);
-    }
-
-    /* NEW for Send Card – fully additive */
     #sendBtn {
       background-color:#be185d;
       color:white;
-      padding:12px 20px;
-      font-size:1rem;
-      font-weight:700;
-      border:none;
-      border-radius:14px;
-      cursor:pointer;
-      white-space:nowrap;
-      box-shadow:var(--shadow-soft);
-      transition:transform 0.05s ease, box-shadow 0.1s ease, background-color 0.1s ease;
     }
-    #sendBtn:hover:not(:disabled) { background:#9d174d; transform:translateY(-1px); }
-
-    .error-box {
-      margin-top: 8px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: #fdecec;
-      color: #842029;
-      border: 1px solid #f5c2c7;
-      font-size: 0.9rem;
-    }
+    #sendBtn:hover { background:#9d174d; transform:translateY(-1px); }
 
     footer {
       display: flex;
@@ -249,6 +186,39 @@
       border-top: 1px solid #e5e7eb;
       flex-wrap: wrap;
     }
+    #syncBtn img,
+    #scanBtn img,
+    #sendBtn img {
+      height: 20px;
+      filter: invert(1);
+    }
+    /* --- Spinner animation --- */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255,255,255,0.6);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Button loading state */
+    .btn-loading {
+      opacity: 0.8;
+      pointer-events: none;
+      transform: none !important;
+    }
+
+    .btn-loading img {
+      opacity: 0.3; /* keep SVG but fade slightly */
+    }
+
+
+
   </style>
 </head>
 
@@ -281,10 +251,9 @@
   </div>
 </header>
 
-
 <main>
 
-  <!-- NEW sync info box -->
+  <!-- SYNC BLOCK -->
   <div class="row-box">
     <div class="info-box">
       <div class="info-title">
@@ -297,10 +266,13 @@
       </div>
     </div>
 
-    <button id="syncBtn">Sync</button>
+    <button id="syncBtn">
+      <img src="{{ url_for('static', filename='icons/sync.svg') }}" alt="" style="height:20px;">
+      Sync
+    </button>
   </div>
 
-  <!-- NEW scan info box -->
+  <!-- SCAN BLOCK -->
   <div class="row-box">
     <div class="info-box">
       <div class="info-title">
@@ -314,15 +286,12 @@
     </div>
 
     <button id="scanBtn" onclick="location.href='/scan?lang={{ lang }}'">
-    Scan
+      <img src="{{ url_for('static', filename='icons/scan.svg') }}" alt="" style="height:20px;">
+      Scan
     </button>
   </div>
 
-  <!-- REMOVE NOTHING ABOVE THIS POINT -->
-  <div id="statusMessage" style="display:none;"></div>
-
- 
-  <!-- *** NEW SEND CARD INSERTED HERE (Option A) *** -->
+  <!-- SEND BLOCK -->
   <div class="row-box">
     <div class="info-box">
       <div class="info-title">
@@ -338,10 +307,11 @@
       <div id="sendError" class="error-box" style="display:none;"></div>
     </div>
 
-    <button id="sendBtn">Send</button>
+    <button id="sendBtn">
+      <img src="{{ url_for('static', filename='icons/send.svg') }}" alt="" style="height:20px;">
+      Send
+    </button>
   </div>
-
-  <!-- ORIGINAL CSV EXPORT SECTION UNTOUCHED -->
 
 </main>
 
@@ -349,7 +319,6 @@
   <div class="footer-left">{{ t.footer_dev }}</div>
   <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
-
 
 <script>
   // JINJA TEMPLATE VARIABLE
@@ -365,6 +334,9 @@
 <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
 <!-- ZIP helper -->
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+  const COLUMN_TO_MATCH = "{{ COLUMN_TO_MATCH }}";
+</script>
 
 <script>
   const ONLINE_TEXT = "{{ t.online or 'Online' }}";
@@ -374,15 +346,22 @@
   // UPDATED SYNC BUTTON HANDLER
   // -----------------------------
   document.getElementById("syncBtn").addEventListener("click", async function () {
-    if (!navigator.onLine) {
-      return;
-    }
+    if (!navigator.onLine) return;
 
     const btn = this;
     const statusDiv = document.getElementById("statusMessage");
 
+    // Store original button content (SVG + text)
+    const originalHTML = btn.innerHTML;
+
+    // Visual loading state
+    btn.classList.add("btn-loading");
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Syncing…';
+
+    btn.innerHTML = `
+      ${originalHTML}
+      <div class="spinner" style="margin-left:6px;"></div>
+    `;
 
     try {
       const syncRes = await fetch("/sync-fsp?lang={{ lang }}");
@@ -398,16 +377,15 @@
 
       statusDiv && (statusDiv.textContent = "✅ " + finalMessage);
 
+      // Timestamp
       const now = new Date();
-      function formatDate(d) {
-        const dd = String(d.getDate()).padStart(2, "0");
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const yyyy = d.getFullYear();
-        const hh = String(d.getHours()).padStart(2, "0");
-        const min = String(d.getMinutes()).padStart(2, "0");
-        return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
-      }
-      const formatted = formatDate(now);
+      const formatted = now.toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
 
       const lastSyncedEl = document.getElementById("lastSyncedText");
       const readyCountEl = document.getElementById("beneficiaryCount");
@@ -423,8 +401,10 @@
       statusDiv && (statusDiv.textContent = "❌ Failed to sync & import. Please try again.");
     }
 
+    // Restore original button content
+    btn.innerHTML = originalHTML;
+    btn.classList.remove("btn-loading");
     btn.disabled = false;
-    btn.textContent = "Sync";
   });
 
   // Service worker
@@ -723,32 +703,28 @@
 <script>
   async function loadPeopleScannedCount() {
     try {
-      const dbReq = indexedDB.open("scandroid");
+      const db = await openScandroidDB();
 
-      dbReq.onsuccess = function () {
-        const db = dbReq.result;
+      if (!db.objectStoreNames.contains("payments")) {
+        document.getElementById("peopleScannedCount").textContent = "0";
+        return;
+      }
 
-        if (!db.objectStoreNames.contains("payments")) {
-          document.getElementById("peopleScannedCount").textContent = "0";
-          return;
-        }
+      const tx = db.transaction("payments", "readonly");
+      const store = tx.objectStore("payments");
+      const all = await store.getAll();
 
-        const tx = db.transaction("payments", "readonly");
-        const store = tx.objectStore("payments");
-        const countReq = store.count();
+      // Count ONLY pending, not submitted
+      const count = all.filter(p => p.status === "success").length;
 
-        countReq.onsuccess = function () {
-          document.getElementById("peopleScannedCount").textContent =
-            countReq.result;
-        };
-      };
+      document.getElementById("peopleScannedCount").textContent = count;
 
-      dbReq.onerror = () =>
-        (document.getElementById("peopleScannedCount").textContent = "0");
-    } catch {
+    } catch (err) {
+      console.error("peopleScannedCount error:", err);
       document.getElementById("peopleScannedCount").textContent = "0";
     }
   }
+
 
   // ✅ RUN ON PAGE LOAD
   window.addEventListener("DOMContentLoaded", loadPeopleScannedCount);
@@ -757,51 +733,39 @@
 <script>
 async function loadTotalAmount() {
   try {
-    const req = indexedDB.open("scandroid");
+    const db = await openScandroidDB();
 
-    req.onsuccess = () => {
-      const db = req.result;
+    if (!db.objectStoreNames.contains("transaction") ||
+        !db.objectStoreNames.contains("payments")) {
+      document.getElementById("totalAmountText").textContent = "0";
+      return;
+    }
 
-      // Ensure stores exist
-      if (!db.objectStoreNames.contains("transaction") ||
-          !db.objectStoreNames.contains("payments")) {
-        document.getElementById("totalAmountText").textContent = "0";
-        return;
+    // 1. Load only "success" (pending) scanned beneficiaries
+    const payTx = db.transaction("payments", "readonly");
+    const payStore = payTx.objectStore("payments");
+    const allPayments = await payStore.getAll();
+    const pending = allPayments.filter(p => p.status === "success");
+
+    const scannedSet = new Set(pending.map(x => x.uuid));
+
+    // 2. Load all transactions
+    const tx = db.transaction("transaction", "readonly");
+    const store = tx.objectStore("transaction");
+    const transactions = await store.getAll();
+
+    // 3. Sum ONLY amounts of beneficiaries that are still pending
+    let total = 0;
+    for (const t of transactions) {
+      if (scannedSet.has(t.uuid)) {
+        total += t.amount || 0;
       }
+    }
 
-      // 1. Load scanned beneficiaries (payments store)
-      const payTx = db.transaction("payments", "readonly");
-      const payStore = payTx.objectStore("payments");
-      const scannedReq = payStore.getAll();
-
-      scannedReq.onsuccess = () => {
-        const scanned = scannedReq.result || [];
-        const scannedSet = new Set(scanned.map(x => x.uuid));
-
-        // 2. Load all transactions
-        const tx = db.transaction("transaction", "readonly");
-        const store = tx.objectStore("transaction");
-        const getAllReq = store.getAll();
-
-        getAllReq.onsuccess = () => {
-          const items = getAllReq.result || [];
-
-          // 3. SUM ONLY IF UUID WAS SCANNED
-          let total = 0;
-          for (const t of items) {
-            if (scannedSet.has(t.uuid)) {
-              total += t.amount || 0;
-            }
-          }
-
-          document.getElementById("totalAmountText").textContent =
-              PROGRAM_CURRENCY
-                ? total.toLocaleString() + " " + PROGRAM_CURRENCY
-                : total.toLocaleString();
-
-        };
-      };
-    };
+    document.getElementById("totalAmountText").textContent =
+      PROGRAM_CURRENCY
+        ? total.toLocaleString() + " " + PROGRAM_CURRENCY
+        : total.toLocaleString();
 
   } catch (e) {
     console.error("Total amount calc error:", e);
@@ -810,6 +774,7 @@ async function loadTotalAmount() {
 }
 
 window.addEventListener("DOMContentLoaded", loadTotalAmount);
+
 </script>
 
 <!-- *** NEW SEND LOGIC – Added NON-DESTRUCTIVELY *** -->
@@ -842,14 +807,17 @@ async function buildCsvFromPayments(payments) {
   const encKeyObj = await metaStore.get("encryptionKey");
   const encKey = encKeyObj?.value || "";
 
-  const rows = [["phoneNumber", "status"]];
+  // 🔥 Use the correct match column name from config
+  const rows = [[COLUMN_TO_MATCH, "status"]];
 
   for (const p of payments) {
-    let phone = p.match_value;
-    if (encKey && phone && phone.startsWith("gAAAA")) {
-      phone = await decrypt(phone, encKey);
+    let matchValue = p.match_value;
+
+    if (encKey && matchValue && matchValue.startsWith("gAAAA")) {
+      matchValue = await decrypt(matchValue, encKey);
     }
-    rows.push([phone, p.status]);
+
+    rows.push([matchValue, p.status]);
   }
 
   return rows.map(r => r.join(",")).join("\n");
@@ -858,25 +826,32 @@ async function buildCsvFromPayments(payments) {
 document.getElementById("sendBtn").addEventListener("click", async function () {
   const btn = this;
 
-  if (!navigator.onLine) {
-    return;
-  }
+  if (!navigator.onLine) return;
 
   const errorBox = document.getElementById("sendError");
   errorBox.style.display = "none";
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Sending…';
+  // Save original HTML (SVG + “Send”)
+  const originalHTML = btn.innerHTML;
 
-  // 🔥 MOVE THIS OUTSIDE TRY: needed by both success + catch
+  // Loading state
+  btn.classList.add("btn-loading");
+  btn.disabled = true;
+
+  btn.innerHTML = `
+    ${originalHTML}
+    <div class="spinner" style="margin-left:6px;"></div>
+  `;
+
   const payments = await loadPaymentsReadyCount();
 
   try {
     if (!payments.length) {
       errorBox.textContent = t.no_payments || "No payments to send.";
       errorBox.style.display = "block";
+      btn.classList.remove("btn-loading");
       btn.disabled = false;
-      btn.textContent = "Send";
+      btn.innerHTML = originalHTML;
       return;
     }
 
@@ -905,59 +880,38 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
       }
     }
 
+    // Update counters
     document.getElementById("paymentsReadyCount").textContent = "0";
     document.getElementById("peopleScannedCount").textContent = "0";
     document.getElementById("totalAmountText").textContent = "0";
 
-    function formatDate(d) {
-      const dd = String(d.getDate()).padStart(2, "0");
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const yyyy = d.getFullYear();
-      const hh = String(d.getHours()).padStart(2, "0");
-      const min = String(d.getMinutes()).padStart(2, "0");
-      return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
-    }
-
+    // Update last submission timestamp
     const now = new Date();
-    const formatted = formatDate(now);
+    const formatted = now.toLocaleString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+
     localStorage.setItem("scandroid_last_payment_submission", formatted);
     document.getElementById("lastSubmissionText").textContent = formatted;
 
   } catch (err) {
     console.error(err);
-
-    // FAIL → mark all as submitted anyway
-    const db = await openScandroidDB();
-    const tx = db.transaction("payments", "readwrite");
-    const store = tx.objectStore("payments");
-
-    for (const p of payments) {
-      await store.put({ ...p, status: "submitted" });
-    }
-
-    // FAIL → produce backup CSV
-    const backupCsv = await buildCsvFromPayments(payments);
-    const blob = new Blob([backupCsv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-
-    const errorBox = document.getElementById("sendError");
-    errorBox.innerHTML = `
-      There was a temporary issue sending payments.<br>
-      <a href="${url}" download="payments_backup.csv">
-        Download backup CSV for Chad Red Cross
-      </a>
-    `;
+    errorBox.textContent =
+      "❌ Failed to send payments — records left unchanged for debugging.";
     errorBox.style.display = "block";
   }
 
+  // Restore original button
+  btn.classList.remove("btn-loading");
   btn.disabled = false;
-  btn.textContent = "Send";
+  btn.innerHTML = originalHTML;
 });
 
-window.addEventListener("DOMContentLoaded", () => {
-  loadPaymentsReadyCount();
-  loadLastSubmission();
-});
+
 </script>
 <script>
   window.addEventListener("DOMContentLoaded", () => {
