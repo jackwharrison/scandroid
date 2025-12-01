@@ -16,8 +16,8 @@ PROGRAM_ID = config["programId"]
 ENCRYPTION_KEY = config["ENCRYPTION_KEY"]
 
 # Load display config
-with open("display_config.json", "r", encoding="utf-8") as f:
-    display_config = json.load(f)
+from config_loader import load_display_config
+display_config = load_display_config()
 
 FIELD_KEYS = [field["key"] for field in display_config.get("fields", [])]
 PHOTO_FIELD_NAME = display_config.get("photo", {}).get("field_name", "photo")
