@@ -34,5 +34,5 @@
       "ar": "صورة"
     }
   },
-  "COLUMN_TO_MATCH": "phoneNumber"
+  "COLUMN_TO_MATCH": "identifier"
 }

@@ -189,6 +189,9 @@ def download_cache(program_id, payment_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
+        match_key = display_config.get("COLUMN_TO_MATCH")
+        if match_key:
+            filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
 
         photo_filename = f"{uuid}.enc"
@@ -367,6 +370,9 @@ def download_recent_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
+        match_key = display_config.get("COLUMN_TO_MATCH")
+        if match_key:
+            filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
 
         photo_filename = f"{uuid}.enc"

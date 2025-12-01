@@ -452,12 +452,23 @@ async function savePaymentDecision(decisionValue) {
       return;
     }
 
-    const matchValue = rec.data?.[columnToMatch] || "";
+    let matchValueRaw = rec.data?.[columnToMatch] || "";
 
-    if (!matchValue) {
+    if (!matchValueRaw) {
       alert(`Cannot find value for column "${columnToMatch}".`);
       return;
     }
+
+    // 🔥 NEW: decrypt if encrypted
+    let matchValue = matchValueRaw;
+    if (looksEncrypted(matchValueRaw) && SERVER_FERNET_KEY) {
+      try {
+        matchValue = await fernetDecryptString(matchValueRaw, SERVER_FERNET_KEY);
+      } catch (err) {
+        console.warn("⚠️ Could not decrypt match column; using raw value:", err);
+      }
+    }
+
 
 let paymentsStoreExists = db.objectStoreNames.contains("payments");
 if (!paymentsStoreExists) {

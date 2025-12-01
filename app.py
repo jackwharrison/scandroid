@@ -989,16 +989,21 @@ def fsp_admin():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
-    # 🔥 LOAD system_config.json
+    # Load system config
     config = load_config()
 
-    # 🔥 PASS config to template
+    # ✔ Load display_config.json here
+    with open("display_config.json", "r", encoding="utf-8") as f:
+        display_config = json.load(f)
+
     return render_template(
         "fsp_admin.html",
+        COLUMN_TO_MATCH=display_config["COLUMN_TO_MATCH"],
         lang=lang,
         t=t,
         config=config
     )
+
 
 
 @app.route("/sync-fsp")
@@ -1210,23 +1215,28 @@ def submit_payments():
     from datetime import datetime
     from cryptography.fernet import Fernet
 
+    # Load config
     config = load_config()
     program_id = config.get("programId")
+    column_to_match = config.get("COLUMN_TO_MATCH")
     fernet_key = config.get("ENCRYPTION_KEY")
 
     if not program_id:
         return "❌ Missing programId in system_config.json", 400
 
+    if not column_to_match:
+        return "❌ Missing COLUMN_TO_MATCH in display_config.json", 400
+
     if not fernet_key:
         return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
 
-    # Set up decryption
+    # Fernet decryptor
     try:
         fernet = Fernet(fernet_key.encode())
     except Exception as e:
         return f"❌ Invalid Fernet key: {e}", 400
 
-    # Get uploaded file
+    # Get uploaded CSV file
     if 'csv' not in request.files:
         return "❌ No CSV file provided", 400
 
@@ -1245,12 +1255,12 @@ def submit_payments():
     if not rows:
         return "❌ CSV is empty", 400
 
-    # --- Locate latest cache and read batch_info.json ---
-    # --- Load latest batch and build phone -> paymentId map ---
+    # -------------------------------
+    # LOAD OFFLINE CACHE FOR PAYMENT MAPPING
+    # -------------------------------
     cache_base = "offline-cache"
 
     import re
-
     def extract_batch_number(name):
         match = re.search(r"payment-recent-batch-(\d+)", name)
         return int(match.group(1)) if match else -1
@@ -1276,44 +1286,58 @@ def submit_payments():
     except Exception as e:
         return f"❌ Failed to load registrations_cache.json — {e}", 500
 
-    phone_to_pid = {}
+    # -------------------------------
+    # BUILD MAP: plaintext match column → paymentId
+    # -------------------------------
+    match_to_pid = {}
+
     for record in reg_data:
         uuid = record.get("uuid")
-        payment_id = record.get("paymentId")  # Make sure this exists in each record during sync!
-        column_to_match = config.get("COLUMN_TO_MATCH")
-        encrypted_phone = record.get("data", {}).get(column_to_match, "")
-        if encrypted_phone and payment_id:
-            try:
-                decrypted_phone = fernet.decrypt(encrypted_phone.encode()).decode().strip()
-                phone_to_pid[decrypted_phone] = payment_id
-            except Exception as e:
-                print(f"[!] Failed to decrypt phone for UUID {uuid}: {e}")
+        payment_id = record.get("paymentId")
 
-    # --- Group rows by paymentId ---
+        encrypted_value = record.get("data", {}).get(column_to_match, "")
+
+        if encrypted_value and payment_id:
+            try:
+                decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
+                match_to_pid[decrypted_value] = payment_id
+            except Exception as e:
+                print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+
+    # -------------------------------
+    # GROUP CSV ROWS BY paymentId
+    # -------------------------------
     grouped = {}
-    for row in rows:
-        column_to_match = config.get("COLUMN_TO_MATCH")
-        phone = row.get(column_to_match, '').strip()
-        status = row.get('status', '').strip()
 
-        if phone.startswith("gAAAA"):
+    for row in rows:
+        raw_value = row.get(column_to_match, "").strip()
+        status = row.get("status", "").strip()
+
+        # If incoming value is still encrypted (rare)
+        if raw_value.startswith("gAAAA"):
             try:
-                phone = fernet.decrypt(phone.encode()).decode().strip()
+                raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
             except Exception as e:
-                print(f"[!] Failed to decrypt incoming phoneNumber: {phone} — {e}")
+                print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
                 continue
 
-        payment_id = phone_to_pid.get(phone)
+        payment_id = match_to_pid.get(raw_value)
+
         if not payment_id:
-            print(f"[!] No paymentId found for phoneNumber: {phone}")
+            print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
             continue
 
-        grouped.setdefault(payment_id, []).append({"phoneNumber": phone, "status": status})
+        grouped.setdefault(payment_id, []).append({
+            column_to_match: raw_value,
+            "status": status
+        })
 
     if not grouped:
         return "❌ No valid rows to submit — check your CSV and sync data.", 400
 
-    # --- Submit to 121 by paymentId ---
+    # -------------------------------
+    # SUBMIT TO 121 /paymentId/excel-reconciliation
+    # -------------------------------
     token = get_121_token()
     if not token:
         return "❌ Login to 121 failed", 401
@@ -1323,13 +1347,19 @@ def submit_payments():
 
     for pid, items in grouped.items():
         output_buffer = io.StringIO()
-        writer = csv.DictWriter(output_buffer, fieldnames=["phoneNumber", "status"])
+        writer = csv.DictWriter(output_buffer, fieldnames=[column_to_match, "status"])
         writer.writeheader()
+
         for item in items:
-            writer.writerow(item)
+            writer.writerow({
+                column_to_match: item[column_to_match],
+                "status": item["status"]
+            })
 
         upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
+
         files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+
         upload_resp = requests.post(upload_url, files=files, cookies={"access_token_general": token})
 
         if upload_resp.status_code == 201:
@@ -1339,10 +1369,14 @@ def submit_payments():
             fail_count += 1
             print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
 
+    # -------------------------------
+    # FINAL RESPONSE
+    # -------------------------------
     if success_count > 0:
         return f"✅ Submitted to {success_count} paymentId(s). ❌ {fail_count} failed.", 200
     else:
         return "❌ All submissions failed.", 500
+
 
 @app.route("/invalid-qr")
 def invalid_qr():
