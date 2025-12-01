@@ -31,6 +31,14 @@
         "fr": "hello",
         "ar": "hello"
       }
+    },
+    {
+      "key": "income_source",
+      "labels": {
+        "en": "income_source",
+        "fr": "income_source",
+        "ar": "income_source"
+      }
     }
   ],
   "photo": {
@@ -41,6 +49,5 @@
       "fr": "Photo",
       "ar": "صورة"
     }
-  },
-  "COLUMN_TO_MATCH": "identifier"
+  }
 }
