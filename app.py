@@ -828,6 +828,7 @@ def config_page():
     # -------------------- POST (save) --------------------
     if request.method == "POST":
         config_data = request.get_json()
+        config_data.pop("COLUMN_TO_MATCH", None)
         try:
             save_display_config(config_data)
             return jsonify({"success": True})
