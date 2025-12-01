@@ -993,17 +993,21 @@ def fsp_admin():
     t = translations.get(lang, translations["en"])
 
     # Load system config
-    config = load_config()
+    system_config = load_config()
 
-    # ✔ Load display_config.json here
+    # Load display fields config
     display_config = load_display_config()
+
+    # COLUMN_TO_MATCH now lives ONLY in system_config.json
+    column_to_match = system_config.get("COLUMN_TO_MATCH")
 
     return render_template(
         "fsp_admin.html",
-        COLUMN_TO_MATCH=display_config["COLUMN_TO_MATCH"],
+        COLUMN_TO_MATCH=column_to_match,
+        display_config=display_config,
         lang=lang,
         t=t,
-        config=config
+        config=system_config
     )
 
 
