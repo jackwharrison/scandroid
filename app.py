@@ -18,6 +18,7 @@ from flask_session import Session
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from openpyxl import load_workbook
+from config_loader import load_display_config, save_display_config
 
 # Register a Unicode-safe font
 pdfmetrics.registerFont(TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf")))
@@ -828,8 +829,7 @@ def config_page():
     if request.method == "POST":
         config_data = request.get_json()
         try:
-            with open("display_config.json", "w", encoding="utf-8") as f:
-                json.dump(config_data, f, ensure_ascii=False, indent=2)
+            save_display_config(config_data)
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
@@ -838,9 +838,9 @@ def config_page():
 
     # Load display config JSON
     try:
-        with open("display_config.json", "r", encoding="utf-8") as f:
-            config_data = json.load(f)
+        config_data = load_display_config()
 
+        # If the old format (just a list) is detected, convert to new structure
         if isinstance(config_data, list):
             config_data = {
                 "fields": config_data,
@@ -853,7 +853,9 @@ def config_page():
                     }
                 }
             }
+
     except Exception:
+        # Fallback if file missing or corrupted
         config_data = {
             "fields": [],
             "photo": {
@@ -865,6 +867,7 @@ def config_page():
                 }
             }
         }
+
 
     # Load system_config.json
     try:
@@ -993,8 +996,7 @@ def fsp_admin():
     config = load_config()
 
     # ✔ Load display_config.json here
-    with open("display_config.json", "r", encoding="utf-8") as f:
-        display_config = json.load(f)
+    display_config = load_display_config()
 
     return render_template(
         "fsp_admin.html",
@@ -1125,10 +1127,9 @@ def beneficiary_offline():
 
     # load display config (same file you already use)
     try:
-        with open("display_config.json", "r", encoding="utf-8") as f:
-            full_config = json.load(f)
-            display_fields = full_config.get("fields", [])
-            photo_config = full_config.get("photo", {})
+        full_config = load_display_config()
+        display_fields = full_config.get("fields", [])
+        photo_config = full_config.get("photo", {})
     except Exception:
         display_fields = []
         photo_config = {}
