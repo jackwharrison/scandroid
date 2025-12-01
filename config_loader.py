@@ -2,10 +2,10 @@ import json
 import os
 
 LOCAL_SYSTEM = "./system_config.json"
-AZURE_SYSTEM = "/home/site/wwwroot/system_config.json"
+AZURE_SYSTEM = "/home/site/configs/system_config.json"
 
 LOCAL_DISPLAY = "./display_config.json"
-AZURE_DISPLAY = "/home/site/wwwroot/display_config.json"
+AZURE_DISPLAY = "/home/site/configs/display_config.json"
 
 SYSTEM_PATH = LOCAL_SYSTEM if os.path.exists(LOCAL_SYSTEM) else AZURE_SYSTEM
 DISPLAY_PATH = LOCAL_DISPLAY if os.path.exists(LOCAL_DISPLAY) else AZURE_DISPLAY
