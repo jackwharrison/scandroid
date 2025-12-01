@@ -872,8 +872,7 @@ def config_page():
 
     # Load system_config.json
     try:
-        with open("system_config.json", "r", encoding="utf-8") as f:
-            system_config = json.load(f)
+        system_config = load_config()
     except Exception:
         system_config = {}
 
