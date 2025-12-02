@@ -21,18 +21,6 @@ from openpyxl import load_workbook
 from config_loader import load_display_config, save_display_config
 
 
-@app.route("/instance-static/<filename>")
-def instance_static(filename):
-    context = os.getenv("SCANDROID_CONTEXT", "local")
-    azure_path = f"/home/site/configs/{context}/static"
-
-    # Azure instance-specific logos
-    instance_file = os.path.join(azure_path, filename)
-    if os.path.exists(instance_file):
-        return send_from_directory(azure_path, filename)
-
-    # Local fallback for development
-    return send_from_directory("static", filename)
 
 # Register a Unicode-safe font
 pdfmetrics.registerFont(TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf")))
@@ -626,6 +614,18 @@ translations = {
     }
 }
 
+@app.route("/instance-static/<filename>")
+def instance_static(filename):
+    context = os.getenv("SCANDROID_CONTEXT", "local")
+    azure_path = f"/home/site/configs/{context}/static"
+
+    # Azure instance-specific logos
+    instance_file = os.path.join(azure_path, filename)
+    if os.path.exists(instance_file):
+        return send_from_directory(azure_path, filename)
+
+    # Local fallback for development
+    return send_from_directory("static", filename)
 
 @app.route("/")
 def landing_page():
