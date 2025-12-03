@@ -7,219 +7,314 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
   <style>
-    :root {
-      --bg: #f3f4f6;
-      --card: #ffffff;
-      --ink: #111827;
-      --muted: #6b7280;
-      --line: #e5e7eb;
-      --radius: 16px;
-      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
-    }
+      :root {
+        --bg: #f3f4f6;
+        --card: #ffffff;
+        --ink: #111827;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --radius: 16px;
+        --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      }
 
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--ink);
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        background-color: var(--bg);
+        color: var(--ink);
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
 
-    header {
-      background-color: #ffffff;
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-    }
+      header {
+        background-color: #ffffff;
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      }
 
-    .header-left {
-      display:flex;
-      align-items:center;
-      gap:12px;
-    }
+      .header-left {
+        display:flex;
+        align-items:center;
+        gap:12px;
+      }
 
-    .header-left img {
-      height: 50px;
-      object-fit: contain;
-    }
+      .header-left img {
+        height: 50px;
+        object-fit: contain;
+      }
 
-    .scandroid-banner {
-      flex: 1;
-      text-align: center;
-    }
+      .scandroid-banner {
+        flex: 1;
+        text-align: center;
+      }
 
-    .scandroid-banner img {
-      height: 80px;
-      max-width: 60%;
-      object-fit: contain;
-      display: inline-block;
-    }
+      .scandroid-banner img {
+        height: 80px;
+        max-width: 60%;
+        object-fit: contain;
+        display: inline-block;
+      }
 
-    .right-controls {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+      .right-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-    .right-controls select {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      font-weight: 600;
-      cursor: pointer;
-    }
+      .right-controls select {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        font-weight: 600;
+        cursor: pointer;
+      }
 
-    .logout-button {
-      padding: 8px 14px;
-      background-color: #dc3545;
-      color: #ffffff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 600;
-    }
+      .logout-button {
+        padding: 8px 14px;
+        background-color: #dc3545;
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+      }
 
-    .logout-button:hover {
-      background-color: #b91c1c;
-    }
+      .logout-button:hover {
+        background-color: #b91c1c;
+      }
 
-    .status-pill {
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:4px 10px;
-      border-radius:999px;
-      font-size:12px;
-      font-weight:700;
-      border:1px solid transparent;
-    }
-    .status-pill.online {
-      background:#e7f9ef; color:#0f5132; border-color:#b7ebcd;
-    }
-    .status-pill.offline {
-      background:#fdecec; color:#842029; border-color:#f5c2c7;
-    }
+      .status-pill {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:4px 10px;
+        border-radius:999px;
+        font-size:12px;
+        font-weight:700;
+        border:1px solid transparent;
+      }
+      .status-pill.online {
+        background:#e7f9ef; color:#0f5132; border-color:#b7ebcd;
+      }
+      .status-pill.offline {
+        background:#fdecec; color:#842029; border-color:#f5c2c7;
+      }
 
-    main {
-      flex-grow: 1;
-      padding: 24px 16px 40px 16px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 24px;
-    }
+      main {
+        flex-grow: 1;
+        padding: 24px 16px 40px 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
 
-    .row-box {
-      max-width: 520px;
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+      .row-box {
+        max-width: 520px;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
 
-    .info-box {
-      flex: 1;
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 12px 16px;
-      box-shadow: var(--shadow-soft);
-      border: 1px solid var(--line);
-      font-size: 0.95rem;
-    }
+      .info-box {
+        flex: 1;
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 12px 16px;
+        box-shadow: var(--shadow-soft);
+        border: 1px solid var(--line);
+        font-size: 0.95rem;
 
-    .info-title {
-      font-weight: 700;
-      color: var(--ink);
-      margin-bottom: 4px;
-    }
+        /* ➕ subtle mobile-app card polish */
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        transition: box-shadow 0.2s ease;
+      }
 
-    .info-sub {
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
+      /* ➕ nicer hover */
+      .info-box:hover {
+        box-shadow: 0 12px 28px rgba(0,0,0,0.10);
+      }
 
-    #syncBtn, #scanBtn, #sendBtn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 20px;
-      font-size: 1rem;
-      font-weight: 700;
-      border: none;
-      border-radius: 14px;
-      cursor: pointer;
-      white-space: nowrap;
-      box-shadow: var(--shadow-soft);
-      transition: transform 0.05s ease, box-shadow 0.1s ease, background-color 0.1s ease;
-    }
+      .info-title {
+        font-weight: 700;
+        color: var(--ink);
+        margin-bottom: 4px;
+      }
 
-    #syncBtn {
-      background-color: #1d4ed8;
-      color: #fff;
-    }
-    #syncBtn:hover:not(:disabled) { background:#1e40af; transform:translateY(-1px); }
+      .info-sub {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
 
-    #scanBtn {
-      background-color:#16a34a;
-      color:white;
-    }
-    #scanBtn:hover { background:#15803d; transform:translateY(-1px); }
+      #syncBtn, #scanBtn, #sendBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 20px;
+        font-size: 1rem;
+        font-weight: 700;
+        border: none;
+        border-radius: 14px;
+        cursor: pointer;
+        white-space: nowrap;
+        box-shadow: var(--shadow-soft);
 
-    #sendBtn {
-      background-color:#be185d;
-      color:white;
-    }
-    #sendBtn:hover { background:#9d174d; transform:translateY(-1px); }
+        /* ➕ premium tap animation */
+        transition: transform 0.1s ease, box-shadow 0.2s ease;
+      }
 
-    footer {
-      display: flex;
-      justify-content: space-between;
-      padding: 12px 18px 16px 18px;
-      font-size: 0.9rem;
-      background-color: #f9fafb;
-      border-top: 1px solid #e5e7eb;
-      flex-wrap: wrap;
-    }
-    #syncBtn img,
-    #scanBtn img,
-    #sendBtn img {
-      height: 20px;
-      filter: invert(1);
-    }
-    /* --- Spinner animation --- */
-    .spinner {
-      width: 18px;
-      height: 18px;
-      border: 3px solid rgba(255,255,255,0.6);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
+      /* ➕ active touch effect */
+      #syncBtn:active,
+      #scanBtn:active,
+      #sendBtn:active {
+        transform: scale(0.97);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+      #syncBtn {
+        background-color: #1d4ed8;
+        color: #fff;
+      }
+      #syncBtn:hover:not(:disabled) { background:#1e40af; transform:translateY(-1px); }
 
-    /* Button loading state */
-    .btn-loading {
-      opacity: 0.8;
-      pointer-events: none;
-      transform: none !important;
-    }
+      #scanBtn {
+        background-color:#16a34a;
+        color:white;
+      }
+      #scanBtn:hover { background:#15803d; transform:translateY(-1px); }
 
-    .btn-loading img {
-      opacity: 0.3; /* keep SVG but fade slightly */
-    }
+      #sendBtn {
+        background-color:#be185d;
+        color:white;
+      }
+      #sendBtn:hover { background:#9d174d; transform:translateY(-1px); }
 
+      footer {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 18px 16px 18px;
+        font-size: 0.9rem;
+        background-color: #f9fafb;
+        border-top: 1px solid #e5e7eb;
+        flex-wrap: wrap;
+      }
 
+      #syncBtn img,
+      #scanBtn img,
+      #sendBtn img {
+        height: 20px;
+        filter: invert(1);
+      }
 
+      /* --- Spinner animation --- */
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border: 3px solid rgba(255,255,255,0.6);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Button loading state */
+      .btn-loading {
+        opacity: 0.8;
+        pointer-events: none;
+        transform: none !important;
+      }
+
+      .btn-loading img {
+        opacity: 0.3;
+      }
+
+      /* =====================================================
+        📱 MOBILE OPTIMISATION
+        ===================================================== */
+      @media (max-width: 600px) {
+
+        header {
+          padding: 12px 14px;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 10px;
+        }
+
+        .header-left img {
+          height: 38px;
+        }
+
+        .scandroid-banner img {
+          height: 60px;
+          max-width: 80%;
+        }
+
+        .right-controls {
+          width: 100%;
+          justify-content: center;
+          gap: 12px;
+        }
+
+        .right-controls select,
+        .logout-button {
+          font-size: 13px;
+          padding: 6px 10px;
+        }
+
+        main {
+          padding: 12px 12px 24px 12px;
+          gap: 18px;
+        }
+
+        .row-box {
+          flex-direction: column;
+          align-items: stretch;
+          max-width: 100%;
+        }
+
+        .info-box {
+          padding: 14px 16px;
+          border-radius: 18px;
+          margin-bottom: 4px;
+          text-align: center;
+        }
+
+        #syncBtn,
+        #scanBtn,
+        #sendBtn {
+          width: 100%;
+          justify-content: center;
+          padding: 14px;
+          font-size: 1.05rem;
+          border-radius: 18px;
+        }
+
+        footer {
+          flex-direction: column;
+          text-align: center;
+          gap: 4px;
+          padding: 14px;
+          font-size: 0.85rem;
+        }
+        .btn-disabled {
+          opacity: 0.5;
+          pointer-events: none;
+          filter: grayscale(40%);
+        }
+      }
   </style>
+
 </head>
 
 <body>
@@ -417,10 +512,14 @@
   // Online detection -> update status pill
   const pill = document.getElementById('netStatus');
   function setOnlineState(isOnline) {
-    pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
-    pill.classList.toggle('online', isOnline);
-    pill.classList.toggle('offline', !isOnline);
+      pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
+      pill.classList.toggle('online', isOnline);
+      pill.classList.toggle('offline', !isOnline);
+
+      // Disable/enable buttons based on connectivity
+      updateOnlineButtonState(isOnline);
   }
+
 
   async function pingWithTimeout(timeoutMs = 2000) {
     const controller = new AbortController();
@@ -966,6 +1065,24 @@ window.addEventListener("DOMContentLoaded", () => {
     if (el) el.textContent = savedSubmission;
   }
 });
+</script>
+<script>
+function updateOnlineButtonState(isOnline) {
+    const syncBtn = document.getElementById("syncBtn");
+    const sendBtn = document.getElementById("sendBtn");
+
+    if (isOnline) {
+        syncBtn.disabled = false;
+        sendBtn.disabled = false;
+        syncBtn.classList.remove("btn-disabled");
+        sendBtn.classList.remove("btn-disabled");
+    } else {
+        syncBtn.disabled = true;
+        sendBtn.disabled = true;
+        syncBtn.classList.add("btn-disabled");
+        sendBtn.classList.add("btn-disabled");
+    }
+}
 </script>
 
 </body>
