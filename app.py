@@ -1087,9 +1087,6 @@ def sw():
 def manifest():
     return send_from_directory('static', 'manifest.webmanifest', mimetype='application/manifest+json')
 
-@app.route('/offline')
-def offline():
-    return render_template('offline.html')
 
 
 from io import BytesIO
