@@ -189,17 +189,35 @@
 
         if (!db.objectStoreNames.contains("payments")) {
           document.getElementById("counter").textContent =
-            "{{ t['payments_ready'] }}: 0";
+            "{{ t['payments_ready'] }} 0";
           return;
         }
 
         const tx = db.transaction("payments", "readonly");
         const store = tx.objectStore("payments");
-        const countReq = store.count();
 
-        countReq.onsuccess = function () {
+        let successCount = 0;
+
+        // Use a cursor to filter by status
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = function (e) {
+          const cursor = e.target.result;
+          if (cursor) {
+            const record = cursor.value;
+            if (record.status === "success") {
+              successCount++;
+            }
+            cursor.continue();
+          } else {
+            // No more records → show result
+            document.getElementById("counter").textContent =
+              "{{ t['payments_ready'] }} " + successCount;
+          }
+        };
+
+        cursorReq.onerror = function () {
           document.getElementById("counter").textContent =
-            "{{ t['payments_ready'] }}: " + countReq.result;
+            "{{ t['payments_ready'] }}: 0";
         };
       };
 
@@ -215,6 +233,7 @@
 
   window.addEventListener("DOMContentLoaded", loadCounter);
 </script>
+
 
 </body>
 </html>

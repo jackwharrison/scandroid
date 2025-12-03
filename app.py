@@ -1705,4 +1705,3 @@ def vouchers_download():
         as_attachment=True,
         download_name="vouchers.pdf"
     )
-
