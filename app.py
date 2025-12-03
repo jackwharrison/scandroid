@@ -1125,10 +1125,13 @@ def api_offline_latest_zip():
         download_name="latest_offline_cache.zip",
     )
 
-@app.route("/ping")
+@app.route('/ping')
 def ping():
-    return ("", 204)
-
+    return '', 204, {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
 
 @app.route("/beneficiary-offline")
 def beneficiary_offline():

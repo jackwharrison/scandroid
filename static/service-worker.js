@@ -1,5 +1,5 @@
 /* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v8'; // Change this on every deploy
+const CACHE_VERSION = 'v11'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -34,16 +34,21 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
-
   const url = new URL(req.url);
 
-  // Handle /ping separately
+  if (req.method !== "GET") return;
+
+  // -------------- EARLY ABSOLUTE NO-CACHE PING -------------- //
   if (url.pathname === "/ping") {
-    event.respondWith(fetch(req, { cache: "no-store" }).catch(() =>
-      new Response("", { status: 503 })
-    ));
-    return;
+    event.respondWith(
+      fetch(req, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache, no-store, must-revalidate" }
+      })
+        .then(() => new Response("", { status: 204 }))
+        .catch(() => new Response("", { status: 503 }))
+    );
+    return; // ← VERY IMPORTANT
   }
 
   // Special handling for Kobo sync ZIP
@@ -52,19 +57,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Handle navigation (e.g. page load) with network-first strategy
-  const isNavigation = req.mode === "navigate" ||
-                       (req.headers.get("accept") || "").includes("text/html");
+  // Navigation requests
+  const isNavigation =
+    req.mode === "navigate" ||
+    (req.headers.get("accept") || "").includes("text/html");
+
   if (isNavigation) {
     event.respondWith(networkFirstNavigation(req));
     return;
   }
 
-  // Handle static assets (scripts, images, styles)
+  // Static assets
   if (isStatic(req)) {
     event.respondWith(cacheFirst(req));
+    return;
   }
 });
+
 
 /* ---------- helpers ---------- */
 
