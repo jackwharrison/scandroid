@@ -776,7 +776,32 @@ async function loadTotalAmount() {
 window.addEventListener("DOMContentLoaded", loadTotalAmount);
 
 </script>
+<script>
+async function loadPaymentsReadyCount() {
+  try {
+    const db = await openScandroidDB();
 
+    if (!db.objectStoreNames.contains("payments")) {
+      document.getElementById("paymentsReadyCount").textContent = "0";
+      return [];
+    }
+
+    const tx = db.transaction("payments", "readonly");
+    const store = tx.objectStore("payments");
+    const all = await store.getAll();
+
+    // Only count pending ones: status === "success"
+    const pending = all.filter(p => p.status === "success");
+
+    document.getElementById("paymentsReadyCount").textContent = pending.length;
+    return pending;
+  } catch (err) {
+    console.error("paymentsReadyCount error:", err);
+    document.getElementById("paymentsReadyCount").textContent = "0";
+    return [];
+  }
+}
+</script>
 <!-- *** NEW SEND LOGIC – Added NON-DESTRUCTIVELY *** -->
 <script>
 async function loadPaymentsReadyCount() {
@@ -929,5 +954,19 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     }
   });
 </script>
+<script>
+window.addEventListener("DOMContentLoaded", () => {
+  // Restore payments ready count
+  loadPaymentsReadyCount().catch(console.error);
+
+  // Restore last payment submission
+  const savedSubmission = localStorage.getItem("scandroid_last_payment_submission");
+  if (savedSubmission) {
+    const el = document.getElementById("lastSubmissionText");
+    if (el) el.textContent = savedSubmission;
+  }
+});
+</script>
+
 </body>
 </html>
