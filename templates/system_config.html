@@ -4,8 +4,7 @@
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8">
   <title>{{ t.config_system }}</title>
-
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
     :root {
@@ -18,6 +17,8 @@
       --line: #e5e7eb;
       --bg: #f3f4f6;
       --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --violet: #7c3aed;
     }
 
     html, body {
@@ -34,99 +35,152 @@
       overflow-x: hidden;
     }
 
+    /* ------------------ HEADER ------------------ */
     header {
-      background-color: #ffffff;
-      padding: 16px 24px;
+      background-color: #002855;
+      padding: 12px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-      width: 100%;
+      color: white;
+      position: relative;
+      z-index: 3000;
       box-sizing: border-box;
+      height: 56px;
     }
 
     .header-left {
       display: flex;
       align-items: center;
-      gap: 10px;
     }
 
     .header-left img {
-      height: 50px;
+      height: 32px;
+      width: auto;
       object-fit: contain;
     }
 
-    .scandroid-banner {
+    .header-title {
       flex: 1;
-      text-align: center;
-    }
-
-    .scandroid-banner img {
-      height: 80px;
-      max-width: 60%;
-      object-fit: contain;
-      display: inline-block;
-    }
-
-    .right-controls {
+      padding-left: 20px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
+      font-size: 1.1rem;
       white-space: nowrap;
     }
 
-    .right-controls select {
+    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; opacity: 0.95; }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-btn {
+      height: 32px;
+      padding: 0 12px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border 0.2s ease;
+      text-decoration: none !important;
+    }
+
+    .header-btn:hover {
+      border: 1px solid rgba(255,255,255,0.9);
+    }
+
+    .header-btn img {
+      width: 14px;
+      height: 14px;
+      filter: invert(100%);
+    }
+
+    .account-arrow-svg {
+      width: 12px;
+      height: 12px;
+      filter: invert(100%);
+      transition: transform 0.15s ease;
+    }
+
+    .account-btn.active .account-arrow-svg {
+      transform: rotate(180deg);
+    }
+
+    .lang-select select {
       padding: 6px 10px;
       border-radius: 8px;
       border: 1px solid #d1d5db;
       background: #ffffff;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
     }
 
-    .btn-header {
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: 1px solid transparent;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
+    .account-menu {
+      position: absolute;
+      background: #ffffff;
+      top: 48px;
+      right: 0;
+      min-width: 220px;
+      border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+      z-index: 3001;
+      padding: 10px 0;
+    }
+
+    .hidden { display: none; }
+
+    .account-menu-item {
+      padding: 10px 16px;
+      font-size: 14px;
+      color: #000;
       text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      white-space: nowrap;
+      display: block;
     }
 
-    .btn-back {
-      background: #eff6ff;
-      color: #1d4ed8;
-      border-color: #93c5fd;
+    .account-menu-item:hover {
+      background: #f2f2f2;
     }
 
-    .btn-logout {
-      background-color: #dc3545;
-      color: #ffffff;
-      border: none;
+    .account-menu-divider {
+      border-top: 1px solid #e5e7eb;
+      margin: 6px 0;
     }
 
+    .user-info { font-size: 13px; }
+
+
+    /* ------------------ MAIN ------------------ */
     .wrapper {
       width: 100%;
-      max-width: 960px;
-      margin: 24px auto 32px auto;
-      padding: 0 16px;
+      max-width: 980px;
+      margin: 24px auto 40px auto;
+      padding: 0 20px;
       box-sizing: border-box;
       flex: 1;
     }
 
     h1 {
       margin: 0 0 12px 0;
-      font-size: 1.5rem;
+      font-size: 1.6rem;
       text-align: center;
     }
 
     .subtitle {
-      margin: 0 0 20px 0;
+      margin: 0 0 24px 0;
       text-align: center;
       color: var(--muted);
       font-size: 0.95rem;
@@ -134,9 +188,16 @@
 
     .cards-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 20px;
-      align-items: flex-start;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      align-items: start;
+      width: 100%;
+    }
+
+    @media (max-width: 900px) {
+      .cards-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .card {
@@ -149,8 +210,7 @@
     }
 
     .card h2 {
-      margin-top: 0;
-      margin-bottom: 16px;
+      margin: 0 0 16px 0;
       font-size: 1.2rem;
     }
 
@@ -161,6 +221,7 @@
       font-size: 0.95rem;
     }
 
+    /* ------------------ FIXED OVERFLOW ISSUE ------------------ */
     input[type="text"],
     input[type="password"],
     select {
@@ -170,59 +231,66 @@
       margin-top: 6px;
       border: 1px solid #d1d5db;
       border-radius: 10px;
-      box-sizing: border-box;
+      box-sizing: border-box;   /* 🟣 FIX: Prevents overflow */
     }
 
     .save-btn {
-      margin-top: 24px;
-      width: 100%;
-      max-width: 320px;
-      padding: 12px 16px;
+      margin-top: 32px;
+      width: 260px;
+      padding: 12px 20px;
       font-size: 1rem;
       font-weight: 700;
-      background: #1d4ed8;
-      color: #fff;
-      border: none;
-      border-radius: 12px;
+      background: #ffffff;
+      color: #7c3aed;
+      border: 2px solid #7c3aed;
+      border-radius: 999px;
       cursor: pointer;
       display: block;
       margin-left: auto;
       margin-right: auto;
+      transition: background 0.2s ease;
+    }
+
+    .save-btn:hover {
+      background: #ece2ff;
     }
 
     footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 18px 16px 18px;
+      padding: 12px 18px;
       font-size: 0.9rem;
-      background-color: #f9fafb;
-      border-top: 1px solid #e5e7eb;
+      background-color: #002855;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      color: #ffffff;
       flex-wrap: wrap;
-      box-sizing: border-box;
-      width: 100%;
     }
   </style>
+
 </head>
 
 <body>
 
 <header>
   <div class="header-left">
-    <img src="/instance-static/ns1.png">
-    <img src="/instance-static/ns2.png">
+    <img src="/instance-static/ns1.png" alt="">
   </div>
 
-  <div class="scandroid-banner">
-    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>
   </div>
 
-  <div class="right-controls">
-    <a href="/admin-dashboard?lang={{ lang }}" class="btn-header btn-back">
-      &larr; {{ t.back_to_dashboard }}
+  <div class="header-controls">
+
+    <a href="/admin-dashboard?lang={{ lang }}" class="header-btn">
+      <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+      {{ t.back_to_dashboard }}
     </a>
 
-    <form method="get" action="/system-config">
+    <form method="get" action="/system-config" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
         <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
@@ -230,9 +298,27 @@
       </select>
     </form>
 
-    <form action="/admin-logout" method="get">
-      <button type="submit" class="btn-header btn-logout">{{ t.logout }}</button>
-    </form>
+    <div class="account-dropdown">
+      <button class="header-btn account-btn" onclick="toggleAccountDropdown()">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
+        Account
+        <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
+      </button>
+
+      <div id="account-menu" class="account-menu hidden">
+        <div class="account-menu-item user-info">
+          <strong>Logged in as:</strong><br>
+          {{ username }}
+        </div>
+
+        <div class="account-menu-divider"></div>
+
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">
+          Logout
+        </a>
+      </div>
+    </div>
+
   </div>
 </header>
 
@@ -241,84 +327,56 @@
   <p class="subtitle">{{ t.config_system_desc }}</p>
 
   <form method="post">
-
     <div class="cards-grid">
 
-      <!-- Kobo Card -->
       <div class="card">
         <h2>{{ t.kobo_info }}</h2>
 
-        <!-- NEW: Kobo Server Dropdown -->
         <label for="KOBO_SERVER">Kobo Server</label>
         <select id="KOBO_SERVER" name="KOBO_SERVER">
-          <option value="https://kobo.ifrc.org"
-            {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>
-            IFRC
-          </option>
-
-          <option value="https://kf.kobotoolbox.org"
-            {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>
-            KF Toolbox
-          </option>
+          <option value="https://kobo.ifrc.org" {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>IFRC</option>
+          <option value="https://kf.kobotoolbox.org" {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>KF Toolbox</option>
         </select>
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN"
-               value="{{ config['KOBO_TOKEN'] }}">
+        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}">
 
         <label for="ASSET_ID">{{ t.asset_id }}</label>
-        <input type="text" id="ASSET_ID" name="ASSET_ID"
-               value="{{ config['ASSET_ID'] }}">
+        <input type="text" id="ASSET_ID" name="ASSET_ID" value="{{ config['ASSET_ID'] }}">
       </div>
 
-      <!-- 121 Card -->
       <div class="card">
         <h2>{{ t.info_121 }}</h2>
 
         <h3>{{ t.program_information }}</h3>
 
         <label for="url121">{{ t.url_121 }}</label>
-        <input type="text" id="url121" name="url121"
-              value="{{ config['url121'] }}"
-              readonly
-              style="background:#f3f4f6; cursor:not-allowed;">
+        <input type="text" id="url121" name="url121" value="{{ config['url121'] }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
 
         <label for="programId">{{ t.program_id }}</label>
-        <input type="text" id="programId" name="programId"
-               value="{{ config['programId'] }}">
+        <input type="text" id="programId" name="programId" value="{{ config['programId'] }}">
+
         <label for="programTitle">{{ t.program_title }}</label>
-        <input type="text" id="programTitle"
-              value="{{ program_title or '' }}"
-              readonly
-              style="background:#f3f4f6; cursor:not-allowed;">
+        <input type="text" id="programTitle" value="{{ program_title or '' }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
+
         <label for="programCurrency">{{ t.program_currency or "Currency" }}</label>
-        <input 
-          type="text"
-          id="programCurrency"
-          name="programCurrency"
-          value="{{ program_currency or config.get('programCurrency','') }}"
-          readonly
-          style="background:#f3f4f6; cursor:not-allowed;">
+        <input type="text" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
+
         <h3>{{ t.credentials }}</h3>
 
         <label for="username121">{{ t.username_121 }}</label>
-        <input type="text" id="username121" name="username121"
-               value="{{ config['username121'] }}">
+        <input type="text" id="username121" name="username121" value="{{ config['username121'] }}">
 
         <label for="password121">{{ t.password_121 }}</label>
-        <input type="password" id="password121" name="password121"
-               value="{{ config['password121'] }}">
+        <input type="password" id="password121" name="password121" value="{{ config['password121'] }}">
       </div>
 
     </div>
 
-    <input type="hidden" name="ENCRYPTION_KEY"
-           value="{{ config.get('ENCRYPTION_KEY', '') }}">
-    <input type="hidden" name="COLUMN_TO_MATCH"
-           value="{{ config.get('COLUMN_TO_MATCH', '') }}">
+    <input type="hidden" name="ENCRYPTION_KEY" value="{{ config.get('ENCRYPTION_KEY', '') }}">
+    <input type="hidden" name="COLUMN_TO_MATCH" value="{{ config.get('COLUMN_TO_MATCH', '') }}">
 
     <button type="submit" class="save-btn">{{ t.save }}</button>
-
   </form>
 </div>
 
@@ -326,6 +384,25 @@
   <div class="footer-left">{{ t.footer_dev }}</div>
   <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
+
+<script>
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
+
+document.addEventListener('click', function(e) {
+  const btn = document.querySelector('.account-btn');
+  const menu = document.getElementById('account-menu');
+
+  if (!btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
+</script>
 
 </body>
 </html>

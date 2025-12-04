@@ -17,6 +17,8 @@
       --line: #e5e7eb;
       --bg: #f3f4f6;
       --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --violet: #7c3aed;
     }
 
     html, body {
@@ -32,46 +34,104 @@
       flex-direction: column;
     }
 
-    /* ---------- HEADER ---------- */
+    /* ---------- HEADER (121 STYLE) ---------- */
     header {
-      background-color: #ffffff;
-      padding: 16px 24px;
+      background-color: #002855;
+      padding: 12px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      color: white;
+      position: relative;
+      z-index: 3000;
     }
 
+    /* Logo area */
     .header-left {
       display: flex;
       align-items: center;
-      gap: 10px;
     }
 
     .header-left img {
-      height: 50px;
+      height: 32px;
+      width: auto;
       object-fit: contain;
     }
 
-    .scandroid-banner {
+    /* Title */
+    .header-title {
       flex: 1;
-      text-align: center;
-    }
-
-    .scandroid-banner img {
-      height: 80px;
-      max-width: 60%;
-      object-fit: contain;
-      display: inline-block;
-    }
-
-    .lang-logout {
+      text-align: left;
+      padding-left: 20px;
+      font-size: 1.1rem;
+      color: #ffffff;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
     }
 
-    .lang-logout select {
+    .title-bold {
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+
+    .title-divider {
+      opacity: 0.8;
+    }
+
+    .title-program {
+      font-weight: 300;
+      opacity: 0.95;
+    }
+
+    /* Account button */
+    .account-icon-svg {
+      width: 16px;
+      height: 16px;
+      filter: invert(100%);
+    }
+
+    .account-arrow-svg {
+      width: 12px;
+      height: 12px;
+      filter: invert(100%);
+      margin-left: 4px;
+      transition: transform 0.15s ease;
+    }
+
+    .account-btn {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 18px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: border 0.2s ease;
+    }
+
+    .account-btn:hover {
+      border: 1px solid rgba(255,255,255,0.9);
+    }
+
+    /* Rotate arrow when open */
+    .account-btn.active .account-arrow-svg {
+      transform: rotate(180deg);
+    }
+
+    /* Wrapper */
+    .header-account-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+    }
+
+    .lang-select select {
       padding: 6px 10px;
       border-radius: 8px;
       border: 1px solid #d1d5db;
@@ -80,19 +140,64 @@
       cursor: pointer;
     }
 
-    .logout-btn {
-      padding: 8px 14px;
-      background-color: #dc3545;
-      color: #ffffff;
-      border: none;
+    /* Dropdown */
+    .account-menu {
+      position: absolute;
+      background: #ffffff;
+      top: 48px;
+      right: 0;
+      min-width: 220px;
       border-radius: 8px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 600;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+      z-index: 3001;
+      padding: 10px 0;
     }
 
-    .logout-btn:hover {
-      background-color: #b91c1c;
+    .hidden {
+      display: none;
+    }
+
+    .account-menu-item {
+      padding: 10px 16px;
+      font-size: 14px;
+      text-decoration: none;
+      color: #000;
+      display: block;
+    }
+
+    .account-menu-item:hover {
+      background: #f2f2f2;
+    }
+
+    .account-menu-divider {
+      border-top: 1px solid #e5e7eb;
+      margin: 6px 0;
+    }
+
+    .user-info {
+      font-size: 13px;
+    }
+
+    /* ---------- OUTLINE BUTTONS (121 STYLE) ---------- */
+    .btn-outline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid var(--violet);
+      background-color: transparent;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--violet);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-outline:hover {
+      background-color: rgba(124, 58, 237, 0.12);
+      border-color: #6d28d9;
     }
 
     /* ---------- MAIN ---------- */
@@ -155,130 +260,55 @@
       font-size: 0.9rem;
     }
 
-    .section a {
-      display: inline-block;
-      padding: 10px 14px;
-      background-color: #1d4ed8;
-      color: white;
-      text-decoration: none;
-      border-radius: 999px;
-      font-size: 0.95rem;
-      font-weight: 700;
-      text-align: center;
-    }
-
-    .section a:hover {
-      background-color: #1e40af;
-    }
-
     /* ---------- FOOTER ---------- */
     footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 18px 16px 18px;
+      padding: 12px 18px;
       font-size: 0.9rem;
-      background-color: #f9fafb;
-      border-top: 1px solid #e5e7eb;
+      background-color: #002855;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      color: #ffffff;
       flex-wrap: wrap;
-    }
-
-    .footer-left, .footer-right {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .guide-button {
-      background-color: #d62828;
-      color: #fff;
-      text-decoration: none;
-      padding: 8px 14px;
-      border-radius: 6px;
-      font-weight: bold;
-      transition: background-color 0.2s ease;
-      max-width: fit-content;
-      font-size: 0.9rem;
-    }
-
-    .guide-button:hover {
-      background-color: #b81f1f;
-    }
-
-    .footer-right a {
-      color: #1d4ed8;
-      text-decoration: none;
-    }
-
-    .footer-right a:hover {
-      text-decoration: underline;
     }
 
     /* ---------- MOBILE ---------- */
     @media (max-width: 576px) {
       header {
         flex-direction: column;
-        justify-content: center;
-        align-items: center;
         gap: 8px;
         padding: 12px;
       }
 
-      .header-left img {
-        height: 40px;
+      .header-title {
+        padding-left: 0;
+        text-align: center;
       }
 
-      .scandroid-banner img {
-        height: 60px;
-        max-width: 80%;
-      }
-
-      .lang-logout {
+      .header-account-wrapper {
+        flex-direction: column;
         gap: 8px;
       }
-
-      main {
-        padding: 20px 12px 24px 12px;
-      }
-
-      .dashboard-card {
-        padding: 20px 16px;
-      }
-
-    footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 18px 16px 18px;
-      font-size: 0.9rem;
-      background-color: #f9fafb;
-      border-top: 1px solid #e5e7eb;
-      flex-wrap: wrap;
-      box-sizing: border-box;
-      width: 100%;
-    }
-
-    .footer-right a {
-      color: #1d4ed8;
-      text-decoration: none;
-    }
     }
   </style>
+
 </head>
 <body>
 
 <header>
   <div class="header-left">
-    <img src="/instance-static/ns1.png">
-    <img src="/instance-static/ns2.png">
+    <img src="/instance-static/ns1.png" alt="">
   </div>
 
-  <div class="scandroid-banner">
-    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>
   </div>
 
-  <div class="lang-logout">
-    <form method="get" action="/admin-dashboard">
+  <div class="header-account-wrapper">
+    <form method="get" action="/admin-dashboard" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
         <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
@@ -286,9 +316,24 @@
       </select>
     </form>
 
-    <form action="/admin-logout" method="get">
-      <button class="logout-btn">{{ t.logout }}</button>
-    </form>
+    <div class="account-dropdown">
+      <button class="account-btn" onclick="toggleAccountDropdown()">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
+        Account
+        <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
+      </button>
+
+      <div id="account-menu" class="account-menu hidden">
+        <div class="account-menu-item user-info">
+          <strong>Logged in as:</strong><br>
+          {{ username }}
+        </div>
+
+        <div class="account-menu-divider"></div>
+
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -303,19 +348,19 @@
       <div class="section">
         <h2>{{ t.config_system }}</h2>
         <p>{{ t.config_system_desc or "Edit API keys, endpoints, and system parameters." }}</p>
-        <a href="/system-config?lang={{ lang }}">{{ t.config_system }}</a>
+        <a href="/system-config?lang={{ lang }}" class="btn-outline">{{ t.config_system }}</a>
       </div>
 
       <div class="section">
         <h2>{{ t.config_display }}</h2>
         <p>{{ t.config_display_desc or "Configure which fields and details are shown to FSPs." }}</p>
-        <a href="/config?lang={{ lang }}">{{ t.config_display }}</a>
+        <a href="/config?lang={{ lang }}" class="btn-outline">{{ t.config_display }}</a>
       </div>
 
       <div class="section">
         <h2>{{ t.generate_vouchers }}</h2>
         <p>{{ t.generate_vouchers_desc or "Generate QR vouchers for printing and distribution." }}</p>
-        <a href="/vouchers">{{ t.generate_vouchers }}</a>
+        <a href="/vouchers" class="btn-outline">{{ t.generate_vouchers }}</a>
       </div>
     </div>
   </div>
@@ -325,6 +370,26 @@
   <div class="footer-left">{{ t.footer_dev }}</div>
   <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
+
+<script>
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
+
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+
+  if (!btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
+</script>
 
 </body>
 </html>
