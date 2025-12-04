@@ -17,6 +17,8 @@
       --line: #e5e7eb;
       --bg: #f3f4f6;
       --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --violet: #7c3aed;
     }
 
     html, body {
@@ -24,86 +26,168 @@
       padding: 0;
       background: var(--bg);
       color: var(--ink);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      font-family: system-ui, sans-serif;
       height: 100%;
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;
     }
 
-    /* HEADER (same as config page) */
+    /* ------------------ HEADER (IDENTICAL TO SYSTEM/DISPLAY CONFIG) ------------------ */
     header {
-      background-color: #ffffff;
-      padding: 16px 24px;
+      background-color: var(--navy);
+      padding: 12px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      color: white;
+      position: relative;
+      z-index: 3000;
+      box-sizing: border-box;
     }
-    .header-left img { height: 50px; }
-    .scandroid-banner img { height: 80px; object-fit: contain; }
 
-    .right-controls { display: flex; align-items: center; gap: 8px; }
-    .right-controls select {
+    .header-left img {
+      height: 32px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .header-title {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 20px;
+      font-size: 1.1rem;
+      white-space: nowrap;
+    }
+
+    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; opacity: 0.95; }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-btn {
+      height: 32px;
+      padding: 0 12px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: border 0.2s ease;
+    }
+
+    .header-btn img {
+      width: 14px;
+      height: 14px;
+      filter: invert(100%);
+    }
+
+    .header-btn:hover {
+      border: 1px solid rgba(255,255,255,0.9);
+    }
+
+    .lang-select select {
       padding: 6px 10px;
       border-radius: 8px;
       border: 1px solid #d1d5db;
       background: #ffffff;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
     }
 
-    .btn-header {
-      padding: 8px 14px;
-      border-radius: 999px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid transparent;
+    /* Account dropdown */
+    .account-menu {
+      position: absolute;
+      background: #ffffff;
+      top: 48px;
+      right: 0;
+      min-width: 220px;
+      border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+      z-index: 3001;
+      padding: 10px 0;
+    }
+
+    .hidden { display: none; }
+
+    .account-menu-item {
+      padding: 10px 16px;
+      font-size: 14px;
+      color: #000;
       text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      display: block;
     }
-    .btn-back { background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; }
-    .btn-logout { background:#dc3545; color:white; }
 
-    /* WRAPPER */
+    .account-menu-item:hover {
+      background: #f2f2f2;
+    }
+
+    .account-menu-divider {
+      border-top: 1px solid #e5e7eb;
+      margin: 6px 0;
+    }
+
+    .user-info {
+      font-size: 13px;
+    }
+
+    .account-arrow-svg {
+      width: 12px;
+      height: 12px;
+      filter: invert(100%);
+      transition: transform 0.15s ease;
+    }
+    .account-btn.active .account-arrow-svg {
+      transform: rotate(180deg);
+    }
+
+    /* ------------------ PAGE LAYOUT ------------------ */
     .wrapper {
+      max-width: 680px;
+      margin: 32px auto 40px auto;
+      padding: 0 20px;
       width: 100%;
-      max-width: 960px;
-      margin: 24px auto;
-      padding: 0 16px 40px 16px;
       flex: 1;
+      box-sizing: border-box;
     }
 
-    /* CARD */
     .card {
-      background: white;
-      padding: 24px 28px;
-      border-radius: 12px;
+      background: var(--card);
+      padding: 28px;
+      border-radius: var(--radius);
       box-shadow: var(--shadow-soft);
       border: 1px solid var(--line);
-      margin-bottom: 24px;
-      max-width: 520px;
-      margin-left: auto;
-      margin-right: auto;
     }
 
     h2 {
-      text-align: center;
       margin: 0;
+      text-align: center;
       font-size: 1.4rem;
-      margin-bottom: 6px;
     }
 
     .hint {
       color: var(--muted);
       font-size: 0.92rem;
       text-align: center;
-      margin-bottom: 20px;
+      margin: 10px 0 20px 0;
     }
 
-    /* FILE INPUT */
+    /* File input */
     input[type=file] { display: none; }
 
     label.file {
@@ -115,7 +199,7 @@
       cursor: pointer;
       text-align: center;
       font-weight: 600;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     #filename {
@@ -124,31 +208,36 @@
       margin-bottom: 20px;
     }
 
-    /* BUTTONS */
+    /* Buttons (consistent pill style) */
     .btn {
-      padding: 12px 16px;
+      padding: 12px 18px;
       font-weight: 700;
-      border-radius: 12px;
+      border-radius: 999px;
       font-size: 1rem;
       cursor: pointer;
-      border: none;
+      border: 2px solid transparent;
       width: 100%;
-      display: block;
-      margin-top: 8px;
+      margin-top: 16px;
+      transition: background 0.2s ease, border-color 0.2s ease;
     }
 
     .btn-primary {
-      background: #1d4ed8;
-      color: white;
+      background: #ffffff;
+      color: var(--navy);
+      border-color: var(--navy);
     }
-    .btn-primary:hover { background: #1d4fd8b6; }
+    .btn-primary:hover {
+      background: #e5ecf9;
+    }
 
     .btn-success {
-      background: #e8f9ef;
+      background: #ffffff;
       color: #065f46;
-      border: 1px solid #a7f3d0;
+      border-color: #10b981;
     }
-    .btn-success:hover { background:#d1fae5; }
+    .btn-success:hover {
+      background: #e6fef4;
+    }
 
     .counter {
       font-weight: 700;
@@ -158,11 +247,11 @@
     }
 
     footer {
+      background: var(--navy);
+      color: white;
+      padding: 12px 18px;
       display: flex;
       justify-content: space-between;
-      padding: 12px 18px;
-      background-color: #f9fafb;
-      border-top: 1px solid #e5e7eb;
       font-size: 0.9rem;
     }
   </style>
@@ -173,31 +262,54 @@
 <header>
   <div class="header-left">
     <img src="/instance-static/ns1.png">
-    <img src="/instance-static/ns2.png">
   </div>
 
-  <div class="scandroid-banner">
-    <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="">
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>
   </div>
 
-  <div class="right-controls">
-    <a href="/admin-dashboard?lang={{ lang }}" class="btn-header btn-back">
-      &larr; {{ t.back }}
+  <div class="header-controls">
+
+    <a href="/admin-dashboard?lang={{ lang }}" class="header-btn">
+      <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+      {{ t.back_to_dashboard }}
     </a>
 
-    <form method="get" action="{{ url_for('vouchers_page', lang=lang) }}">
+    <form method="get" action="{{ url_for('vouchers_page', lang=lang) }}" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
-        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+        <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang=='fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang=='ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
 
-    <form action="/admin-logout" method="get">
-      <button class="btn-header btn-logout">{{ t.logout }}</button>
-    </form>
+    <div class="account-dropdown">
+      <button class="header-btn account-btn" type="button" onclick="toggleAccountDropdown()">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}">
+        Account
+        <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
+      </button>
+
+      <div id="account-menu" class="account-menu hidden">
+        <div class="account-menu-item user-info">
+          <strong>Logged in as:</strong><br>
+          {{ username }}
+        </div>
+
+        <div class="account-menu-divider"></div>
+
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">
+          Logout
+        </a>
+      </div>
+    </div>
+
   </div>
 </header>
+
+
 
 <div class="wrapper">
   <div class="card">
@@ -207,10 +319,9 @@
 
     <form id="uploadForm">
       <input id="csv" name="csv" type="file"
-        accept=".csv, .xls, .xlsx,
-                application/vnd.ms-excel,
-                application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      />
+             accept=".csv, .xls, .xlsx,
+                     application/vnd.ms-excel,
+                     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
 
       <label for="csv" class="file">📄 {{ t.choose_csv }}</label>
 
@@ -230,59 +341,76 @@
 </div>
 
 <footer>
-  <div class="footer-left">{{ t.footer_dev }}</div>
-  <div class="footer-right">{{ t.footer_support }}</div>
+  <div>{{ t.footer_dev }}</div>
+  <div>{{ t.footer_support }}</div>
 </footer>
 
 <script>
-  const fileInput = document.getElementById('csv');
-  const filename = document.getElementById('filename');
-  const form = document.getElementById('uploadForm');
-  const counter = document.getElementById('counter');
-  const downloadBtn = document.getElementById('downloadBtn');
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
 
-  const TXT = {
-    chooseCSV: "{{ t.choose_csv_alert }}",
-    uploadFailed: "{{ t.upload_failed }}",
-    singular: "{{ t.voucher_ready_singular }}",
-    plural: "{{ t.voucher_ready_plural }}"
-  };
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  if (!btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
 
-  fileInput.addEventListener('change', () => {
-    filename.textContent = fileInput.files[0]?.name || '';
-  });
+/* --- vouchers logic --- */
+const fileInput = document.getElementById('csv');
+const filename = document.getElementById('filename');
+const form = document.getElementById('uploadForm');
+const counter = document.getElementById('counter');
+const downloadBtn = document.getElementById('downloadBtn');
 
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
+const TXT = {
+  chooseCSV: "{{ t.choose_csv_alert }}",
+  uploadFailed: "{{ t.upload_failed }}",
+  singular: "{{ t.voucher_ready_singular }}",
+  plural: "{{ t.voucher_ready_plural }}"
+};
 
-    if (!fileInput.files[0]) {
-      alert(TXT.chooseCSV);
-      return;
-    }
+fileInput.addEventListener('change', () => {
+  filename.textContent = fileInput.files[0]?.name || '';
+});
 
-    const fd = new FormData();
-    fd.append('csv', fileInput.files[0]);
+form.addEventListener('submit', async e => {
+  e.preventDefault();
 
-    const res = await fetch('/vouchers/upload', { method: 'POST', body: fd });
-    const data = await res.json();
+  if (!fileInput.files[0]) {
+    alert(TXT.chooseCSV);
+    return;
+  }
 
-    if (!data.success) {
-      alert(data.message || TXT.uploadFailed);
-      return;
-    }
+  const fd = new FormData();
+  fd.append('csv', fileInput.files[0]);
 
-    counter.style.display = 'block';
-    counter.textContent =
-      data.count === 1
-        ? `1 ${TXT.singular}`
-        : `${data.count} ${TXT.plural}`;
+  const res = await fetch('/vouchers/upload', { method: 'POST', body: fd });
+  const data = await res.json();
 
-    downloadBtn.disabled = data.count === 0;
-  });
+  if (!data.success) {
+    alert(data.message || TXT.uploadFailed);
+    return;
+  }
 
-  downloadBtn.addEventListener('click', () => {
-    window.location.href = '/vouchers/download';
-  });
+  counter.style.display = 'block';
+  counter.textContent =
+    data.count === 1
+      ? `1 ${TXT.singular}`
+      : `${data.count} ${TXT.plural}`;
+
+  downloadBtn.disabled = data.count === 0;
+});
+
+downloadBtn.addEventListener('click', () => {
+  window.location.href = '/vouchers/download';
+});
 </script>
 
 </body>

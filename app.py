@@ -697,11 +697,23 @@ def admin_login():
 
 @app.route("/admin-dashboard")
 def admin_dashboard():
-    lang = request.args.get("lang", "en")
     if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login", lang=lang))
-    
-    return render_template("admin_dashboard.html", lang=lang, t=translations.get(lang, translations["en"]))
+        return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
+
+    lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+
+    # Load title from system_config.json
+    config = load_config()
+    program_title = config.get("programTitle", "")
+
+    return render_template(
+        "admin_dashboard.html",
+        program_title=program_title,
+        lang=lang,
+        t=t,
+        username=session.get("admin_username")
+    )
 
 @app.route("/admin-logout")
 def admin_logout():
@@ -728,14 +740,14 @@ def system_config():
     if request.method == "POST":
         updated_config = load_config()
 
-        # Only update fields actually shown/editable in system_config.html
-        keys = [
+        editable_keys = [
             "KOBO_SERVER", "KOBO_TOKEN", "ASSET_ID",
             "url121", "username121", "password121",
-            "programId", "ENCRYPTION_KEY", "programCurrency"
+            "programId", "ENCRYPTION_KEY", "programCurrency",
+            "programTitle"
         ]
 
-        for key in keys:
+        for key in editable_keys:
             updated_config[key] = request.form.get(key, updated_config.get(key, ""))
 
         save_config(updated_config)
@@ -745,12 +757,9 @@ def system_config():
     # -------------------- GET: Load Config --------------------
     config = load_config()
 
-    # Prevent missing keys from breaking downstream logic
-    def safe_get(key):
-        val = config.get(key)
-        if val is None or val == "":
-            return None
-        return val
+    def safe_get(k):
+        v = config.get(k)
+        return v if v not in ("", None) else None
 
     url121 = safe_get("url121")
     username121 = safe_get("username121")
@@ -758,11 +767,11 @@ def system_config():
     program_id = safe_get("programId")
 
     token = None
+    program_title = config.get("programTitle")
+    program_currency = config.get("programCurrency")
     column_to_match_121 = None
-    program_title = None
-    program_currency = config.get("programCurrency", "")
 
-    # -------------------- Login to 121 API (safe) --------------------
+    # -------------------- Login to 121 API --------------------
     if url121 and username121 and password121:
         try:
             login_payload = {"username": username121, "password": password121}
@@ -773,9 +782,39 @@ def system_config():
                 token = login_resp.json().get("access_token_general")
 
         except Exception as e:
-            print("Failed to log in to 121 API:", e)
+            print("Error logging into 121 API:", e)
 
-    # -------------------- Fetch columnToMatch (B1 auto-save) --------------------
+    # -------------------- Fetch Program Info --------------------
+    if token and program_id:
+        try:
+            program_url = f"{url121}/api/programs/{program_id}"
+            resp = requests.get(program_url, cookies={"access_token_general": token})
+
+            if resp.status_code == 200:
+                data = resp.json()
+
+                # Title (multilingual)
+                title_dict = data.get("titlePortal", {})
+                if lang in title_dict:
+                    program_title = title_dict[lang]
+                else:
+                    program_title = next(iter(title_dict.values()), None)
+
+                # Currency
+                program_currency = data.get("currency", program_currency)
+
+                # Persist
+                if program_title:
+                    config["programTitle"] = program_title
+                if program_currency:
+                    config["programCurrency"] = program_currency
+
+                save_config(config)
+
+        except Exception as e:
+            print("Error fetching program info:", e)
+
+    # -------------------- Fetch columnToMatch --------------------
     if token and program_id:
         try:
             fsp_url = f"{url121}/api/programs/{program_id}/fsp-configurations"
@@ -787,50 +826,26 @@ def system_config():
                         if prop.get("name") == "columnToMatch":
                             column_to_match_121 = prop.get("value")
 
-            # Auto-save (B1)
+            # Save COLUMN_TO_MATCH if found
             if column_to_match_121:
                 config["COLUMN_TO_MATCH"] = column_to_match_121
                 save_config(config)
 
         except Exception as e:
-            print("Failed to fetch columnToMatch:", e)
+            print("Error fetching columnToMatch:", e)
 
-    # -------------------- Fetch Program Title + Currency --------------------
-    if token and program_id:
-        try:
-            program_url = f"{url121}/api/programs/{program_id}"
-            resp = requests.get(program_url, cookies={"access_token_general": token})
-
-            if resp.status_code == 200:
-                program_data = resp.json()
-
-                # Title (multilingual)
-                title_dict = program_data.get("titlePortal", {})
-                if lang in title_dict:
-                    program_title = title_dict[lang]
-                else:
-                    program_title = next(iter(title_dict.values()), "")
-
-                # Currency
-                program_currency = program_data.get("currency", program_currency)
-
-                # Persist currency
-                config["programCurrency"] = program_currency
-                save_config(config)
-
-        except Exception as e:
-            print("Failed to fetch program info:", e)
-
-    # -------------------- Render --------------------
+    # -------------------- Render Template --------------------
     return render_template(
         "system_config.html",
         config=config,
         program_title=program_title,
         program_currency=program_currency,
         column_to_match_121=column_to_match_121 or config.get("COLUMN_TO_MATCH"),
+        username=session.get("admin_username"),   # ✅ NOW PASSED TO TEMPLATE
         lang=lang,
         t=t
     )
+
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
@@ -839,10 +854,15 @@ def config_page():
 
     lang = request.args.get("lang", "en")
 
+    username = session.get("admin_username", "Admin")
+
     # -------------------- POST (save) --------------------
     if request.method == "POST":
         config_data = request.get_json()
+
+        # Should never be manually saved from display config
         config_data.pop("COLUMN_TO_MATCH", None)
+
         try:
             save_display_config(config_data)
             return jsonify({"success": True})
@@ -855,34 +875,24 @@ def config_page():
     try:
         config_data = load_display_config()
 
-        # If the old format (just a list) is detected, convert to new structure
+        # Convert old format to new structure
         if isinstance(config_data, list):
             config_data = {
                 "fields": config_data,
                 "photo": {
                     "enabled": True,
-                    "labels": {
-                        "en": "Photo",
-                        "fr": "Photo",
-                        "ar": "صورة"
-                    }
+                    "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
                 }
             }
 
     except Exception:
-        # Fallback if file missing or corrupted
         config_data = {
             "fields": [],
             "photo": {
                 "enabled": True,
-                "labels": {
-                    "en": "Photo",
-                    "fr": "Photo",
-                    "ar": "صورة"
-                }
+                "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
             }
         }
-
 
     # Load system_config.json
     try:
@@ -890,10 +900,13 @@ def config_page():
     except Exception:
         system_config = {}
 
-    # -------------------- Fetch COLUMN_TO_MATCH from 121 API --------------------
+    # Program title – safe fallback
+    program_title = system_config.get("programTitle", "")
+
+    # -------------------- Retrieve columnToMatch from 121 --------------------
     column_to_match_121 = None
 
-    # Guard against missing fields (prevents crashes)
+    # Missing essentials → skip API lookup but still render the page
     if not system_config.get("url121") or not system_config.get("programId"):
         return render_template(
             "config.html",
@@ -901,25 +914,31 @@ def config_page():
             system_config=system_config,
             column_to_match_121=system_config.get("COLUMN_TO_MATCH"),
             lang=lang,
+            username=username,
+            program_title=program_title,
             t=translations.get(lang, translations["en"])
         )
 
     try:
-        # First: log in to get token
+        # Login to 121
         login_payload = {
             "username": system_config.get("username121", ""),
             "password": system_config.get("password121", "")
         }
 
-        login_url = f"{system_config['url121']}/api/users/login"
-        login_resp = requests.post(login_url, json=login_payload)
+        login_resp = requests.post(
+            f"{system_config['url121']}/api/users/login",
+            json=login_payload
+        )
 
         if login_resp.status_code == 201:
             token = login_resp.json().get("access_token_general")
 
-            # Now fetch fsp-configurations
-            config_url = f"{system_config['url121']}/api/programs/{system_config['programId']}/fsp-configurations"
-            resp = requests.get(config_url, cookies={"access_token_general": token})
+            # Request FSP configurations
+            resp = requests.get(
+                f"{system_config['url121']}/api/programs/{system_config['programId']}/fsp-configurations",
+                cookies={"access_token_general": token}
+            )
 
             if resp.status_code == 200:
                 for fsp in resp.json():
@@ -928,26 +947,26 @@ def config_page():
                             column_to_match_121 = prop.get("value")
                             break
 
-        # -------- AUTO-SAVE (B1 behaviour) --------
+        # Auto-save COLUMN_TO_MATCH if retrieved
         if column_to_match_121:
             system_config["COLUMN_TO_MATCH"] = column_to_match_121
             with open("system_config.json", "w", encoding="utf-8") as f:
                 json.dump(system_config, f, ensure_ascii=False, indent=2)
 
     except Exception as e:
-        print("Error loading columnToMatch:", e)
+        print("Error retrieving columnToMatch:", e)
 
-    # ------------------------------------------------------------------------------
-
+    # -------------------- Render Page --------------------
     return render_template(
         "config.html",
         config=config_data,
         system_config=system_config,
         column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
         lang=lang,
+        username=username,
+        program_title=program_title,
         t=translations.get(lang, translations["en"])
     )
-
 
 
 
@@ -984,6 +1003,7 @@ def fsp_login():
 
             if res.status_code == 201:
                 session["fsp_logged_in"] = True
+                session["fsp_username"] = username
                 return redirect(url_for("fsp_admin", lang=lang))
 
             elif res.status_code in (400, 401):
@@ -1414,20 +1434,33 @@ def invalid_qr():
 @app.route("/vouchers", methods=["GET"])
 def vouchers_page():
     if not session.get("admin_logged_in"):
-        # use incoming lang OR saved lang
         lang = request.args.get("lang", session.get("lang", "en"))
         return redirect(url_for("admin_login", lang=lang))
 
-    # 1️⃣ get lang from request or session (same behavior as /config + fallback)
+    # language
     lang = request.args.get("lang", session.get("lang", "en"))
-
-    # 2️⃣ remember language in session, so redirects keep it
     session["lang"] = lang
-
-    # 3️⃣ get translations
     t = translations.get(lang, translations["en"])
 
-    return render_template("vouchers.html", lang=lang, t=t)
+    # Load system config (for program title, currency, etc.)
+    try:
+        system_config = load_config()
+    except Exception:
+        system_config = {}
+
+    # Username from session
+    username = session.get("admin_username", "")
+
+    # Program title from session OR fallback to system_config
+    program_title = session.get("program_title") or system_config.get("programTitle", "")
+
+    return render_template(
+        "vouchers.html",
+        lang=lang,
+        t=t,
+        program_title=program_title,
+        username=username
+    )
 
 
 
