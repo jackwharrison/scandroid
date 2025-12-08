@@ -227,7 +227,7 @@ translations = {
     "success_message": "Payment successfully submitted.",
     "already_submitted_page": "This beneficiary's payment has already been submitted. If you need support, contact support@121.global",
     "config_title": "Configure Fields to Display",
-    "field_key": "Field Key (from Kobo)",
+    "field_key": "Kobo Photo Field",
     "label_en": "Label (EN)",
     "label_fr": "Label (FR)",
     "label_ar": "Label (AR)",
@@ -872,14 +872,13 @@ def config_page():
         return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
 
     lang = request.args.get("lang", "en")
-
     username = session.get("admin_username", "Admin")
 
-    # -------------------- POST (save) --------------------
+    # -------------------- POST (SAVE) --------------------
     if request.method == "POST":
         config_data = request.get_json()
 
-        # Should never be manually saved from display config
+        # Prevent saving COLUMN_TO_MATCH here
         config_data.pop("COLUMN_TO_MATCH", None)
 
         try:
@@ -888,13 +887,11 @@ def config_page():
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
 
-    # -------------------- GET (load page) --------------------
+    # -------------------- GET (LOAD PAGE) --------------------
 
-    # Load display config JSON
+    # Load existing display config
     try:
         config_data = load_display_config()
-
-        # Convert old format to new structure
         if isinstance(config_data, list):
             config_data = {
                 "fields": config_data,
@@ -903,7 +900,6 @@ def config_page():
                     "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
                 }
             }
-
     except Exception:
         config_data = {
             "fields": [],
@@ -913,74 +909,174 @@ def config_page():
             }
         }
 
-    # Load system_config.json
+    # Load system config
     try:
         system_config = load_config()
     except Exception:
         system_config = {}
 
-    # Program title – safe fallback
     program_title = system_config.get("programTitle", "")
-
-    # -------------------- Retrieve columnToMatch from 121 --------------------
     column_to_match_121 = None
+    allowed_attributes = []
+    kobo_image_fields = []
 
-    # Missing essentials → skip API lookup but still render the page
-    if not system_config.get("url121") or not system_config.get("programId"):
-        return render_template(
-            "config.html",
-            config=config_data,
-            system_config=system_config,
-            column_to_match_121=system_config.get("COLUMN_TO_MATCH"),
-            lang=lang,
-            username=username,
-            program_title=program_title,
-            t=translations.get(lang, translations["en"])
-        )
+    url121 = system_config.get("url121")
+    program_id = system_config.get("programId")
+
+    # ------------------------------------------------------
+    #                 121 PROGRAM ATTRIBUTES
+    # ------------------------------------------------------
+    if url121 and program_id:
+        try:
+            # Login to 121
+            login_payload = {
+                "username": system_config.get("username121", ""),
+                "password": system_config.get("password121", "")
+            }
+
+            login_resp = requests.post(f"{url121}/api/users/login", json=login_payload)
+
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+
+                # 1️⃣ COLUMN TO MATCH
+                try:
+                    resp_fsp = requests.get(
+                        f"{url121}/api/programs/{program_id}/fsp-configurations",
+                        cookies=cookies,
+                        timeout=10
+                    )
+                    if resp_fsp.status_code == 200:
+                        for fsp in resp_fsp.json():
+                            for prop in fsp.get("properties", []):
+                                if prop.get("name") == "columnToMatch":
+                                    column_to_match_121 = prop.get("value")
+                                    break
+                except Exception as e:
+                    print("Error retrieving fsp-configurations:", e)
+
+                # 2️⃣ PROGRAM REGISTRATION ATTRIBUTES
+                try:
+                    resp_prog = requests.get(
+                        f"{url121}/api/programs/{program_id}",
+                        cookies=cookies,
+                        timeout=10
+                    )
+                    if resp_prog.status_code == 200:
+                        attrs = resp_prog.json().get("programRegistrationAttributes", [])
+
+                        for attr in attrs:
+                            name = attr.get("name")
+                            if not name:
+                                continue
+
+                            label_obj = attr.get("label") or {}
+
+                            display_label = (
+                                label_obj.get("en")
+                                or next(iter(label_obj.values()), None)
+                                or name
+                            )
+
+                            allowed_attributes.append({
+                                "name": name,
+                                "label": display_label
+                            })
+
+                except Exception as e:
+                    print("Error retrieving program attributes:", e)
+
+        except Exception as e:
+            print("Error retrieving config from 121:", e)
+
+    # STRICT MODE – Drop invalid fields
+    if allowed_attributes:
+        allowed_names = {a["name"] for a in allowed_attributes}
+        config_data["fields"] = [
+            f for f in config_data.get("fields", [])
+            if f.get("key") in allowed_names
+        ]
+
+    # ------------------------------------------------------
+    #              KOBO IMAGE FIELD EXTRACTION (FIXED)
+    # ------------------------------------------------------
+
+    def get_full_kobo_path(item):
+        """Return correct Kobo path: using $xpath if available, else parent chain."""
+        if "$xpath" in item:
+            return item["$xpath"].replace("/data/", "").replace("data/", "").strip("/")
+
+        # Manual fallback
+        parts = []
+        current = item
+        while current:
+            if current.get("name"):
+                parts.append(current["name"])
+            current = current.get("parent")
+
+        return "/".join(reversed(parts))
 
     try:
-        # Login to 121
-        login_payload = {
-            "username": system_config.get("username121", ""),
-            "password": system_config.get("password121", "")
-        }
+        token = system_config.get("KOBO_TOKEN")
+        asset_id = system_config.get("ASSET_ID")
+        kobo_server = system_config.get("KOBO_SERVER", "https://kobo.ifrc.org")
 
-        login_resp = requests.post(
-            f"{system_config['url121']}/api/users/login",
-            json=login_payload
-        )
-
-        if login_resp.status_code == 201:
-            token = login_resp.json().get("access_token_general")
-
-            # Request FSP configurations
-            resp = requests.get(
-                f"{system_config['url121']}/api/programs/{system_config['programId']}/fsp-configurations",
-                cookies={"access_token_general": token}
-            )
+        if token and asset_id:
+            url = f"{kobo_server}/api/v2/assets/{asset_id}/?format=json"
+            resp = requests.get(url, headers={"Authorization": f"Token {token}"}, timeout=10)
 
             if resp.status_code == 200:
-                for fsp in resp.json():
-                    for prop in fsp.get("properties", []):
-                        if prop.get("name") == "columnToMatch":
-                            column_to_match_121 = prop.get("value")
-                            break
+                content = resp.json()
 
-        # Auto-save COLUMN_TO_MATCH if retrieved
-        if column_to_match_121:
-            system_config["COLUMN_TO_MATCH"] = column_to_match_121
-            with open("system_config.json", "w", encoding="utf-8") as f:
-                json.dump(system_config, f, ensure_ascii=False, indent=2)
+                survey = content.get("content", {}).get("survey", [])
+
+                for item in survey:
+                    if item.get("type") == "image":
+                        full_path = get_full_kobo_path(item)
+
+                        # Extract label
+                        labels = item.get("label") or {}
+                        if isinstance(labels, list):
+                            label = labels[0] if labels else full_path
+                        else:
+                            label = labels.get("English") or labels.get("en") or next(iter(labels.values()), full_path)
+
+                        kobo_image_fields.append({
+                            "name": full_path,
+                            "label": label
+                        })
 
     except Exception as e:
-        print("Error retrieving columnToMatch:", e)
+        print("Error loading Kobo image fields:", e)
 
-    # -------------------- Render Page --------------------
+    # STRICT MODE for image field
+    if kobo_image_fields:
+        valid_paths = {i["name"] for i in kobo_image_fields}
+        if config_data.get("photo", {}).get("field_name") not in valid_paths:
+            config_data["photo"]["field_name"] = ""
+
+    # ------------------------------------------------------
+    # SAVE COLUMN_TO_MATCH IF FOUND
+    # ------------------------------------------------------
+    if column_to_match_121:
+        system_config["COLUMN_TO_MATCH"] = column_to_match_121
+        try:
+            with open("system_config.json", "w", encoding="utf-8") as f:
+                json.dump(system_config, f, ensure_ascii=False, indent=2)
+        except:
+            pass
+
+    # ------------------------------------------------------
+    # RENDER PAGE
+    # ------------------------------------------------------
     return render_template(
         "config.html",
         config=config_data,
         system_config=system_config,
         column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
+        allowed_attributes=allowed_attributes,
+        kobo_image_fields=kobo_image_fields,
         lang=lang,
         username=username,
         program_title=program_title,

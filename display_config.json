@@ -15,30 +15,6 @@
         "fr": "numero de telephone",
         "ar": "phone"
       }
-    },
-    {
-      "key": "test",
-      "labels": {
-        "en": "test",
-        "fr": "test",
-        "ar": "test"
-      }
-    },
-    {
-      "key": "hello",
-      "labels": {
-        "en": "hello",
-        "fr": "hello",
-        "ar": "hello"
-      }
-    },
-    {
-      "key": "income_source",
-      "labels": {
-        "en": "income_source",
-        "fr": "income_source",
-        "ar": "income_source"
-      }
     }
   ],
   "photo": {

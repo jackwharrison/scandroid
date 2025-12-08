@@ -8,8 +8,8 @@
 
   <style>
     :root {
-      --pad: 20px;
-      --gap: 24px;
+      --pad: 16px;
+      --gap: 12px;
       --radius: 16px;
       --card: #fff;
       --ink: #111827;
@@ -32,10 +32,9 @@
       color: var(--ink);
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;
     }
 
-    /* ------------------ HEADER ------------------ */
+    /* ---------- HEADER (121 STYLE) ---------- */
     header {
       background-color: #002855;
       padding: 12px 24px;
@@ -45,10 +44,9 @@
       color: white;
       position: relative;
       z-index: 3000;
-      box-sizing: border-box;
-      height: 56px;
     }
 
+    /* Logo area */
     .header-left {
       display: flex;
       align-items: center;
@@ -60,51 +58,36 @@
       object-fit: contain;
     }
 
+    /* Title */
     .header-title {
       flex: 1;
+      text-align: left;
       padding-left: 20px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
       font-size: 1.1rem;
-      white-space: nowrap;
-    }
-
-    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
-    .title-divider { opacity: 0.8; }
-    .title-program { font-weight: 300; opacity: 0.95; }
-
-    .header-controls {
+      color: #ffffff;
       display: flex;
       align-items: center;
-      gap: 16px;
-    }
-
-    .header-btn {
-      height: 32px;
-      padding: 0 12px;
-      font-size: 14px;
-      font-weight: 500;
-      border-radius: 16px;
-      display: inline-flex;
-      align-items: center;
       gap: 6px;
-      background: transparent;
-      border: none;
-      color: #ffffff;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: border 0.2s ease;
-      text-decoration: none !important;
     }
 
-    .header-btn:hover {
-      border: 1px solid rgba(255,255,255,0.9);
+    .title-bold {
+      font-weight: 800;
+      letter-spacing: 0.3px;
     }
 
-    .header-btn img {
-      width: 14px;
-      height: 14px;
+    .title-divider {
+      opacity: 0.8;
+    }
+
+    .title-program {
+      font-weight: 300;
+      opacity: 0.95;
+    }
+
+    /* Account button */
+    .account-icon-svg {
+      width: 16px;
+      height: 16px;
       filter: invert(100%);
     }
 
@@ -112,11 +95,40 @@
       width: 12px;
       height: 12px;
       filter: invert(100%);
+      margin-left: 4px;
       transition: transform 0.15s ease;
     }
 
+    .account-btn {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 18px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: border 0.2s ease;
+    }
+
+    .account-btn:hover {
+      border: 1px solid rgba(255,255,255,0.9);
+    }
+
+    /* Rotate arrow when open */
     .account-btn.active .account-arrow-svg {
       transform: rotate(180deg);
+    }
+
+    /* Wrapper */
+    .header-account-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
     }
 
     .lang-select select {
@@ -124,11 +136,11 @@
       border-radius: 8px;
       border: 1px solid #d1d5db;
       background: #ffffff;
-      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
     }
 
+    /* Dropdown */
     .account-menu {
       position: absolute;
       background: #ffffff;
@@ -141,13 +153,15 @@
       padding: 10px 0;
     }
 
-    .hidden { display: none; }
+    .hidden {
+      display: none;
+    }
 
     .account-menu-item {
       padding: 10px 16px;
       font-size: 14px;
-      color: #000;
       text-decoration: none;
+      color: #000;
       display: block;
     }
 
@@ -160,10 +174,44 @@
       margin: 6px 0;
     }
 
-    .user-info { font-size: 13px; }
+    .user-info {
+      font-size: 13px;
+    }
 
+    /* ---------- FOOTER ---------- */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      font-size: 0.9rem;
+      background-color: #002855;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      color: #ffffff;
+      flex-wrap: wrap;
+    }
 
-    /* ------------------ MAIN ------------------ */
+    /* ---------- MOBILE ---------- */
+    @media (max-width: 576px) {
+      header {
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+      }
+
+      .header-title {
+        padding-left: 0;
+        text-align: center;
+      }
+
+      .header-account-wrapper {
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+
+    /* ---------- EXTRA STYLES FOR SYSTEM CONFIG LAYOUT ---------- */
+
     .wrapper {
       width: 100%;
       max-width: 980px;
@@ -171,6 +219,31 @@
       padding: 0 20px;
       box-sizing: border-box;
       flex: 1;
+    }
+
+    .page-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--navy);
+      text-decoration: none;
+      padding: 8px 14px;
+      background: #ffffff;
+      border-radius: 999px;
+      border: 2px solid var(--navy);
+      transition: 0.2s ease;
+    }
+
+    .page-back-btn:hover {
+      background: #e3e8ef;
+    }
+
+    .page-back-btn img {
+      width: 14px;
+      height: 14px;
     }
 
     h1 {
@@ -221,7 +294,6 @@
       font-size: 0.95rem;
     }
 
-    /* ------------------ FIXED OVERFLOW ISSUE ------------------ */
     input[type="text"],
     input[type="password"],
     select {
@@ -231,7 +303,7 @@
       margin-top: 6px;
       border: 1px solid #d1d5db;
       border-radius: 10px;
-      box-sizing: border-box;   /* 🟣 FIX: Prevents overflow */
+      box-sizing: border-box;
     }
 
     .save-btn {
@@ -254,18 +326,6 @@
     .save-btn:hover {
       background: #ece2ff;
     }
-
-    footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 18px;
-      font-size: 0.9rem;
-      background-color: #002855;
-      border-top: 1px solid rgba(255,255,255,0.15);
-      color: #ffffff;
-      flex-wrap: wrap;
-    }
   </style>
 
 </head>
@@ -283,13 +343,7 @@
     <span class="title-program">{{ program_title }}</span>
   </div>
 
-  <div class="header-controls">
-
-    <a href="/admin-dashboard?lang={{ lang }}" class="header-btn">
-      <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
-      {{ t.back_to_dashboard }}
-    </a>
-
+  <div class="header-account-wrapper">
     <form method="get" action="/system-config" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
@@ -299,7 +353,7 @@
     </form>
 
     <div class="account-dropdown">
-      <button class="header-btn account-btn" onclick="toggleAccountDropdown()">
+      <button class="account-btn" onclick="toggleAccountDropdown()">
         <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
         Account
         <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
@@ -313,16 +367,19 @@
 
         <div class="account-menu-divider"></div>
 
-        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">
-          Logout
-        </a>
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
       </div>
     </div>
-
   </div>
 </header>
 
 <div class="wrapper">
+
+  <a href="/admin-dashboard?lang={{ lang }}" class="page-back-btn">
+    <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+    {{ t.back_to_dashboard }}
+  </a>
+
   <h1>{{ t.config_system }}</h1>
   <p class="subtitle">{{ t.config_system_desc }}</p>
 
@@ -348,11 +405,8 @@
       <div class="card">
         <h2>{{ t.info_121 }}</h2>
 
+        <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}">
 
-        <!-- Hidden URL for 121 -->
-        <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
-
-        <!-- Program dropdown (ID as value, title as label) -->
         <label for="programId">{{ t.program_id }}</label>
         <select id="programId" name="programId">
           {% for p in program_options %}
@@ -363,20 +417,9 @@
           {% endfor %}
         </select>
 
-        <!-- Read-only display of program title -->
-        <input type="hidden" id="programTitle" value="{{ program_title or '' }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
-
-        <!-- Hidden programTitle so it is saved to JSON -->
         <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
-
-        <!-- Hidden programCurrency, still saved -->
-        <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
-
-
-
+        <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}">
         <input type="hidden" id="username121" name="username121" value="{{ config['username121'] }}">
-
-
         <input type="hidden" id="password121" name="password121" value="{{ config['password121'] }}">
       </div>
 
@@ -398,13 +441,14 @@
 function toggleAccountDropdown() {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');
+
   menu.classList.toggle('hidden');
   btn.classList.toggle('active');
 }
 
 document.addEventListener('click', function(e) {
-  const btn = document.querySelector('.account-btn');
   const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
 
   if (!btn.contains(e.target)) {
     menu.classList.add('hidden');
