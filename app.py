@@ -263,7 +263,7 @@ translations = {
     "footer_dev": "Developed by 510 @ The Netherlands Red Cross",
     "footer_support": "If you need support contact jharrison@redcross.nl",
     "kobo_info": "Kobo Information",
-    "kobo_token": "Kobo Token",
+    "kobo_token": "Kobo API Key",
     "asset_id": "Kobo Asset ID",
     "fsp_password": "Set Password for FSPs",
     "password": "Password",
@@ -274,7 +274,7 @@ translations = {
     "info_121": "121 Information",
     "url121": "121 URL",
     "username121": "121 Username",
-    "program_id": "121 Program ID",
+    "program_id": "Select Program",
     "payment_id": "Payment ID",
     "column_to_match": "Field to Match for Payment (e.g., phoneNumber)",
     "column_to_match_info": "This field is selected in the Field Display Config page.",
@@ -329,7 +329,6 @@ translations = {
     "program_information": "Program Information",
     "credentials": "Credentials",
     "url_121": "121 URL",
-    "program_id": "121 Program ID",
     "username_121": "121 Username",
     "password_121": "121 Password",
     "field_name_121": "121 Field Name",
@@ -398,7 +397,7 @@ translations = {
     "footer_dev": "Développé par 510 @ La Croix-Rouge néerlandaise",
     "footer_support": "Pour toute assistance, contactez jharrison@redcross.nl",
     "kobo_info": "Informations Kobo",
-    "kobo_token": "Jeton Kobo",
+    "kobo_token": "Clé API",
     "asset_id": "ID d'actif Kobo",
     "fsp_password": "Définir un mot de passe pour les FSP",
     "password": "Mot de passe",
@@ -409,7 +408,7 @@ translations = {
     "info_121": "Informations 121",
     "url121": "URL 121",
     "username121": "Nom d'utilisateur 121",
-    "program_id": "ID du programme 121",
+    "program_id": "Sélectionner le programme",
     "payment_id": "ID de paiement",
     "column_to_match": "Champ à faire correspondre pour le paiement (ex. : phoneNumber)",
     "column_to_match_info": "Ce champ est sélectionné dans la page de configuration d'affichage.",
@@ -464,7 +463,6 @@ translations = {
     "program_information": "Informations du programme",
     "credentials": "Identifiants",
     "url_121": "URL 121",
-    "program_id": "ID du programme 121",
     "username_121": "Nom d’utilisateur 121",
     "password_121": "Mot de passe 121",
     "field_name_121": "Nom du champ 121",
@@ -544,7 +542,6 @@ translations = {
     "info_121": "معلومات 121",
     "url121": "رابط 121",
     "username121": "اسم مستخدم 121",
-    "program_id": "معرف برنامج 121",
     "payment_id": "معرف الدفع",
     "column_to_match": "الحقل المطابق للدفع (مثل رقم الهاتف)",
     "column_to_match_info": "يتم تحديد هذا الحقل في صفحة إعداد عرض الحقول.",
@@ -599,7 +596,7 @@ translations = {
     "program_information": "معلومات البرنامج",
     "credentials": "بيانات تسجيل الدخول",
     "url_121": "رابط 121",
-    "program_id": "معرّف البرنامج 121",
+    "program_id": "اختر البرنامج",
     "username_121": "اسم المستخدم 121",
     "password_121": "كلمة مرور 121",
     "field_name_121": "اسم الحقل في 121",
@@ -743,8 +740,8 @@ def system_config():
         editable_keys = [
             "KOBO_SERVER", "KOBO_TOKEN", "ASSET_ID",
             "url121", "username121", "password121",
-            "programId", "ENCRYPTION_KEY", "programCurrency",
-            "programTitle"
+            "programId", "programTitle",
+            "ENCRYPTION_KEY", "programCurrency"
         ]
 
         for key in editable_keys:
@@ -764,14 +761,17 @@ def system_config():
     url121 = safe_get("url121")
     username121 = safe_get("username121")
     password121 = safe_get("password121")
-    program_id = safe_get("programId")
+    selected_program_id = safe_get("programId")
 
     token = None
     program_title = config.get("programTitle")
     program_currency = config.get("programCurrency")
     column_to_match_121 = None
 
+    program_options = []   # <-- Will hold (id, title)
+
     # -------------------- Login to 121 API --------------------
+    program_ids = []
     if url121 and username121 and password121:
         try:
             login_payload = {"username": username121, "password": password121}
@@ -779,31 +779,49 @@ def system_config():
             login_resp = requests.post(login_url, json=login_payload)
 
             if login_resp.status_code == 201:
-                token = login_resp.json().get("access_token_general")
+                resp_json = login_resp.json()
+                token = resp_json.get("access_token_general")
+
+                # Extract program IDs from permissions keys
+                permissions = resp_json.get("permissions", {})
+                program_ids = [int(pid) for pid in permissions.keys()]
 
         except Exception as e:
             print("Error logging into 121 API:", e)
 
-    # -------------------- Fetch Program Info --------------------
-    if token and program_id:
+    # -------------------- Fetch All Program Titles --------------------
+    if token and program_ids:
+        for pid in program_ids:
+            try:
+                program_url = f"{url121}/api/programs/{pid}"
+                r = requests.get(program_url, cookies={"access_token_general": token})
+
+                if r.status_code == 200:
+                    pdata = r.json()
+                    title_dict = pdata.get("titlePortal", {})
+
+                    # Best possible title in current language
+                    title = title_dict.get(lang) or next(iter(title_dict.values()), f"Program {pid}")
+
+                    program_options.append({"id": pid, "title": title})
+
+            except Exception as e:
+                print(f"Error loading program {pid}:", e)
+
+    # -------------------- Fetch Selected Program's Info --------------------
+    if token and selected_program_id:
         try:
-            program_url = f"{url121}/api/programs/{program_id}"
+            program_url = f"{url121}/api/programs/{selected_program_id}"
             resp = requests.get(program_url, cookies={"access_token_general": token})
 
             if resp.status_code == 200:
                 data = resp.json()
-
-                # Title (multilingual)
                 title_dict = data.get("titlePortal", {})
-                if lang in title_dict:
-                    program_title = title_dict[lang]
-                else:
-                    program_title = next(iter(title_dict.values()), None)
 
-                # Currency
+                program_title = title_dict.get(lang) or next(iter(title_dict.values()), None)
                 program_currency = data.get("currency", program_currency)
 
-                # Persist
+                # Persist updates
                 if program_title:
                     config["programTitle"] = program_title
                 if program_currency:
@@ -812,12 +830,12 @@ def system_config():
                 save_config(config)
 
         except Exception as e:
-            print("Error fetching program info:", e)
+            print("Error fetching selected program info:", e)
 
     # -------------------- Fetch columnToMatch --------------------
-    if token and program_id:
+    if token and selected_program_id:
         try:
-            fsp_url = f"{url121}/api/programs/{program_id}/fsp-configurations"
+            fsp_url = f"{url121}/api/programs/{selected_program_id}/fsp-configurations"
             resp = requests.get(fsp_url, cookies={"access_token_general": token})
 
             if resp.status_code == 200:
@@ -826,7 +844,6 @@ def system_config():
                         if prop.get("name") == "columnToMatch":
                             column_to_match_121 = prop.get("value")
 
-            # Save COLUMN_TO_MATCH if found
             if column_to_match_121:
                 config["COLUMN_TO_MATCH"] = column_to_match_121
                 save_config(config)
@@ -841,10 +858,12 @@ def system_config():
         program_title=program_title,
         program_currency=program_currency,
         column_to_match_121=column_to_match_121 or config.get("COLUMN_TO_MATCH"),
-        username=session.get("admin_username"),   # ✅ NOW PASSED TO TEMPLATE
+        program_options=program_options,  # <-- REQUIRED for dropdown
+        username=session.get("admin_username"),
         lang=lang,
         t=t
     )
+
 
 
 @app.route("/config", methods=["GET", "POST"])

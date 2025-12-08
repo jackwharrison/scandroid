@@ -348,27 +348,36 @@
       <div class="card">
         <h2>{{ t.info_121 }}</h2>
 
-        <h3>{{ t.program_information }}</h3>
 
-        <label for="url121">{{ t.url_121 }}</label>
-        <input type="text" id="url121" name="url121" value="{{ config['url121'] }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
+        <!-- Hidden URL for 121 -->
+        <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
 
+        <!-- Program dropdown (ID as value, title as label) -->
         <label for="programId">{{ t.program_id }}</label>
-        <input type="text" id="programId" name="programId" value="{{ config['programId'] }}">
+        <select id="programId" name="programId">
+          {% for p in program_options %}
+            <option value="{{ p.id }}"
+              {% if config.get('programId')|string == p.id|string %}selected{% endif %}>
+              {{ p.title }}
+            </option>
+          {% endfor %}
+        </select>
 
-        <label for="programTitle">{{ t.program_title }}</label>
-        <input type="text" id="programTitle" value="{{ program_title or '' }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
+        <!-- Read-only display of program title -->
+        <input type="hidden" id="programTitle" value="{{ program_title or '' }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
 
-        <label for="programCurrency">{{ t.program_currency or "Currency" }}</label>
-        <input type="text" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
+        <!-- Hidden programTitle so it is saved to JSON -->
+        <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
 
-        <h3>{{ t.credentials }}</h3>
+        <!-- Hidden programCurrency, still saved -->
+        <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}" readonly style="background:#f3f4f6; cursor:not-allowed;">
 
-        <label for="username121">{{ t.username_121 }}</label>
-        <input type="text" id="username121" name="username121" value="{{ config['username121'] }}">
 
-        <label for="password121">{{ t.password_121 }}</label>
-        <input type="password" id="password121" name="password121" value="{{ config['password121'] }}">
+
+        <input type="hidden" id="username121" name="username121" value="{{ config['username121'] }}">
+
+
+        <input type="hidden" id="password121" name="password121" value="{{ config['password121'] }}">
       </div>
 
     </div>
