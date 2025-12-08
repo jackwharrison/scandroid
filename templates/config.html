@@ -32,7 +32,7 @@
       overflow-x: hidden;
     }
 
-    /* ------------------ UNIVERSAL 121 HEADER (MATCHES SYSTEM CONFIG) ------------------ */
+    /* ------------------ HEADER ------------------ */
     header {
       background-color: #002855;
       padding: 12px 24px;
@@ -45,7 +45,6 @@
       box-sizing: border-box;
     }
 
-    /* Logo block (single logo, same as system-config) */
     .header-left {
       display: flex;
       align-items: center;
@@ -57,7 +56,6 @@
       object-fit: contain;
     }
 
-    /* Title block */
     .header-title {
       flex: 1;
       padding-left: 20px;
@@ -73,14 +71,12 @@
     .title-divider { opacity: 0.8; }
     .title-program { font-weight: 300; opacity: 0.95; }
 
-    /* Header controls (back, lang, account) */
     .header-controls {
       display: flex;
       align-items: center;
       gap: 16px;
     }
 
-    /* Shared header button style – same as system_config */
     .header-btn {
       height: 32px;
       padding: 0 12px;
@@ -90,7 +86,6 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-
       background: transparent;
       border: none;
       color: #ffffff;
@@ -121,7 +116,6 @@
       transform: rotate(180deg);
     }
 
-    /* Language selector */
     .lang-select select {
       padding: 6px 10px;
       border-radius: 8px;
@@ -132,7 +126,6 @@
       cursor: pointer;
     }
 
-    /* Account dropdown menu */
     .account-menu {
       position: absolute;
       background: #ffffff;
@@ -178,6 +171,32 @@
       flex: 1;
     }
 
+    /* Back button like system-config */
+    .page-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--navy);
+      text-decoration: none;
+      padding: 8px 14px;
+      background: #ffffff;
+      border-radius: 999px;
+      border: 2px solid var(--navy);
+      transition: 0.2s ease;
+    }
+
+    .page-back-btn:hover {
+      background: #e3e8ef;
+    }
+
+    .page-back-btn img {
+      width: 14px;
+      height: 14px;
+    }
+
     h1 {
       text-align: center;
       margin-bottom: 16px;
@@ -216,6 +235,18 @@
       border: 1px solid #d1d5db;
       border-radius: 8px;
       font-size: 0.9rem;
+      box-sizing: border-box;
+    }
+
+    select[name="key"] {
+      width: 95%;
+      max-width: 260px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      font-size: 0.9rem;
+      background: #ffffff;
+      box-sizing: border-box;
     }
 
     .delete-btn {
@@ -246,7 +277,6 @@
       font-size: 1.2rem;
     }
 
-    /* Add field button – pill outline */
     .btn-add-field {
       margin: 24px 0 32px 0;
       padding: 8px 18px;
@@ -267,29 +297,84 @@
       background: #f3e8ff;
     }
 
-    /* ------------------ SAVE BUTTON (pill) ------------------ */
+    /* ------------------ SAVE BUTTON ------------------ */
     .save-btn {
       margin-top: 32px;
       width: 260px;
       padding: 12px 20px;
       font-size: 1rem;
       font-weight: 700;
-
       background: #ffffff;
       color: #7c3aed;
       border: 2px solid #7c3aed;
       border-radius: 999px;
-
       cursor: pointer;
       display: block;
       margin-left: auto;
       margin-right: auto;
-
       transition: background 0.2s ease;
     }
 
     .save-btn:hover {
       background: #ece2ff;
+    }
+
+    /* ------------------ PHOTO TOGGLE ------------------ */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #e5e7eb;
+      transition: 0.2s;
+      border-radius: 999px;
+    }
+
+    .toggle-slider:before {
+      content: "";
+      position: absolute;
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      top: 3px;
+      background-color: #ffffff;
+      transition: 0.2s;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background-color: var(--violet);
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(18px);
     }
 
     /* ------------------ FOOTER ------------------ */
@@ -303,34 +388,53 @@
       font-size: 0.9rem;
       flex-wrap: wrap;
     }
+        /* Match the style of your field dropdowns */
+    #photoKey {
+      width: 95%;
+      max-width: 260px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-size: 0.9rem;
+      box-sizing: border-box;
+      cursor: pointer;
+      appearance: none; /* Removes default arrow */
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='2' fill='none' stroke-linecap='round'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+    /* Ensure all config tables share identical column widths */
+    #fieldTable th:nth-child(1),
+    #photoTable th:nth-child(1) { width: 34%; }
+
+    #fieldTable th:nth-child(2),
+    #photoTable th:nth-child(2) { width: 18%; }
+
+    #fieldTable th:nth-child(3),
+    #photoTable th:nth-child(3) { width: 18%; }
+
+    #fieldTable th:nth-child(4),
+    #photoTable th:nth-child(4) { width: 18%; }
+
+
   </style>
 </head>
 
 <body>
 
 <header>
-  <!-- LEFT LOGO (single logo, like system-config) -->
   <div class="header-left">
     <img src="/instance-static/ns1.png" alt="">
   </div>
 
-  <!-- CENTER TITLE -->
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
     <span class="title-divider">|</span>
     <span class="title-program">{{ program_title }}</span>
   </div>
 
-  <!-- RIGHT CONTROLS: back, lang, account -->
   <div class="header-controls">
-
-    <!-- Back to dashboard -->
-    <a href="/admin-dashboard?lang={{ lang }}" class="header-btn">
-      <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
-      {{ t.back_to_dashboard }}
-    </a>
-
-    <!-- Language selector -->
     <form method="get" action="/config" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
@@ -339,7 +443,6 @@
       </select>
     </form>
 
-    <!-- ACCOUNT DROPDOWN (same structure as system-config) -->
     <div class="account-dropdown">
       <button class="header-btn account-btn" onclick="toggleAccountDropdown()" type="button">
         <img src="{{ url_for('static', filename='icons/user.svg') }}">
@@ -360,11 +463,16 @@
         </a>
       </div>
     </div>
-
   </div>
 </header>
 
 <div class="wrapper">
+
+  <!-- Back button like system-config -->
+  <a href="/admin-dashboard?lang={{ lang }}" class="page-back-btn">
+    <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+    {{ t.back_to_dashboard }}
+  </a>
 
   <h1>{{ t.config_title }}</h1>
 
@@ -388,29 +496,16 @@
       + {{ t.add_field }}
     </button>
 
-    <!-- MATCHING FIELD CARD -->
-    <div class="card">
-      <h2>{{ t.matching_field_title }}</h2>
-      <p style="margin-top:-6px; color:#6b7280; font-size:0.9rem;">
-        {{ t.matching_field_desc }}
-      </p>
-
-      <label for="matchField">{{ t.matching_field_label }}</label>
-      <input type="text"
-             id="matchField"
-             name="matchField"
-             value="{{ column_to_match_121 or system_config.get('COLUMN_TO_MATCH', '') }}"
-             readonly
-             style="background:#f3f4f6; cursor:not-allowed;">
-    </div>
-
     <!-- PHOTO CONFIG SECTION -->
     <div class="card" id="photoCard">
       <h2>{{ t.photo_config_title }}</h2>
 
-      <label style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
-        <input type="checkbox" id="photoEnabled" onchange="togglePhotoFields()">
-        {{ t.enable_photo_field }}
+      <label class="toggle-row">
+        <span>{{ t.enable_photo_field }}</span>
+        <div class="toggle">
+          <input type="checkbox" id="photoEnabled" onchange="togglePhotoFields()">
+          <span class="toggle-slider"></span>
+        </div>
       </label>
 
       <table style="width:100%; border-collapse:collapse;">
@@ -422,10 +517,16 @@
             <th>{{ t.label_ar }}</th>
           </tr>
         </thead>
-
         <tbody id="photoTableBody">
           <tr>
-            <td><input type="text" id="photoKey"></td>
+            <td>
+              <select id="photoKey">
+                <option value="">{{ t.select_option }}</option>
+                {% for f in kobo_image_fields %}
+                  <option value="{{ f.name }}">{{ f.label }}</option>
+                {% endfor %}
+              </select>
+            </td>
             <td><input type="text" id="photoLabelEn"></td>
             <td><input type="text" id="photoLabelFr"></td>
             <td><input type="text" id="photoLabelAr"></td>
@@ -445,6 +546,7 @@
 </footer>
 
 <script>
+// Photo toggle behaviour
 function togglePhotoFields() {
   const enabled = document.getElementById('photoEnabled').checked;
   const row = document.querySelector('#photoTableBody tr');
@@ -463,23 +565,86 @@ window.addEventListener("load", togglePhotoFields);
 </script>
 
 <script>
-let matchFieldKey = {{ system_config.get("COLUMN_TO_MATCH","") | tojson }};
+// Allowed attributes coming from 121 (name + label)
+const allowedAttributes = {{ allowed_attributes | tojson }};
+const fieldTableBody = document.querySelector('#fieldTable tbody');
+
+// Helper to build the select for "121 Field Name"
+function createFieldSelect(selectedKey) {
+  const select = document.createElement('select');
+  select.name = 'key';
+  select.required = true;
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = "{{ t.select_field_121 or 'Select field' }}";
+  select.appendChild(placeholder);
+
+  allowedAttributes.forEach(attr => {
+    const opt = document.createElement('option');
+    opt.value = attr.name;
+    opt.textContent = attr.label;
+    if (selectedKey && selectedKey === attr.name) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  return select;
+}
 
 function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
   const row = document.createElement('tr');
-  row.innerHTML = `
-    <td><input type="text" name="key" value="${item.key}"></td>
-    <td><input type="text" name="label_en" value="${item.labels.en}"></td>
-    <td><input type="text" name="label_fr" value="${item.labels.fr}"></td>
-    <td><input type="text" name="label_ar" value="${item.labels.ar}"></td>
-    <td><button class="delete-btn" type="button" onclick="removeRow(this)">🗑️</button></td>
-  `;
-  document.querySelector('#fieldTable tbody').appendChild(row);
+
+  // First cell: dropdown (or fallback input if no attributes loaded)
+  const keyCell = document.createElement('td');
+  if (allowedAttributes.length > 0) {
+    const select = createFieldSelect(item.key || '');
+    keyCell.appendChild(select);
+  } else {
+    // Fallback: plain text input if API failed
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'key';
+    input.value = item.key || '';
+    keyCell.appendChild(input);
+  }
+  row.appendChild(keyCell);
+
+  // Label cells
+  const langs = ['en', 'fr', 'ar'];
+  langs.forEach(lang => {
+    const cell = document.createElement('td');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = 'label_' + lang;
+    input.value = (item.labels && item.labels[lang]) || '';
+    cell.appendChild(input);
+    row.appendChild(cell);
+  });
+
+  // Remove button
+  const removeCell = document.createElement('td');
+  const btn = document.createElement('button');
+  btn.className = 'delete-btn';
+  btn.type = 'button';
+  btn.textContent = '❌';
+  btn.onclick = function () {
+    removeRow(btn);
+  };
+  removeCell.appendChild(btn);
+  row.appendChild(removeCell);
+
+  fieldTableBody.appendChild(row);
 }
 
-function addRow() { addRowFromData(); }
+function addRow() {
+  addRowFromData();
+}
 
-function removeRow(button) { button.closest('tr').remove(); }
+function removeRow(button) {
+  button.closest('tr').remove();
+}
 
 async function loadConfig() {
   const config = {{ config | tojson }};
@@ -489,29 +654,47 @@ async function loadConfig() {
   }
 
   if (config.photo) {
-    document.getElementById('photoEnabled').checked = config.photo.enabled;
-    document.getElementById('photoKey').value = config.photo.field_name || "";
-    document.getElementById('photoLabelEn').value = config.photo.labels.en || "";
-    document.getElementById('photoLabelFr').value = config.photo.labels.fr || "";
-    document.getElementById('photoLabelAr').value = config.photo.labels.ar || "";
+    document.getElementById('photoEnabled').checked = !!config.photo.enabled;
+    const photoKeySelect = document.getElementById('photoKey');
+    if (config.photo.field_name) {
+        photoKeySelect.value = config.photo.field_name;
+    }
+    document.getElementById('photoLabelEn').value = (config.photo.labels && config.photo.labels.en) || "";
+    document.getElementById('photoLabelFr').value = (config.photo.labels && config.photo.labels.fr) || "";
+    document.getElementById('photoLabelAr').value = (config.photo.labels && config.photo.labels.ar) || "";
   }
+
+  togglePhotoFields();
 }
 
 document.getElementById('configForm').addEventListener('submit', async e => {
   e.preventDefault();
 
   const rows = document.querySelectorAll('#fieldTable tbody tr');
+  const fields = [];
 
-  const fields = Array.from(rows).map(row => {
-    const inputs = row.querySelectorAll('input');
-    return {
-      key: inputs[0].value,
+  rows.forEach(row => {
+    const keyEl = row.querySelector('select[name="key"]') || row.querySelector('input[name="key"]');
+    if (!keyEl) return;
+
+    const key = (keyEl.value || "").trim();
+    if (!key) {
+      // Ignore rows with no selected key
+      return;
+    }
+
+    const labelEnInput = row.querySelector('input[name="label_en"]');
+    const labelFrInput = row.querySelector('input[name="label_fr"]');
+    const labelArInput = row.querySelector('input[name="label_ar"]');
+
+    fields.push({
+      key: key,
       labels: {
-        en: inputs[1].value,
-        fr: inputs[2].value,
-        ar: inputs[3].value
+        en: labelEnInput ? labelEnInput.value : "",
+        fr: labelFrInput ? labelFrInput.value : "",
+        ar: labelArInput ? labelArInput.value : ""
       }
-    };
+    });
   });
 
   const result = {
@@ -533,14 +716,18 @@ document.getElementById('configForm').addEventListener('submit', async e => {
     body: JSON.stringify(result)
   });
 
-  if (res.ok) alert('{{ t.saved_successfully }}');
-  else alert('{{ t.failed_to_save }}');
+  if (res.ok) {
+    alert('{{ t.saved_successfully }}');
+  } else {
+    alert('{{ t.failed_to_save }}');
+  }
 });
 
 window.onload = loadConfig;
 </script>
 
 <script>
+// Account dropdown
 function toggleAccountDropdown() {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');

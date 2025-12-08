@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>{% block title %}121 Scan{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --pad: 20px;
+      --gap: 24px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --violet: #7c3aed;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ------------------ SHARED HEADER ------------------ */
+    header {
+      background-color: #002855;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: white;
+      position: relative;
+      z-index: 3000;
+      box-sizing: border-box;
+      height: 56px;
+    }
+
+    .header-left { display: flex; align-items: center; }
+
+    .header-left img {
+      height: 32px;
+      width: auto;
+      object-fit: contain;
+    }
+
+    .header-title {
+      flex: 1;
+      padding-left: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 1.1rem;
+      white-space: nowrap;
+    }
+
+    .title-bold { font-weight: 800; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; opacity: 0.95; }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-btn img {
+      width: 14px;
+      height: 14px;
+      filter: invert(100%);
+    }
+
+    .lang-select select {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .account-btn {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      padding: 6px 12px;
+      font-size: 14px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      border-radius: 16px;
+      transition: 0.2s ease;
+    }
+
+    .account-btn:hover { border: 1px solid rgba(255,255,255,0.9); }
+
+    .account-arrow-svg {
+      width: 12px; height: 12px;
+      filter: invert(100%);
+      transition: transform 0.15s ease;
+    }
+
+    .account-btn.active .account-arrow-svg { transform: rotate(180deg); }
+
+    .account-menu {
+      position: absolute;
+      background: #ffffff;
+      top: 48px;
+      right: 0;
+      min-width: 220px;
+      border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+      z-index: 3001;
+      padding: 10px 0;
+    }
+
+    .hidden { display: none; }
+
+    .account-menu-item {
+      padding: 10px 16px;
+      font-size: 14px;
+      color: #000;
+      text-decoration: none;
+      display: block;
+    }
+
+    .account-menu-item:hover { background: #f2f2f2; }
+    .account-menu-divider { border-top: 1px solid #e5e7eb; margin: 6px 0; }
+    .user-info { font-size: 13px; }
+
+    /* ------------------ SHARED FOOTER ------------------ */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      font-size: 0.9rem;
+      background-color: #002855;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      color: #ffffff;
+      flex-wrap: wrap;
+    }
+
+    /* PAGE-SPECIFIC STYLES */
+    {% block extra_styles %}{% endblock %}
+  </style>
+</head>
+
+<body>
+
+<header>
+  <div class="header-left">
+    <img src="/instance-static/ns1.png" alt="">
+  </div>
+
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>
+  </div>
+
+  <div class="header-controls">
+
+    <form method="get" action="{{ request.path }}" class="lang-select">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+
+    <div class="account-dropdown">
+      <button class="account-btn" onclick="toggleAccountDropdown()">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
+        Account
+        <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
+      </button>
+
+      <div id="account-menu" class="account-menu hidden">
+        <div class="account-menu-item user-info">
+          <strong>Logged in as:</strong><br>{{ username }}
+        </div>
+
+        <div class="account-menu-divider"></div>
+
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
+      </div>
+    </div>
+
+  </div>
+</header>
+
+{% block content %}{% endblock %}
+
+<footer>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
+</footer>
+
+<script>
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
+
+document.addEventListener('click', function(e) {
+  const btn = document.querySelector('.account-btn');
+  const menu = document.getElementById('account-menu');
+  if (!btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
+</script>
+
+{% block extra_scripts %}{% endblock %}
+
+</body>
+</html>
