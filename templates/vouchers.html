@@ -8,32 +8,32 @@
 
   <style>
     :root {
-      --pad: 20px;
-      --gap: 24px;
-      --radius: 16px;
-      --card: #fff;
+      --pad: 16px;
+      --gap: 12px;
+      --radius: 18px;
+      --card: #ffffff;
       --ink: #111827;
       --muted: #6b7280;
       --line: #e5e7eb;
       --bg: #f3f4f6;
-      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --shadow-soft: 0 12px 32px rgba(0,0,0,0.05);
       --navy: #002855;
-      --violet: #7c3aed;
+      --green: #0d8f62;
+      --blue: #1d4ed8;
     }
 
     html, body {
+      height: 100%;
       margin: 0;
       padding: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--ink);
-      font-family: system-ui, sans-serif;
-      height: 100%;
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;
     }
 
-    /* ------------------ HEADER (IDENTICAL TO SYSTEM/DISPLAY CONFIG) ------------------ */
+    /* ---------- HEADER (aligned with system-config) ---------- */
     header {
       background-color: var(--navy);
       padding: 12px 24px;
@@ -43,7 +43,11 @@
       color: white;
       position: relative;
       z-index: 3000;
-      box-sizing: border-box;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
     }
 
     .header-left img {
@@ -54,50 +58,34 @@
 
     .header-title {
       flex: 1;
+      text-align: left;
+      padding-left: 20px;
+      font-size: 1.1rem;
+      color: #ffffff;
       display: flex;
       align-items: center;
       gap: 6px;
-      padding-left: 20px;
-      font-size: 1.1rem;
-      white-space: nowrap;
     }
 
-    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
-    .title-divider { opacity: 0.8; }
-    .title-program { font-weight: 300; opacity: 0.95; }
+    .title-bold {
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
 
-    .header-controls {
+    .title-divider {
+      opacity: 0.8;
+    }
+
+    .title-program {
+      font-weight: 300;
+      opacity: 0.95;
+    }
+
+    .header-account-wrapper {
       display: flex;
       align-items: center;
       gap: 16px;
-    }
-
-    .header-btn {
-      height: 32px;
-      padding: 0 12px;
-      font-size: 14px;
-      font-weight: 500;
-      border-radius: 16px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: transparent;
-      border: none;
-      color: #ffffff;
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
-      transition: border 0.2s ease;
-    }
-
-    .header-btn img {
-      width: 14px;
-      height: 14px;
-      filter: invert(100%);
-    }
-
-    .header-btn:hover {
-      border: 1px solid rgba(255,255,255,0.9);
+      position: relative;
     }
 
     .lang-select select {
@@ -105,12 +93,48 @@
       border-radius: 8px;
       border: 1px solid #d1d5db;
       background: #ffffff;
-      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
+      font-size: 14px;
     }
 
-    /* Account dropdown */
+    .account-icon-svg {
+      width: 16px;
+      height: 16px;
+      filter: invert(100%);
+    }
+
+    .account-arrow-svg {
+      width: 12px;
+      height: 12px;
+      filter: invert(100%);
+      margin-left: 4px;
+      transition: transform 0.15s ease;
+    }
+
+    .account-btn {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 18px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: border 0.2s ease;
+    }
+
+    .account-btn:hover {
+      border: 1px solid rgba(255,255,255,0.9);
+    }
+
+    .account-btn.active .account-arrow-svg {
+      transform: rotate(180deg);
+    }
+
     .account-menu {
       position: absolute;
       background: #ffffff;
@@ -123,13 +147,15 @@
       padding: 10px 0;
     }
 
-    .hidden { display: none; }
+    .hidden {
+      display: none;
+    }
 
     .account-menu-item {
       padding: 10px 16px;
       font-size: 14px;
-      color: #000;
       text-decoration: none;
+      color: #000;
       display: block;
     }
 
@@ -146,79 +172,175 @@
       font-size: 13px;
     }
 
-    .account-arrow-svg {
-      width: 12px;
-      height: 12px;
-      filter: invert(100%);
-      transition: transform 0.15s ease;
-    }
-    .account-btn.active .account-arrow-svg {
-      transform: rotate(180deg);
+    /* ---------- MOBILE HEADER ---------- */
+    /* --- MOBILE HEADER (match vouchers page) --- */
+    @media (max-width: 576px) {
+
+      header {
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        text-align: center;
+      }
+
+      .header-title {
+        padding-left: 0 !important;
+        text-align: center;
+        justify-content: center;
+        width: 100%;
+      }
+
+      /* This is the container in your config page */
+      .header-controls {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Make sure the language selector does not stretch */
+      .lang-select select {
+        width: auto;
+        padding: 6px 10px;
+        font-size: 14px;
+      }
+
+      .account-dropdown {
+        width: auto;
+      }
+
+      .account-btn {
+        width: auto;
+        padding: 6px 10px;
+        font-size: 14px;
+      }
     }
 
-    /* ------------------ PAGE LAYOUT ------------------ */
+
+    /* ---------- PAGE LAYOUT ---------- */
     .wrapper {
-      max-width: 680px;
-      margin: 32px auto 40px auto;
-      padding: 0 20px;
       width: 100%;
-      flex: 1;
+      max-width: 880px;
+      margin: 32px auto 50px auto;
+      padding: 0 20px;
       box-sizing: border-box;
+      flex: 1;
+    }
+
+    .page-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      background: #ffffff;
+      border: 2px solid var(--navy);
+      color: var(--navy);
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background 0.2s ease, transform 0.15s ease;
+    }
+
+    .page-back-btn:hover {
+      background: #e2e9f5;
+      transform: translateY(-1px);
+    }
+
+    .page-back-btn img {
+      width: 14px;
+      height: 14px;
     }
 
     .card {
       background: var(--card);
-      padding: 28px;
+      padding: 34px 32px;
       border-radius: var(--radius);
       box-shadow: var(--shadow-soft);
       border: 1px solid var(--line);
+      box-sizing: border-box;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     h2 {
       margin: 0;
       text-align: center;
-      font-size: 1.4rem;
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--navy);
     }
 
     .hint {
-      color: var(--muted);
-      font-size: 0.92rem;
+      margin-top: 10px;
+      margin-bottom: 28px;
       text-align: center;
-      margin: 10px 0 20px 0;
+      color: var(--muted);
+      font-size: 0.96rem;
     }
 
-    /* File input */
-    input[type=file] { display: none; }
-
-    label.file {
-      display: block;
-      border: 1px dashed #93c5fd;
-      padding: 16px;
-      border-radius: 12px;
+    /* ---------- UPLOAD AREA ---------- */
+    .upload-section {
       background: #f8fbff;
-      cursor: pointer;
+      border: 1px solid #cfe2ff;
+      border-radius: 14px;
+      padding: 24px;
       text-align: center;
-      font-weight: 600;
-      margin-bottom: 12px;
+      margin-bottom: 24px;
+    }
+
+    .upload-section:hover {
+      background: #f2f7ff;
+    }
+
+    input[type=file] {
+      display: none;
+    }
+
+    .upload-label {
+      font-weight: 700;
+      font-size: 1rem;
+      display: block;
+      cursor: pointer;
+      color: var(--blue);
+      padding: 12px 0;
+    }
+
+    .upload-icon {
+      display: block;
+      font-size: 2.2rem;
+      margin-bottom: 8px;
     }
 
     #filename {
-      text-align: center;
+      margin-top: 6px;
       color: var(--muted);
-      margin-bottom: 20px;
+      font-size: 0.9rem;
     }
 
-    /* Buttons (consistent pill style) */
+    /* ---------- BUTTONS & COUNTER ---------- */
     .btn {
-      padding: 12px 18px;
+      width: 100%;
+      padding: 14px 22px;
       font-weight: 700;
       border-radius: 999px;
       font-size: 1rem;
       cursor: pointer;
       border: 2px solid transparent;
-      width: 100%;
-      margin-top: 16px;
-      transition: background 0.2s ease, border-color 0.2s ease;
+      transition: background 0.2s ease, transform 0.15s ease;
+      box-sizing: border-box;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
     }
 
     .btn-primary {
@@ -226,33 +348,41 @@
       color: var(--navy);
       border-color: var(--navy);
     }
+
     .btn-primary:hover {
-      background: #e5ecf9;
+      background: #e3e9f5;
     }
 
     .btn-success {
       background: #ffffff;
-      color: #065f46;
-      border-color: #10b981;
+      color: var(--green);
+      border-color: var(--green);
+      margin-top: 16px;
     }
+
     .btn-success:hover {
-      background: #e6fef4;
+      background: #e3f9f0;
     }
 
     .counter {
+      margin-top: 20px;
+      font-size: 1.1rem;
       font-weight: 700;
-      color: #1d4ed8;
-      margin: 16px 0;
+      color: var(--blue);
       text-align: center;
     }
 
+    /* ---------- FOOTER ---------- */
     footer {
-      background: var(--navy);
-      color: white;
-      padding: 12px 18px;
       display: flex;
       justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
       font-size: 0.9rem;
+      background-color: var(--navy);
+      border-top: 1px solid rgba(255,255,255,0.15);
+      color: #ffffff;
+      flex-wrap: wrap;
     }
   </style>
 </head>
@@ -261,7 +391,7 @@
 
 <header>
   <div class="header-left">
-    <img src="/instance-static/ns1.png">
+    <img src="/instance-static/ns1.png" alt="">
   </div>
 
   <div class="header-title">
@@ -270,13 +400,7 @@
     <span class="title-program">{{ program_title }}</span>
   </div>
 
-  <div class="header-controls">
-
-    <a href="/admin-dashboard?lang={{ lang }}" class="header-btn">
-      <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
-      {{ t.back_to_dashboard }}
-    </a>
-
+  <div class="header-account-wrapper">
     <form method="get" action="{{ url_for('vouchers_page', lang=lang) }}" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
@@ -286,8 +410,8 @@
     </form>
 
     <div class="account-dropdown">
-      <button class="header-btn account-btn" type="button" onclick="toggleAccountDropdown()">
-        <img src="{{ url_for('static', filename='icons/user.svg') }}">
+      <button class="account-btn" type="button" onclick="toggleAccountDropdown()">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
         Account
         <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
       </button>
@@ -305,28 +429,35 @@
         </a>
       </div>
     </div>
-
   </div>
 </header>
 
-
-
 <div class="wrapper">
-  <div class="card">
 
+  <a href="/admin-dashboard?lang={{ lang }}" class="page-back-btn">
+    <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+    {{ t.back_to_dashboard }}
+  </a>
+
+  <div class="card">
     <h2>{{ t.voucher_generator }}</h2>
     <p class="hint">{{ t.csv_hint }}</p>
 
-    <form id="uploadForm">
+    <div class="upload-section">
+      <label for="csv" class="upload-label">
+        <span class="upload-icon">📄</span>
+        {{ t.choose_csv }}
+      </label>
+
       <input id="csv" name="csv" type="file"
              accept=".csv, .xls, .xlsx,
                      application/vnd.ms-excel,
                      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>
 
-      <label for="csv" class="file">📄 {{ t.choose_csv }}</label>
-
       <div id="filename"></div>
+    </div>
 
+    <form id="uploadForm">
       <button type="submit" class="btn btn-primary">
         {{ t.upload_csv }}
       </button>
@@ -341,8 +472,8 @@
 </div>
 
 <footer>
-  <div>{{ t.footer_dev }}</div>
-  <div>{{ t.footer_support }}</div>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
 
 <script>
@@ -356,6 +487,7 @@ function toggleAccountDropdown() {
 document.addEventListener('click', function(e) {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');
+
   if (!btn.contains(e.target)) {
     menu.classList.add('hidden');
     btn.classList.remove('active');
@@ -373,7 +505,7 @@ const TXT = {
   chooseCSV: "{{ t.choose_csv_alert }}",
   uploadFailed: "{{ t.upload_failed }}",
   singular: "{{ t.voucher_ready_singular }}",
-  plural: "{{ t.voucher_ready_plural }}"
+  plural: "{{ t.voucher_ready_plural }}",
 };
 
 fileInput.addEventListener('change', () => {

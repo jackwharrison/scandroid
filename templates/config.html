@@ -418,6 +418,172 @@
     #photoTable th:nth-child(4) { width: 18%; }
 
 
+    /* ------------------ MOBILE RESPONSIVENESS ------------------ */
+    /* ================================
+      MOBILE BREAKPOINT ≤ 768px
+      (FONT SCALE + HEADER COLLAPSE)
+      ================================ */
+    @media (max-width: 768px) {
+
+      /* --- Global font scale down --- */
+      body {
+        font-size: 14px;
+      }
+
+      h1 {
+        font-size: 1.25rem;
+        margin-bottom: 12px;
+      }
+
+      .card h2 {
+        font-size: 1.1rem;
+      }
+
+      /* --- HEADER: match vouchers page behaviour --- */
+      header {
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        text-align: center;
+      }
+
+      .header-title {
+        padding-left: 0 !important;
+        text-align: center;
+        justify-content: center;
+        width: 100%;
+        font-size: 0.95rem;
+      }
+
+      .header-controls {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .lang-select select {
+        padding: 4px 8px;
+        font-size: 13px;
+        width: auto;
+      }
+
+      .account-btn {
+        padding: 4px 8px;
+        font-size: 13px;
+        width: auto;
+      }
+
+      /* --- Back button --- */
+      .page-back-btn {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+        gap: 6px;
+        max-width: fit-content;
+        display: inline-flex;
+      }
+
+      .page-back-btn img {
+        width: 12px;
+        height: 12px;
+      }
+
+      /* --- Wrapper and card --- */
+      .wrapper {
+        padding: 0 12px;
+        margin-top: 10px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      /* --- Table adjustments --- */
+      table {
+        font-size: 13px;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+
+      th, td {
+        padding: 6px 8px !important;
+      }
+
+      input[type="text"],
+      select[name="key"],
+      #photoKey {
+        font-size: 13px !important;
+        padding: 6px 8px !important;
+        height: 32px !important;
+      }
+
+      /* Fix iOS zoom issue */
+      input[type="text"],
+      select {
+        font-size: 16px;
+      }
+
+      /* --- Photo toggle smaller --- */
+      .toggle {
+        width: 38px;
+        height: 20px;
+      }
+
+      .toggle-slider:before {
+        height: 14px;
+        width: 14px;
+        top: 3px;
+        left: 3px;
+      }
+
+      .toggle input:checked + .toggle-slider:before {
+        transform: translateX(16px);
+      }
+
+      /* --- Save button --- */
+      .save-btn {
+        width: 80%;
+        padding: 10px;
+        font-size: 0.9rem;
+      }
+    }
+
+    /* ================================
+      EXTRA SMALL PHONES ≤ 480px
+      ================================ */
+    @media (max-width: 480px) {
+
+      body {
+        font-size: 13px;
+      }
+
+      h1 {
+        font-size: 1.15rem;
+      }
+
+      .card {
+        padding: 16px;
+      }
+
+      .save-btn {
+        width: 100%;
+      }
+
+      .page-back-btn {
+        font-size: 0.75rem;
+        padding: 6px 10px;
+      }
+
+      th, td {
+        padding: 5px !important;
+      }
+    }
+
+
   </style>
 </head>
 
