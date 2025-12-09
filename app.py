@@ -339,7 +339,10 @@ translations = {
     "api_unreachable": "Unable to reach the login server. Please try again.",
     "login_failed_generic": "Login failed. Please try again.",
     "go_back": "Go Back",
-    "program_title": "Program Title"        
+    "program_title": "Program Title",
+    "connected_to": "Connected to form:",
+    "form_owner": "Owner",
+    "no_form_connected": "Unable to load form details"       
 }
 ,
 "fr": {
@@ -473,7 +476,10 @@ translations = {
     "api_unreachable": "Impossible de joindre le serveur. Veuillez réessayer.",
     "login_failed_generic": "Échec de connexion. Veuillez réessayer.",
     "go_back": "Retour",
-    "program_title": "Titre du programme"
+    "program_title": "Titre du programme",
+    "connected_to": "Connecté au formulaire :",
+    "form_owner": "Propriétaire",
+    "no_form_connected": "Impossible de charger les détails du formulaire"
 }
 ,
 "ar": {
@@ -607,7 +613,10 @@ translations = {
     "api_unreachable": "تعذّر الاتصال بالخادم. يرجى المحاولة مرة أخرى.",
     "login_failed_generic": "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.",
     "go_back": "عودة",
-    "program_title": "عنوان البرنامج"   
+    "program_title": "عنوان البرنامج",
+    "connected_to": "متصل بالنموذج:",
+    "form_owner": "المالك",
+    "no_form_connected": "تعذّر تحميل تفاصيل النموذج"   
     }
 }
 
@@ -724,7 +733,6 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 
-
 @app.route("/system-config", methods=["GET", "POST"])
 def system_config():
     if not session.get("admin_logged_in"):
@@ -767,76 +775,85 @@ def system_config():
     program_title = config.get("programTitle")
     program_currency = config.get("programCurrency")
     column_to_match_121 = None
+    program_options = []
 
-    program_options = []   # <-- Will hold (id, title)
-
-    # -------------------- Login to 121 API --------------------
+    # ============================================================
+    #                     1. Login to 121 API
+    # ============================================================
     program_ids = []
     if url121 and username121 and password121:
         try:
             login_payload = {"username": username121, "password": password121}
-            login_url = f"{url121}/api/users/login"
-            login_resp = requests.post(login_url, json=login_payload)
+            resp = requests.post(f"{url121}/api/users/login", json=login_payload)
 
-            if login_resp.status_code == 201:
-                resp_json = login_resp.json()
+            if resp.status_code == 201:
+                resp_json = resp.json()
                 token = resp_json.get("access_token_general")
-
-                # Extract program IDs from permissions keys
                 permissions = resp_json.get("permissions", {})
                 program_ids = [int(pid) for pid in permissions.keys()]
 
         except Exception as e:
             print("Error logging into 121 API:", e)
 
-    # -------------------- Fetch All Program Titles --------------------
+    # ============================================================
+    #            2. Load all program titles for dropdown
+    # ============================================================
     if token and program_ids:
         for pid in program_ids:
             try:
-                program_url = f"{url121}/api/programs/{pid}"
-                r = requests.get(program_url, cookies={"access_token_general": token})
-
+                r = requests.get(
+                    f"{url121}/api/programs/{pid}",
+                    cookies={"access_token_general": token}
+                )
                 if r.status_code == 200:
                     pdata = r.json()
                     title_dict = pdata.get("titlePortal", {})
 
-                    # Best possible title in current language
-                    title = title_dict.get(lang) or next(iter(title_dict.values()), f"Program {pid}")
-
+                    title = (
+                        title_dict.get(lang)
+                        or next(iter(title_dict.values()), f"Program {pid}")
+                    )
                     program_options.append({"id": pid, "title": title})
 
             except Exception as e:
                 print(f"Error loading program {pid}:", e)
 
-    # -------------------- Fetch Selected Program's Info --------------------
+    # ============================================================
+    #            3. Load selected program details
+    # ============================================================
     if token and selected_program_id:
         try:
-            program_url = f"{url121}/api/programs/{selected_program_id}"
-            resp = requests.get(program_url, cookies={"access_token_general": token})
+            resp = requests.get(
+                f"{url121}/api/programs/{selected_program_id}",
+                cookies={"access_token_general": token}
+            )
 
             if resp.status_code == 200:
                 data = resp.json()
                 title_dict = data.get("titlePortal", {})
 
-                program_title = title_dict.get(lang) or next(iter(title_dict.values()), None)
+                program_title = (
+                    title_dict.get(lang)
+                    or next(iter(title_dict.values()), None)
+                )
                 program_currency = data.get("currency", program_currency)
 
-                # Persist updates
-                if program_title:
-                    config["programTitle"] = program_title
-                if program_currency:
-                    config["programCurrency"] = program_currency
-
+                config["programTitle"] = program_title
+                config["programCurrency"] = program_currency
                 save_config(config)
 
         except Exception as e:
-            print("Error fetching selected program info:", e)
+            print("Error fetching program info:", e)
 
-    # -------------------- Fetch columnToMatch --------------------
+    # ============================================================
+    #               4. Load COLUMN_TO_MATCH from 121
+    # ============================================================
     if token and selected_program_id:
         try:
-            fsp_url = f"{url121}/api/programs/{selected_program_id}/fsp-configurations"
-            resp = requests.get(fsp_url, cookies={"access_token_general": token})
+            resp = requests.get(
+                f"{url121}/api/programs/{selected_program_id}/fsp-configurations",
+                cookies={"access_token_general": token}
+            )
 
             if resp.status_code == 200:
                 for fsp in resp.json():
@@ -851,20 +868,48 @@ def system_config():
         except Exception as e:
             print("Error fetching columnToMatch:", e)
 
-    # -------------------- Render Template --------------------
+    # ============================================================
+    #              5. Fetch KOBO FORM METADATA (NEW)
+    # ============================================================
+    kobo_form_name = None
+    kobo_form_owner = None
+
+    try:
+        kobo_server = config.get("KOBO_SERVER", "https://kobo.ifrc.org")
+        kobo_token = config.get("KOBO_TOKEN")
+        asset_id = config.get("ASSET_ID")
+
+        if kobo_token and asset_id:
+            resp = requests.get(
+                f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                headers={"Authorization": f"Token {kobo_token}"},
+                timeout=10
+            )
+
+            if resp.status_code == 200:
+                j = resp.json()
+                kobo_form_name = j.get("name")
+                kobo_form_owner = j.get("owner__username")
+
+    except Exception as e:
+        print("Error loading Kobo form metadata:", e)
+
+    # ============================================================
+    #                     Render Template
+    # ============================================================
     return render_template(
         "system_config.html",
         config=config,
         program_title=program_title,
         program_currency=program_currency,
         column_to_match_121=column_to_match_121 or config.get("COLUMN_TO_MATCH"),
-        program_options=program_options,  # <-- REQUIRED for dropdown
+        program_options=program_options,
         username=session.get("admin_username"),
         lang=lang,
-        t=t
+        t=t,
+        kobo_form_name=kobo_form_name,
+        kobo_form_owner=kobo_form_owner
     )
-
-
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
