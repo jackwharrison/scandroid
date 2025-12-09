@@ -388,7 +388,18 @@
 
       <div class="card">
         <h2>{{ t.kobo_info }}</h2>
-
+        {% if kobo_form_name %}
+          <p style="margin:4px 0 14px 0; color:#4b5563; font-size:0.9rem;">
+            {{ t.connected_to }} <strong>{{ kobo_form_name }}</strong><br>
+            <span style="color:#6b7280; font-size:0.85rem;">
+              {{ t.form_owner }}: {{ kobo_form_owner }}
+            </span>
+          </p>
+        {% else %}
+          <p style="margin:4px 0 14px 0; color:#b91c1c; font-size:0.9rem;">
+            {{ t.no_form_connected }}
+          </p>
+        {% endif %}
         <label for="KOBO_SERVER">Kobo Server</label>
         <select id="KOBO_SERVER" name="KOBO_SERVER">
           <option value="https://kobo.ifrc.org" {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>IFRC</option>
