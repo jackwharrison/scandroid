@@ -8,82 +8,125 @@
 
   <style>
     :root {
-      --pad: 16px;
-      --gap: 12px;
+      --pad: 20px;
+      --gap: 16px;
       --radius: 16px;
-      --card: #fff;
-      --ink: #111;
+      --card: #ffffff;
+      --ink: #111827;
       --muted: #6b7280;
       --line: #e5e7eb;
       --bg: #f3f4f6;
-      --shadow-soft: 0 10px 30px rgba(0,0,0,.06);
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --red: #7f1d1d;
+      --blue: #1e40af;
     }
 
     html, body {
-      height: 100%;
       margin: 0;
-    }
-
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      height: 100%;
       background: var(--bg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       color: var(--ink);
       display: flex;
       flex-direction: column;
-      padding: 24px;
     }
 
-    /* ---- TOP BAR ---- */
-    .topbar {
-      width: 100%;
-      max-width: 520px;
-      margin: 0 auto 14px auto;
+    /* ---------------- HEADER (same look as vouchers/system-config) ---------------- */
+    header {
+      background: var(--navy);
+      padding: 12px 24px;
       display: flex;
-      justify-content: flex-end;
       align-items: center;
+      justify-content: space-between;
+      color: white;
     }
 
-    .lang-form select {
-      padding: 8px 10px;
+    .header-left img {
+      height: 34px;
+      object-fit: contain;
+    }
+
+    .header-title {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 20px;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .title-bold { font-weight: 800; }
+    .title-divider { opacity: 0.8; }
+
+    .lang-select select {
+      padding: 6px 10px;
       border-radius: 8px;
       border: 1px solid #d1d5db;
-      background: white;
+      background: #ffffff;
       font-weight: 600;
       cursor: pointer;
+      font-size: 14px;
     }
 
-    /* ---- CENTER WRAPPER ---- */
-    .page-wrapper {
+    /* Mobile header collapse */
+    @media (max-width: 576px) {
+      header {
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        text-align: center;
+      }
+      .header-title {
+        padding-left: 0;
+        justify-content: center;
+      }
+      .lang-select {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+    }
+
+    /* ---------------- MAIN WRAPPER ---------------- */
+    .wrapper {
+      flex: 1;
       display: flex;
       justify-content: center;
       align-items: center;
-      flex: 1;
-      min-height: calc(100vh - 100px);
+      padding: 32px 20px;
     }
 
-    /* ---- CARD ---- */
+    /* ---------------- CARD (larger & more professional) ---------------- */
     .card {
+      width: 100%;
+      max-width: 720px;  /* Much better on desktop */
       background: var(--card);
       border-radius: var(--radius);
-      box-shadow: var(--shadow-soft);
       border: 1px solid var(--line);
-      width: 100%;
-      max-width: 460px;
+      box-shadow: var(--shadow-soft);
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      animation: fadeIn 0.25s ease;
     }
 
-    .header {
-      padding: 18px var(--pad);
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header {
+      padding: 28px 24px;
       border-bottom: 1px solid var(--line);
+      background: #fafafa;
       text-align: center;
     }
 
     .logos {
       display: flex;
       justify-content: center;
-      gap: 16px;
+      align-items: center;
+      gap: 18px;
       flex-wrap: wrap;
     }
 
@@ -92,122 +135,148 @@
       object-fit: contain;
     }
 
-    .content {
-      padding: 24px;
+    .card-body {
+      padding: 32px 36px;
       text-align: center;
     }
 
     h1 {
       margin-top: 0;
-      margin-bottom: 24px;
-      font-size: 1.4rem;
+      margin-bottom: 28px;
+      font-size: 1.8rem;
+      font-weight: 700;
       color: var(--ink);
     }
 
+    /* ---------------- ROLE BUTTONS ---------------- */
     .role-buttons {
       display: grid;
       gap: 14px;
-      margin-top: 20px;
     }
 
     .btn {
-      padding: 12px 16px;
-      font-size: 1rem;
+      padding: 14px 18px;
+      border-radius: 14px;
       font-weight: 700;
-      border-radius: 12px;
-      border: none;
-      cursor: pointer;
-      width: 100%;
-      max-width: 100%;
-      box-sizing: border-box; /* prevents overflow */
-      display: block;
+      font-size: 1rem;
       text-decoration: none;
-      text-align: center;
+      display: block;
+      width: 100%;
+      cursor: pointer;
+      transition: 0.15s ease;
+      border: 1px solid transparent;
+      box-sizing: border-box;
     }
 
     .btn-admin {
       background: #fee2e2;
-      color: #7f1d1d;
-      border: 1px solid #fecaca;
+      color: var(--red);
+      border-color: #fecaca;
     }
-
-    .btn-admin:hover {
-      background: #fecaca;
-    }
+    .btn-admin:hover { background: #fecaca; }
 
     .btn-fsp {
-      background: #e0ecff;
-      color: #1e40af;
-      border: 1px solid #bfdbfe;
-    }
-
-    .btn-fsp:hover {
       background: #dbeafe;
+      color: var(--blue);
+      border-color: #bfdbfe;
     }
+    .btn-fsp:hover { background: #cbdcfb; }
 
-
+    /* ---------------- FOOTER ---------------- */
     footer {
-      text-align: center;
-      padding-top: 12px;
-      color: var(--muted);
+      background: var(--navy);
+      color: white;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
       font-size: 0.9rem;
-      margin-top: 20px;
+      flex-wrap: wrap;
     }
 
     @media (max-width: 576px) {
-      body { padding: 16px; }
-      .card { max-width: 95%; }
-      .logos img { height: 34px; }
+      footer {
+        text-align: center;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .card {
+        max-width: 95%;
+      }
+
+      .card-header {
+        padding: 20px 16px;
+      }
+
+      .card-body {
+        padding: 24px 18px;
+      }
+
+      h1 {
+        font-size: 1.4rem;
+      }
+
+      .logos img {
+        height: 34px;
+      }
     }
   </style>
+
 </head>
 
 <body>
 
-  <!-- 🔹 TOPBAR -->
-  <div class="topbar">
-    <form method="get" action="/" class="lang-form">
-      <select name="lang" onchange="this.form.submit()">
-        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
-      </select>
-    </form>
+<header>
+  <div class="header-left">
+    <img src="/instance-static/ns1.png">
   </div>
 
-  <!-- 🔹 MAIN CARD -->
-  <div class="page-wrapper">
-    <div class="card">
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span>{{ t.home_title or "Welcome" }}</span>
+  </div>
 
-      <div class="header">
-        <div class="logos">
-          <img src="/instance-static/ns1.png">
-          <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
-          <img src="/instance-static/ns2.png">
-        </div>
+  <form class="lang-select" method="get" action="/">
+    <select name="lang" onchange="this.form.submit()">
+      <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+      <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+      <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+    </select>
+  </form>
+</header>
+
+<div class="wrapper">
+  <div class="card">
+
+    <div class="card-header">
+      <div class="logos">
+        <img src="/instance-static/ns1.png">
+        <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
+        <img src="/instance-static/ns2.png">
       </div>
-
-      <div class="content">
-        <h1>{{ t.home_question or "Who are you?" }}</h1>
-
-        <div class="role-buttons">
-          <a class="btn btn-admin" href="/admin-login?lang={{ lang }}">
-            {{ t.home_admin or "I am an Admin" }}
-          </a>
-
-          <a class="btn btn-fsp" href="/fsp-login?lang={{ lang }}">
-            {{ t.home_fsp or "I am an FSP" }}
-          </a>
-        </div>
-      </div>
-
     </div>
-  </div>
 
-  <footer>
-    <div>{{ t.footer_dev }}</div>
-    <div>{{ t.footer_support }}</div>
-  </footer>
+    <div class="card-body">
+      <h1>{{ t.home_question or "Who are you?" }}</h1>
+
+      <div class="role-buttons">
+        <a class="btn btn-admin" href="/admin-login?lang={{ lang }}">
+          {{ t.home_admin or "I am an Admin" }}
+        </a>
+        <a class="btn btn-fsp" href="/fsp-login?lang={{ lang }}">
+          {{ t.home_fsp or "I am an FSP" }}
+        </a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div>{{ t.footer_dev }}</div>
+  <div>{{ t.footer_support }}</div>
+</footer>
 
 </body>
 </html>

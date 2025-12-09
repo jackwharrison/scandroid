@@ -8,83 +8,139 @@
 
   <style>
     :root {
-      --pad: 16px;
-      --gap: 12px;
+      --pad: 20px;
+      --gap: 16px;
       --radius: 16px;
-      --card: #fff;
-      --ink: #111;
+      --card: #ffffff;
+      --ink: #111827;
       --muted: #6b7280;
       --line: #e5e7eb;
       --bg: #f3f4f6;
       --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --blue: #1d4ed8;
+      --blue-hover: #1e40af;
     }
 
     html, body {
       height: 100%;
       margin: 0;
-    }
-
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       background: var(--bg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
       color: var(--ink);
-      padding: 24px;
       display: flex;
       flex-direction: column;
     }
 
-    /* ---- TOP BAR ---- */
-    .topbar {
-      width: 100%;
-      max-width: 520px;
-      margin: 0 auto 14px auto;
+    /* ---------------- HEADER ---------------- */
+    header {
+      background: var(--navy);
+      padding: 12px 24px;
       display: flex;
-      justify-content: flex-end;
       align-items: center;
+      justify-content: space-between;
+      color: white;
     }
 
-    .lang-form select {
-      padding: 8px 10px;
+    .header-left img {
+      height: 34px;
+      object-fit: contain;
+    }
+
+    .header-title {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 20px;
+      font-size: 1.1rem;
+    }
+
+    .title-bold { font-weight: 800; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; }
+
+    .lang-select select {
+      padding: 6px 10px;
       border-radius: 8px;
       border: 1px solid #d1d5db;
-      background: white;
-      font-weight: 600;
+      background: #ffffff;
       cursor: pointer;
+      font-weight: 600;
     }
 
-    /* ---- PAGE WRAPPER ---- */
-    .page-wrapper {
+    /* Mobile header collapse */
+    @media (max-width: 576px) {
+      header {
+        flex-direction: column;
+        text-align: center;
+        gap: 8px;
+      }
+      .header-title {
+        padding-left: 0;
+        justify-content: center;
+      }
+    }
+
+    /* ---------------- BACK BUTTON ---------------- */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #eff6ff;
+      color: var(--blue);
+      border: 1px solid #93c5fd;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      text-decoration: none;
+      margin: 20px auto 0 auto;
+      max-width: fit-content;
+      transition: 0.2s ease;
+    }
+
+    .back-btn:hover {
+      background: #dbeafe;
+    }
+
+    /* ---------------- PAGE WRAPPER ---------------- */
+    .wrapper {
+      flex: 1;
       display: flex;
       justify-content: center;
       align-items: center;
-      flex: 1;
-      min-height: calc(100vh - 100px);
+      padding: 32px 20px;
     }
 
-    /* ---- CARD ---- */
+    /* ---------------- CARD ---------------- */
     .card {
+      width: 100%;
+      max-width: 520px;
       background: var(--card);
       border-radius: var(--radius);
-      box-shadow: var(--shadow-soft);
       border: 1px solid var(--line);
-      width: 100%;
-      max-width: 420px;
+      box-shadow: var(--shadow-soft);
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      animation: fadeIn 0.25s ease;
     }
 
-    .header {
-      padding: 18px var(--pad);
-      border-bottom: 1px solid var(--line);
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header {
+      background: #fafafa;
+      padding: 24px;
       text-align: center;
+      border-bottom: 1px solid var(--line);
     }
 
     .logos {
       display: flex;
       justify-content: center;
-      gap: 16px;
       flex-wrap: wrap;
+      gap: 18px;
     }
 
     .logos img {
@@ -92,152 +148,148 @@
       object-fit: contain;
     }
 
-    /* ---- CONTENT ---- */
-    .content {
-      padding: 24px;
+    .card-body {
+      padding: 32px;
     }
 
     h2 {
+      margin: 0 0 16px 0;
       text-align: center;
-      margin-top: 0;
-      font-size: 1.4rem;
-      margin-bottom: 12px;
+      font-size: 1.6rem;
+      font-weight: 800;
       color: var(--ink);
     }
 
-    /* ---- ERROR MESSAGE ---- */
+    /* ---------------- ERROR BOX ---------------- */
     .error {
-      color: #dc2626;
       background: #fee2e2;
-      padding: 10px 12px;
-      border-radius: 8px;
       border-left: 4px solid #dc2626;
+      padding: 10px 14px;
+      border-radius: 6px;
+      color: #7f1d1d;
       margin-bottom: 16px;
-      text-align: center;
       font-weight: 600;
+      text-align: center;
     }
 
-    /* ---- FORM ---- */
+    /* ---------------- INPUTS ---------------- */
     input[type="text"],
     input[type="password"] {
       width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      margin-bottom: 14px;
-      font-size: 16px;
-      border: 1px solid #ccc;
-      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
       box-sizing: border-box;
+      font-size: 16px; /* avoids iOS zoom */
     }
 
+    /* ---------------- BUTTON ---------------- */
     button {
       width: 100%;
-      padding: 12px 16px;
+      padding: 14px;
       font-size: 1rem;
       font-weight: 700;
-      background: #1d4ed8;
+      background: var(--blue);
       color: white;
       border: none;
       border-radius: 12px;
       cursor: pointer;
+      transition: background 0.2s ease;
     }
 
     button:hover {
-      background: #1e40af;
+      background: var(--blue-hover);
     }
 
-    /* ---- FOOTER ---- */
+    /* ---------------- FOOTER ---------------- */
     footer {
-      text-align: center;
-      padding: 12px 0 0;
-      color: var(--muted);
+      background: var(--navy);
+      padding: 12px 18px;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
       font-size: 0.9rem;
-      margin-top: 20px;
     }
 
     @media (max-width: 576px) {
-      body {
-        padding: 16px;
+      footer {
+        flex-direction: column;
+        text-align: center;
+        gap: 6px;
       }
-
-      .card {
-        max-width: 95%;
-      }
-
-      .logos img {
-        height: 34px;
-      }
+      .logos img { height: 34px; }
+      .card { max-width: 95%; }
+      .card-body { padding: 24px; }
     }
   </style>
 </head>
 
 <body>
 
-  <!-- 🔹 TOPBAR -->
-  <div class="topbar">
+<header>
+  <div class="header-left">
+    <img src="/instance-static/ns1.png">
+  </div>
 
-    <!-- 🔹 Return Home Button -->
-    <a href="/?lang={{ lang }}"
-      style="
-        background:#eff6ff;
-        color:#1d4ed8;
-        border:1px solid #93c5fd;
-        padding:8px 14px;
-        border-radius:8px;
-        font-weight:600;
-        text-decoration:none;
-        margin-right:auto;
-      ">
-      ← {{ t.go_back }}
-    </a>
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span class="title-program"> Red Cross Log-in</span>
+  </div>
 
-
-    <form method="get" action="/admin-login" class="lang-form">
+  <div class="lang-select">
+    <form method="get" action="/admin-login">
       <select name="lang" onchange="this.form.submit()">
-        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+        <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang=='fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang=='ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
-
   </div>
+</header>
 
-  <!-- 🔹 CENTER LOGIN CARD -->
-  <div class="page-wrapper">
-    <div class="card">
+<!-- Back Button -->
+<a href="/?lang={{ lang }}" class="back-btn">
+  ← {{ t.go_back }}
+</a>
 
-      <!-- Header with logos -->
-      <div class="header">
-        <div class="logos">
-          <img src="/instance-static/ns1.png">    
-          <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid Logo">
-          <img src="/instance-static/ns2.png">
-        </div>
+<div class="wrapper">
+  <div class="card">
+
+    <div class="card-header">
+      <div class="logos">
+        <img src="/instance-static/ns1.png">
+        <img src="{{ url_for('static', filename='scandroid_banner.png') }}">
+        <img src="/instance-static/ns2.png">
       </div>
-
-      <!-- Content -->
-      <div class="content">
-        <h2>{{ t.login }}</h2>
-
-        {% if error %}
-          <div class="error">{{ error }}</div>
-        {% endif %}
-
-        <form method="post" action="/admin-login">
-          <input type="hidden" name="lang" value="{{ lang }}">
-          <input type="text" name="username" placeholder="Username" required>
-          <input type="password" name="password" placeholder="{{ t.enter_password }}" required>
-          <button type="submit">{{ t.submit }}</button>
-        </form>
-      </div>
-
     </div>
-  </div>
 
-  <footer>
-    <div>{{ t.footer_dev }}</div>
-    <div>{{ t.footer_support }}</div>
-  </footer>
+    <div class="card-body">
+      <h2>{{ t.login }}</h2>
+
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/admin-login">
+        <input type="hidden" name="lang" value="{{ lang }}">
+
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="{{ t.enter_password }}" required>
+
+        <button type="submit">{{ t.submit }}</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div>{{ t.footer_dev }}</div>
+  <div>{{ t.footer_support }}</div>
+</footer>
 
 </body>
 </html>
