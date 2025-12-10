@@ -1195,13 +1195,19 @@ def fsp_admin():
     # COLUMN_TO_MATCH now lives ONLY in system_config.json
     column_to_match = system_config.get("COLUMN_TO_MATCH")
 
+    # Program title and currently-logged FSP username
+    program_title = system_config.get("programTitle", "")
+    username = session.get("fsp_username")
+
     return render_template(
         "fsp_admin.html",
         COLUMN_TO_MATCH=column_to_match,
         display_config=display_config,
         lang=lang,
         t=t,
-        config=system_config
+        config=system_config,
+        program_title=program_title,
+        username=username
     )
 
 
