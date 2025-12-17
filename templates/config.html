@@ -171,7 +171,6 @@
       flex: 1;
     }
 
-    /* Back button like system-config */
     .page-back-btn {
       display: inline-flex;
       align-items: center;
@@ -388,7 +387,7 @@
       font-size: 0.9rem;
       flex-wrap: wrap;
     }
-        /* Match the style of your field dropdowns */
+
     #photoKey {
       width: 95%;
       max-width: 260px;
@@ -399,191 +398,61 @@
       font-size: 0.9rem;
       box-sizing: border-box;
       cursor: pointer;
-      appearance: none; /* Removes default arrow */
-      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='2' fill='none' stroke-linecap='round'%3E%3C/path%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 12px center;
-    }
-    /* Ensure all config tables share identical column widths */
-    #fieldTable th:nth-child(1),
-    #photoTable th:nth-child(1) { width: 34%; }
-
-    #fieldTable th:nth-child(2),
-    #photoTable th:nth-child(2) { width: 18%; }
-
-    #fieldTable th:nth-child(3),
-    #photoTable th:nth-child(3) { width: 18%; }
-
-    #fieldTable th:nth-child(4),
-    #photoTable th:nth-child(4) { width: 18%; }
-
-
-    /* ------------------ MOBILE RESPONSIVENESS ------------------ */
-    /* ================================
-      MOBILE BREAKPOINT ≤ 768px
-      (FONT SCALE + HEADER COLLAPSE)
-      ================================ */
-    @media (max-width: 768px) {
-
-      /* --- Global font scale down --- */
-      body {
-        font-size: 14px;
-      }
-
-      h1 {
-        font-size: 1.25rem;
-        margin-bottom: 12px;
-      }
-
-      .card h2 {
-        font-size: 1.1rem;
-      }
-
-      /* --- HEADER: match vouchers page behaviour --- */
-      header {
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-        padding: 12px;
-        text-align: center;
-      }
-
-      .header-title {
-        padding-left: 0 !important;
-        text-align: center;
-        justify-content: center;
-        width: 100%;
-        font-size: 0.95rem;
-      }
-
-      .header-controls {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .lang-select select {
-        padding: 4px 8px;
-        font-size: 13px;
-        width: auto;
-      }
-
-      .account-btn {
-        padding: 4px 8px;
-        font-size: 13px;
-        width: auto;
-      }
-
-      /* --- Back button --- */
-      .page-back-btn {
-        padding: 6px 10px;
-        font-size: 0.8rem;
-        gap: 6px;
-        max-width: fit-content;
-        display: inline-flex;
-      }
-
-      .page-back-btn img {
-        width: 12px;
-        height: 12px;
-      }
-
-      /* --- Wrapper and card --- */
-      .wrapper {
-        padding: 0 12px;
-        margin-top: 10px;
-      }
-
-      .card {
-        padding: 20px;
-      }
-
-      /* --- Table adjustments --- */
-      table {
-        font-size: 13px;
-        display: block;
-        overflow-x: auto;
-        white-space: nowrap;
-      }
-
-      th, td {
-        padding: 6px 8px !important;
-      }
-
-      input[type="text"],
-      select[name="key"],
-      #photoKey {
-        font-size: 13px !important;
-        padding: 6px 8px !important;
-        height: 32px !important;
-      }
-
-      /* Fix iOS zoom issue */
-      input[type="text"],
-      select {
-        font-size: 16px;
-      }
-
-      /* --- Photo toggle smaller --- */
-      .toggle {
-        width: 38px;
-        height: 20px;
-      }
-
-      .toggle-slider:before {
-        height: 14px;
-        width: 14px;
-        top: 3px;
-        left: 3px;
-      }
-
-      .toggle input:checked + .toggle-slider:before {
-        transform: translateX(16px);
-      }
-
-      /* --- Save button --- */
-      .save-btn {
-        width: 80%;
-        padding: 10px;
-        font-size: 0.9rem;
-      }
+      appearance: none;
     }
 
-    /* ================================
-      EXTRA SMALL PHONES ≤ 480px
-      ================================ */
-    @media (max-width: 480px) {
-
-      body {
-        font-size: 13px;
-      }
-
-      h1 {
-        font-size: 1.15rem;
-      }
-
-      .card {
-        padding: 16px;
-      }
-
-      .save-btn {
-        width: 100%;
-      }
-
-      .page-back-btn {
-        font-size: 0.75rem;
-        padding: 6px 10px;
-      }
-
-      th, td {
-        padding: 5px !important;
-      }
+    /* ------------------ SEARCHABLE SELECT ------------------ */
+    .searchable-select {
+      position: relative;
+      width: 95%;
+      max-width: 260px;
     }
 
+    .searchable-select input {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      font-size: 0.9rem;
+      box-sizing: border-box;
+    }
 
+    .searchable-options {
+      position: fixed;
+      max-height: 240px;
+      overflow-y: auto;
+      background: #ffffff;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      z-index: 9999;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    }
+
+    .searchable-options div {
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    .searchable-options div:hover,
+    .searchable-options div.active {
+      background: #f3f4f6;
+    }
+
+    /* Validation error styling */
+    .row-error {
+      background-color: #fef2f2;
+    }
+
+    .field-error {
+      border: 2px solid #dc2626 !important;
+      background-color: #fffafa !important;
+    }
+
+    .inline-error {
+      margin-top: 6px;
+      font-size: 0.8rem;
+      color: #dc2626;
+    }
   </style>
 </head>
 
@@ -634,7 +503,6 @@
 
 <div class="wrapper">
 
-  <!-- Back button like system-config -->
   <a href="/admin-dashboard?lang={{ lang }}" class="page-back-btn">
     <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
     {{ t.back_to_dashboard }}
@@ -642,9 +510,9 @@
 
   <h1>{{ t.config_title }}</h1>
 
-  <form id="configForm">
+  <!-- disable native HTML5 validation; we validate manually -->
+  <form id="configForm" novalidate>
 
-    <!-- TABLE OF DISPLAYED FIELDS -->
     <table id="fieldTable">
       <thead>
         <tr>
@@ -662,7 +530,6 @@
       + {{ t.add_field }}
     </button>
 
-    <!-- PHOTO CONFIG SECTION -->
     <div class="card" id="photoCard">
       <h2>{{ t.photo_config_title }}</h2>
 
@@ -701,6 +568,10 @@
       </table>
     </div>
 
+    <div id="formError" class="inline-error hidden" style="text-align:center;">
+      Please select a field or delete the highlighted row(s) before saving.
+    </div>
+
     <button type="submit" class="save-btn">{{ t.save }}</button>
 
   </form>
@@ -710,6 +581,143 @@
   <div>{{ t.footer_dev }}</div>
   <div>{{ t.footer_support }}</div>
 </footer>
+
+<script>
+function makeSelectSearchable(selectEl) {
+  if (!selectEl || selectEl.dataset.searchable === 'true') return;
+  selectEl.dataset.searchable = 'true';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'searchable-select';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+
+  // initial value (for loaded config)
+  if (selectEl.value) {
+    const selectedOption = selectEl.options[selectEl.selectedIndex];
+    if (selectedOption) {
+      input.value = selectedOption.text;
+    }
+  }
+
+  input.placeholder = selectEl.options.length ? selectEl.options[0].text : 'Search…';
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'searchable-options hidden';
+
+  const options = Array.from(selectEl.options)
+    .filter(o => o.value)
+    .map(o => ({ value: o.value, label: o.text }));
+
+  let activeIndex = -1;
+
+  function positionDropdown() {
+    const rect = input.getBoundingClientRect();
+    dropdown.style.top = rect.bottom + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.width = rect.width + 'px';
+  }
+
+  window.addEventListener('scroll', () => {
+    if (!dropdown.classList.contains('hidden')) positionDropdown();
+  }, true);
+
+  window.addEventListener('resize', positionDropdown);
+
+  function handleClickOutside(e) {
+    if (!wrapper.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  }
+
+  setTimeout(() => {
+    document.addEventListener('mousedown', handleClickOutside);
+  }, 0);
+
+  function clearRowErrorForSelect() {
+    const row = selectEl.closest('tr');
+    if (!row) return;
+
+    row.classList.remove('row-error');
+    const visibleInput = row.querySelector('.searchable-select input');
+    if (visibleInput) visibleInput.classList.remove('field-error');
+
+    if (!document.querySelector('.row-error')) {
+      const errorBanner = document.getElementById('formError');
+      if (errorBanner) errorBanner.classList.add('hidden');
+    }
+  }
+
+  function render(filter = '') {
+    dropdown.innerHTML = '';
+    activeIndex = -1;
+    options
+      .filter(o => o.label.toLowerCase().includes(filter.toLowerCase()))
+      .forEach(o => {
+        const div = document.createElement('div');
+        div.textContent = o.label;
+        div.onclick = () => {
+          selectEl.value = o.value;
+          input.value = o.label;
+          dropdown.classList.add('hidden');
+          clearRowErrorForSelect();
+
+          // trigger change so autofill runs
+          selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        dropdown.appendChild(div);
+      });
+  }
+
+  input.addEventListener('focus', () => {
+    render(input.value);
+    positionDropdown();
+    dropdown.classList.remove('hidden');
+  });
+
+  input.addEventListener('input', () => {
+    render(input.value);
+    positionDropdown();
+    dropdown.classList.remove('hidden');
+    if (!input.value.trim()) {
+      selectEl.value = '';
+    }
+  });
+
+  input.addEventListener('keydown', e => {
+    const items = dropdown.querySelectorAll('div');
+    if (!items.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % items.length;
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + items.length) % items.length;
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      items[activeIndex].click();
+    }
+
+    items.forEach((el, i) => {
+      el.classList.toggle('active', i === activeIndex);
+    });
+  });
+
+  input.addEventListener('blur', () => {
+    if (!input.value.trim()) {
+      selectEl.value = '';
+    }
+  });
+
+  selectEl.style.display = 'none';
+  selectEl.parentNode.insertBefore(wrapper, selectEl);
+  wrapper.appendChild(input);
+  document.body.appendChild(dropdown);
+  wrapper.appendChild(selectEl);
+}
+</script>
 
 <script>
 // Photo toggle behaviour
@@ -735,11 +743,9 @@ window.addEventListener("load", togglePhotoFields);
 const allowedAttributes = {{ allowed_attributes | tojson }};
 const fieldTableBody = document.querySelector('#fieldTable tbody');
 
-// Helper to build the select for "121 Field Name"
 function createFieldSelect(selectedKey) {
   const select = document.createElement('select');
   select.name = 'key';
-  select.required = true;
 
   const placeholder = document.createElement('option');
   placeholder.value = '';
@@ -756,19 +762,34 @@ function createFieldSelect(selectedKey) {
     select.appendChild(opt);
   });
 
+  // Autofill labels when field is chosen (only if label cells are empty)
+  select.addEventListener('change', () => {
+    const row = select.closest('tr');
+    if (!row) return;
+
+    const attr = allowedAttributes.find(a => a.name === select.value);
+    if (!attr) return;
+
+    ['en', 'fr', 'ar'].forEach(lang => {
+      const input = row.querySelector(`input[name="label_${lang}"]`);
+      if (input && !input.value.trim()) {
+        input.value = attr.label;
+      }
+    });
+  });
+
   return select;
 }
 
 function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
   const row = document.createElement('tr');
 
-  // First cell: dropdown (or fallback input if no attributes loaded)
   const keyCell = document.createElement('td');
   if (allowedAttributes.length > 0) {
     const select = createFieldSelect(item.key || '');
     keyCell.appendChild(select);
+    makeSelectSearchable(select);
   } else {
-    // Fallback: plain text input if API failed
     const input = document.createElement('input');
     input.type = 'text';
     input.name = 'key';
@@ -777,9 +798,7 @@ function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
   }
   row.appendChild(keyCell);
 
-  // Label cells
-  const langs = ['en', 'fr', 'ar'];
-  langs.forEach(lang => {
+  ['en','fr','ar'].forEach(lang => {
     const cell = document.createElement('td');
     const input = document.createElement('input');
     input.type = 'text';
@@ -789,15 +808,12 @@ function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
     row.appendChild(cell);
   });
 
-  // Remove button
   const removeCell = document.createElement('td');
   const btn = document.createElement('button');
   btn.className = 'delete-btn';
   btn.type = 'button';
   btn.textContent = '❌';
-  btn.onclick = function () {
-    removeRow(btn);
-  };
+  btn.onclick = function () { removeRow(btn); };
   removeCell.appendChild(btn);
   row.appendChild(removeCell);
 
@@ -809,7 +825,13 @@ function addRow() {
 }
 
 function removeRow(button) {
-  button.closest('tr').remove();
+  const row = button.closest('tr');
+  if (row) row.remove();
+
+  if (!document.querySelector('.row-error')) {
+    const errorBanner = document.getElementById('formError');
+    if (errorBanner) errorBanner.classList.add('hidden');
+  }
 }
 
 async function loadConfig() {
@@ -823,7 +845,7 @@ async function loadConfig() {
     document.getElementById('photoEnabled').checked = !!config.photo.enabled;
     const photoKeySelect = document.getElementById('photoKey');
     if (config.photo.field_name) {
-        photoKeySelect.value = config.photo.field_name;
+      photoKeySelect.value = config.photo.field_name;
     }
     document.getElementById('photoLabelEn').value = (config.photo.labels && config.photo.labels.en) || "";
     document.getElementById('photoLabelFr').value = (config.photo.labels && config.photo.labels.fr) || "";
@@ -831,37 +853,74 @@ async function loadConfig() {
   }
 
   togglePhotoFields();
+  makeSelectSearchable(document.getElementById('photoKey'));
 }
 
 document.getElementById('configForm').addEventListener('submit', async e => {
   e.preventDefault();
 
-  const rows = document.querySelectorAll('#fieldTable tbody tr');
+  const rows = Array.from(document.querySelectorAll('#fieldTable tbody tr'));
   const fields = [];
+  let hasError = false;
+  let firstErrorRow = null;
+
+  // clear previous errors
+  rows.forEach(row => {
+    row.classList.remove('row-error');
+    const visInput = row.querySelector('.searchable-select input');
+    if (visInput) visInput.classList.remove('field-error');
+    const keyInput = row.querySelector('[name="key"]');
+    if (keyInput) keyInput.classList.remove('field-error');
+  });
+  const errorBanner = document.getElementById('formError');
+  if (errorBanner) errorBanner.classList.add('hidden');
 
   rows.forEach(row => {
-    const keyEl = row.querySelector('select[name="key"]') || row.querySelector('input[name="key"]');
+    const keySelect = row.querySelector('select[name="key"]');
+    const keyText = row.querySelector('input[name="key"]');
+    const keyEl = keySelect || keyText;
     if (!keyEl) return;
 
-    const key = (keyEl.value || "").trim();
+    const key = (keyEl.value || '').trim();
+
     if (!key) {
-      // Ignore rows with no selected key
+      hasError = true;
+      if (!firstErrorRow) firstErrorRow = row;
+
+      row.classList.add('row-error');
+
+      const visibleInput =
+        row.querySelector('.searchable-select input') || keyEl;
+      if (visibleInput) visibleInput.classList.add('field-error');
+
       return;
     }
 
-    const labelEnInput = row.querySelector('input[name="label_en"]');
-    const labelFrInput = row.querySelector('input[name="label_fr"]');
-    const labelArInput = row.querySelector('input[name="label_ar"]');
+    const labelEnEl = row.querySelector('input[name="label_en"]');
+    const labelFrEl = row.querySelector('input[name="label_fr"]');
+    const labelArEl = row.querySelector('input[name="label_ar"]');
 
     fields.push({
-      key: key,
+      key,
       labels: {
-        en: labelEnInput ? labelEnInput.value : "",
-        fr: labelFrInput ? labelFrInput.value : "",
-        ar: labelArInput ? labelArInput.value : ""
+        en: labelEnEl ? labelEnEl.value : '',
+        fr: labelFrEl ? labelFrEl.value : '',
+        ar: labelArEl ? labelArEl.value : ''
       }
     });
   });
+
+  if (hasError) {
+    if (errorBanner) errorBanner.classList.remove('hidden');
+    if (firstErrorRow) {
+      firstErrorRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const focusInput =
+        firstErrorRow.querySelector('.searchable-select input') ||
+        firstErrorRow.querySelector('[name="key"]');
+      if (focusInput) focusInput.focus();
+    }
+    return;
+  }
 
   const result = {
     fields,
@@ -882,18 +941,13 @@ document.getElementById('configForm').addEventListener('submit', async e => {
     body: JSON.stringify(result)
   });
 
-  if (res.ok) {
-    alert('{{ t.saved_successfully }}');
-  } else {
-    alert('{{ t.failed_to_save }}');
-  }
+  alert(res.ok ? '{{ t.saved_successfully }}' : '{{ t.failed_to_save }}');
 });
 
 window.onload = loadConfig;
 </script>
 
 <script>
-// Account dropdown
 function toggleAccountDropdown() {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');

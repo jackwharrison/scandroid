@@ -129,12 +129,44 @@
       margin: 6px 0;
     }
 
+    /* ---------- BACK BUTTON ---------- */
+    .page-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--navy);
+      text-decoration: none;
+      padding: 8px 14px;
+      background: #ffffff;
+      border-radius: 999px;
+      border: 2px solid var(--navy);
+      transition: 0.2s ease;
+    }
+
+    .page-back-btn img {
+      width: 14px;
+      height: 14px;
+    }
+
+    .page-back-btn:hover {
+      background: #e3e8ef;
+    }
+
     /* ---------- MAIN CARD ---------- */
     main {
       flex: 1;
       display: flex;
       justify-content: center;
       padding: 20px;
+    }
+
+    /* container so back button and card are stacked, and only this is flex item */
+    .scan-container {
+      width: 100%;
+      max-width: 560px;
     }
 
     .scan-card {
@@ -199,7 +231,6 @@
       object-fit: cover;         /* fill the square, allow cropping */
       object-position: center;   /* ensure cropping is symmetrical */
     }
-
 
     #status {
       margin-top: 14px;
@@ -272,21 +303,28 @@
 </header>
 
 <main>
-  <div class="scan-card">
-    <h1>{{ t.scan_title or "Scan QR" }}</h1>
-    <div class="hint">{{ t.scan_hint or "Point the camera at the QR code." }}</div>
+  <div class="scan-container">
+    <a href="/fsp-admin?lang={{ lang }}" class="page-back-btn">
+      <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+      {{ t.back_to_dashboard or "Back" }}
+    </a>
 
-    <span id="netStatus" class="status-pill offline">
-      {{ t.offline or "Offline" }}
-    </span>
+    <div class="scan-card">
+      <h1>{{ t.scan_title or "Scan QR" }}</h1>
+      <div class="hint">{{ t.scan_hint or "Point the camera at the QR code." }}</div>
 
-    <button id="startBtn" class="btn-primary">{{ t.start_camera or "Start camera" }}</button>
+      <span id="netStatus" class="status-pill offline">
+        {{ t.offline or "Offline" }}
+      </span>
 
-    <div class="video-wrap">
-      <video id="video" autoplay playsinline muted></video>
+      <button id="startBtn" class="btn-primary">{{ t.start_camera or "Start camera" }}</button>
+
+      <div class="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+      </div>
+
+      <div id="status">{{ t.waiting_to_start or "Waiting to start…" }}</div>
     </div>
-
-    <div id="status">{{ t.waiting_to_start or "Waiting to start…" }}</div>
   </div>
 </main>
 
@@ -303,8 +341,8 @@
 <!-- ========================================================= -->
 
 <script>
-/* EVERYTHING BELOW IS EXACTLY WHAT YOU PROVIDED IN THE UPLOADED scan.html
-   (no changes, no removals, only indentation adjusted) */
+/* EVERYTHING BELOW IS EXACTLY WHAT YOU PROVIDED EARLIER
+   (no logic changes, just kept as-is) */
 
 (function () {
     const statusEl = document.getElementById('status');
