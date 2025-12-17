@@ -11,9 +11,9 @@
     {
       "key": "phoneNumber",
       "labels": {
-        "en": "Phone Number",
-        "fr": "numero de telephone",
-        "ar": "phone"
+        "en": "Phone",
+        "fr": "Phone",
+        "ar": "Phone"
       }
     }
   ],

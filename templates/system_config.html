@@ -388,6 +388,23 @@
 
       <div class="card">
         <h2>{{ t.kobo_info }}</h2>
+
+        <label for="KOBO_SERVER">Kobo Server</label>
+        <select id="KOBO_SERVER" name="KOBO_SERVER">
+          <option value="https://kobo.ifrc.org" {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>IFRC</option>
+          <option value="https://kf.kobotoolbox.org" {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>KF Toolbox</option>
+        </select>
+
+        <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
+        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}">
+
+        <label for="ASSET_ID">{{ t.asset_id }}</label>
+        <input type="text" id="ASSET_ID" name="ASSET_ID" value="{{ config['ASSET_ID'] }}">
+
+        <h3 style="margin:16px 0 6px 0; font-size:1rem; font-weight:600; color:#374151;">
+          {{ t.kobo_connection }}
+        </h3>
+
         {% if kobo_form_name %}
           <p style="margin:4px 0 14px 0; color:#4b5563; font-size:0.9rem;">
             {{ t.connected_to }} <strong>{{ kobo_form_name }}</strong><br>
@@ -400,17 +417,6 @@
             {{ t.no_form_connected }}
           </p>
         {% endif %}
-        <label for="KOBO_SERVER">Kobo Server</label>
-        <select id="KOBO_SERVER" name="KOBO_SERVER">
-          <option value="https://kobo.ifrc.org" {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>IFRC</option>
-          <option value="https://kf.kobotoolbox.org" {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>KF Toolbox</option>
-        </select>
-
-        <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}">
-
-        <label for="ASSET_ID">{{ t.asset_id }}</label>
-        <input type="text" id="ASSET_ID" name="ASSET_ID" value="{{ config['ASSET_ID'] }}">
       </div>
 
       <div class="card">

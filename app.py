@@ -342,7 +342,8 @@ translations = {
     "program_title": "Program Title",
     "connected_to": "Connected to form:",
     "form_owner": "Owner",
-    "no_form_connected": "Unable to load form details"       
+    "no_form_connected": "Unable to load form details",
+    "kobo_connection": "Kobo Connection",
 }
 ,
 "fr": {
@@ -479,7 +480,8 @@ translations = {
     "program_title": "Titre du programme",
     "connected_to": "Connecté au formulaire :",
     "form_owner": "Propriétaire",
-    "no_form_connected": "Impossible de charger les détails du formulaire"
+    "no_form_connected": "Impossible de charger les détails du formulaire",
+    "kobo_connection": "Connexion Kobo"
 }
 ,
 "ar": {
@@ -616,7 +618,8 @@ translations = {
     "program_title": "عنوان البرنامج",
     "connected_to": "متصل بالنموذج:",
     "form_owner": "المالك",
-    "no_form_connected": "تعذّر تحميل تفاصيل النموذج"   
+    "no_form_connected": "تعذّر تحميل تفاصيل النموذج",
+    "kobo_connection": "اتصال كوبا" 
     }
 }
 
@@ -1260,9 +1263,21 @@ def fsp_logout():
 def scan():
     # Only FSP-logged-in users should scan
     lang = request.args.get("lang", "en")
+
     if not session.get("fsp_logged_in"):
         return redirect(url_for("fsp_login", lang=lang))
-    return render_template("scan.html", lang=lang, t=translations.get(lang, translations["en"]))
+
+    # Pull username and program title from the session
+    username = session.get("fsp_username", "User")
+    program_title = session.get("program_title", "")
+
+    return render_template(
+        "scan.html",
+        lang=lang,
+        t=translations.get(lang, translations["en"]),
+        username=username,
+        program_title=program_title
+    )
 
 
 @app.route('/service-worker.js')
