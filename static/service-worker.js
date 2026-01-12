@@ -15,9 +15,18 @@ console.log(`[ServiceWorker] Installing version: ${CACHE_NAME}`);
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      for (const url of PRECACHE_URLS) {
+        try {
+          await cache.add(url);
+        } catch (err) {
+          console.warn("[SW] Failed to cache:", url);
+        }
+      }
+    })
   );
 });
+
 
 self.addEventListener("activate", (event) => {
   self.clients.claim();
