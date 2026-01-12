@@ -1,5 +1,5 @@
 /* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v12'; // Change this on every deploy
+const CACHE_VERSION = 'v13'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -71,7 +71,8 @@ self.addEventListener("fetch", (event) => {
     "/scan",
     "/beneficiary-offline",
     "/success-offline",
-    "/offline"
+    "/offline",
+    "/fsp-admin"
   ];
 
   if (offlineFirstRoutes.includes(url.pathname)) {
