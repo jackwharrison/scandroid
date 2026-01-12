@@ -57,7 +57,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Navigation requests
+  // -------- OFFLINE-FIRST APP ROUTES --------
+  const offlineFirstRoutes = [
+    "/scan",
+    "/beneficiary-offline",
+    "/success-offline",
+    "/offline"
+  ];
+
+  if (offlineFirstRoutes.includes(url.pathname)) {
+    event.respondWith(cacheFirst(req));
+    return;
+  }
+
+  // -------- NORMAL NAVIGATION --------
   const isNavigation =
     req.mode === "navigate" ||
     (req.headers.get("accept") || "").includes("text/html");
@@ -66,6 +79,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirstNavigation(req));
     return;
   }
+
 
   // Static assets
   if (isStatic(req)) {
