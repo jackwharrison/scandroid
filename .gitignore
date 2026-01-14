@@ -17,6 +17,10 @@ ENV/
 config.json
 system_config.json
 
+# Usage/Session files
+flask_session/
+cookies.txt
+
 # OS / Editor files
 .DS_Store
 Thumbs.db
