@@ -3,7 +3,7 @@ const CACHE_VERSION = 'v13'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
-  "/", "/fsp-login", "/fsp-admin", "/scan", "/offline",
+  "/", "/fsp-login", "/scan",
   "/beneficiary-offline", "/success-offline",
   "/static/scandroid.png", "/static/scandroid_banner.png",
   "/static/ns1.png", "/static/ns2.png",
@@ -70,9 +70,7 @@ self.addEventListener("fetch", (event) => {
   const offlineFirstRoutes = [
     "/scan",
     "/beneficiary-offline",
-    "/success-offline",
-    "/offline",
-    "/fsp-admin"
+    "/success-offline"
   ];
 
   if (offlineFirstRoutes.includes(url.pathname)) {
