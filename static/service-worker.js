@@ -1,5 +1,5 @@
 /* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v14'; // Change this on every deploy
+const CACHE_VERSION = 'v15'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -44,6 +44,12 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
+  if (
+    url.pathname.startsWith("/fsp-admin") ||
+    url.pathname.startsWith("/fsp-login")
+  ) {
+    return;
+  }
 
   if (req.method !== "GET") return;
 
@@ -111,10 +117,7 @@ function isStatic(req) {
 
 async function networkFirstNavigation(req) {
   try {
-    const fresh = await fetch(req, { cache: "no-store" });
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(req, fresh.clone());
-    return fresh;
+    return await fetch(req, { cache: "no-store" });
   } catch (e) {
     const cache = await caches.open(CACHE_NAME);
     const url = new URL(req.url);
