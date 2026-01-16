@@ -1328,11 +1328,8 @@ def api_offline_latest_zip():
 
 @app.route('/ping')
 def ping():
-    return '', 204, {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        "Pragma": "no-cache",
-        "Expires": "0"
-    }
+    return "ok", 200
+
 
 @app.route("/beneficiary-offline")
 def beneficiary_offline():

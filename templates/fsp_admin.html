@@ -627,26 +627,35 @@ document.addEventListener('click', function(e) {
   }
 
 
-  async function pingWithTimeout(timeoutMs = 2000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+  async function pingWithTimeout() {
     try {
-      const res = await fetch('/ping', { cache: 'no-store', signal: controller.signal });
-      clearTimeout(timer);
+      const res = await fetch('/ping', { cache: 'no-store' });
       return res.ok;
     } catch {
-      clearTimeout(timer);
       return false;
     }
   }
 
+
+  let consecutivePingFailures = 0;
+
   async function checkOnline() {
-    const ok = await pingWithTimeout(2000);
-    setOnlineState(ok);
+    const ok = await pingWithTimeout();
+
+    if (ok) {
+      consecutivePingFailures = 0;
+      setOnlineState(true);
+    } else {
+      consecutivePingFailures++;
+      if (consecutivePingFailures >= 3) {
+        setOnlineState(false);
+      }
+    }
   }
 
+
   checkOnline();
-  setInterval(checkOnline, 30000);
+  setInterval(checkOnline, 60000);
   window.addEventListener('online', () => setOnlineState(true));
   window.addEventListener('offline', () => setOnlineState(false));
   if ('serviceWorker' in navigator) {
