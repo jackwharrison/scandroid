@@ -1,9 +1,9 @@
 /* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v16'; // Change this on every deploy
+const CACHE_VERSION = 'v17'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
-  "/", "/fsp-login", "/scan",
+  "/", "/fsp-login", 
   "/beneficiary-offline", "/success-offline",
   "/static/scandroid.png", "/static/scandroid_banner.png",
   "/static/ns1.png", "/static/ns2.png",
@@ -72,10 +72,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkThenCache(req));
     return;
   }
+  // NEVER cache scan page – auth-protected, may redirect
+  if (url.pathname === "/scan") {
+    event.respondWith(fetch(req, { cache: "no-store" }));
+    return;
+  }
 
   // -------- OFFLINE-FIRST APP ROUTES --------
   const offlineFirstRoutes = [
-    "/scan",
     "/beneficiary-offline",
     "/success-offline"
   ];
