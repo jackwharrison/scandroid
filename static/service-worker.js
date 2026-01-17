@@ -1,5 +1,5 @@
 /* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v15'; // Change this on every deploy
+const CACHE_VERSION = 'v16'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -48,6 +48,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/fsp-admin") ||
     url.pathname.startsWith("/fsp-login")
   ) {
+    event.respondWith(fetch(req));
     return;
   }
 
