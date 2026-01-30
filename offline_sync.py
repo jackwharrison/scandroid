@@ -17,8 +17,26 @@ config = load_config()
 API_BASE = config["url121"] + "/api"
 KOBO_TOKEN = config["KOBO_TOKEN"]
 KOBO_BASE = config.get("KOBO_SERVER")
-ASSET_ID = config["ASSET_ID"]
-PROGRAM_ID = config["programId"]
+
+program_id = os.environ.get("PROGRAM_ID")
+if not program_id:
+    raise RuntimeError("PROGRAM_ID not provided to offline_sync.py")
+
+program_id = str(program_id)
+
+programs = config.get("PROGRAMS", [])
+program = next(
+    (p for p in programs if str(p.get("programId")) == program_id),
+    None
+)
+
+if not program:
+    raise RuntimeError(f"Program not found for programId={program_id}")
+
+ASSET_ID = program["koboAssetId"]
+
+PROGRAM_ID = program_id
+
 ENCRYPTION_KEY = config["ENCRYPTION_KEY"]
 
 display_config = load_display_config()

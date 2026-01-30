@@ -174,6 +174,11 @@
     /* ---------- IndexedDB ---------- */
     const DB_NAME = 'scandroid';
     const DB_VER  = 13;
+    function scopedUUID(uuid) {
+      if (!ACTIVE_PROGRAM_ID) return String(uuid);
+      return `${ACTIVE_PROGRAM_ID}:${uuid}`;
+    }
+
     function openDB() {
       return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VER);
@@ -214,28 +219,40 @@
         const st = tx.objectStore('records');
         const req = st.openCursor();
         let found = null;
+
+        const scopedNeedle = scopedUUID(String(needle));
+
         req.onsuccess = (e) => {
           const cursor = e.target.result;
           if (!cursor) return resolve(found);
-          const rec = cursor.value; const d = rec && rec.data || {};
-          const n = String(needle);
-          const match =
-            String(rec.uuid || '') === n ||
-            String(rec.registrationId || '') === n ||
-            String(d._id || '') === n ||
-            String(d._uuid || '') === n;
-          if (match) { found = rec; return resolve(found); }
+
+          const rec = cursor.value;
+          const d = rec && rec.data || {};
+
+          if (
+            rec.uuid === scopedNeedle ||
+            scopedUUID(rec.registrationId || '') === scopedNeedle ||
+            scopedUUID(d._id || '') === scopedNeedle ||
+            scopedUUID(d._uuid || '') === scopedNeedle
+          ) {
+            found = rec;
+            return resolve(found);
+          }
+
           cursor.continue();
         };
+
         req.onerror = () => reject(req.error);
       });
     }
+
 
     /* ---------- Template inputs ---------- */
     const LANG = "{{ lang }}";
     const UUID_FROM_SERVER = "{{ uuid or '' }}";
     const URL_UUID = new URLSearchParams(location.search).get('uuid') || "";
     const SCANNED_ID = URL_UUID || UUID_FROM_SERVER;
+    const ACTIVE_PROGRAM_ID = "{{ program_id or '' }}";
 
     const fieldsConfig = {{ display_fields|tojson }};
     const photoEnabled = {{ (photo_config and photo_config.enabled)|tojson }};
@@ -310,13 +327,13 @@
       catch { fieldsEl.innerHTML = `<div class="note">IndexedDB unavailable.</div>`; return; }
 
       // Find record by uuid / _id / registrationId
-      let rec = await dbGet(db, 'records', String(SCANNED_ID));
+      let rec = await dbGet(db, 'records', scopedUUID(String(SCANNED_ID)));
       if (!rec) {
         const idx = await dbGet(db, 'meta', 'idIndex');
         const map = idx && idx.value || {};
         const n = String(SCANNED_ID);
         const mappedUuid = map['uuid:' + n] || map['kobo:' + n] || map['reg:' + n] || null;
-        if (mappedUuid) rec = await dbGet(db, 'records', mappedUuid);
+        if (mappedUuid) rec = await dbGet(db, 'records', scopedUUID(mappedUuid));
       }
       if (!rec) rec = await dbFindRecordByAnyId(db, SCANNED_ID);
 
@@ -342,7 +359,7 @@
 // Photos (try token-string first, then raw-bytes fallback)
 if (photoEnabled) {
   try {
-    const p = await dbGet(db, 'photos', rec.uuid);
+    const p = await dbGet(db, 'photos', scopedUUID(rec.uuid));
     if (p && (p.bytes || p.blob)) {
       if (!keyB64) {
         if (photoBadge) photoBadge.textContent = '📦 Encrypted photo cached on device';
@@ -405,12 +422,16 @@ async function handleDecision(status) {
 
 
     const decision = {
-      uuid: rec.uuid,
+      uuid: scopedUUID(rec.uuid),
+      programId: ACTIVE_PROGRAM_ID,
       status: status,
       columnKey: columnKey,
       matchValue: matchValue,
       timestamp: new Date().toISOString()
     };
+
+    await dbPut(db, 'decisions', decision);
+
 
     console.log("Saving decision to IndexedDB:", decision);
 
@@ -498,7 +519,8 @@ if (!paymentsStoreExists) {
     const store = tx.objectStore("payments");
 
     const decision = {
-      uuid: rec.uuid,
+      uuid: scopedUUID(rec.uuid),
+      programId: ACTIVE_PROGRAM_ID,
       status: decisionValue,
       column_to_match: columnToMatch,
       match_value: matchValue,

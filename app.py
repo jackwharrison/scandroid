@@ -1322,28 +1322,58 @@ def fsp_program_selector():
         username=username,
         program_title="Program Selector"
     )
-
-
-@app.route("/fsp-admin")
-def fsp_admin():
+@app.route("/select-program/<program_id>")
+def select_program(program_id):
     if not session.get("fsp_logged_in"):
         return redirect(url_for("fsp_login"))
 
+    # keep language if present
+    lang = request.args.get("lang", "en")
+
+    # store selection in session
+    session["fsp_program_id"] = str(program_id)
+
+    # redirect into the admin page WITH query param
+    return redirect(url_for("fsp_admin", program_id=str(program_id), lang=lang))
+
+@app.route("/fsp-admin")
+def fsp_admin():
+    # --- auth ---
+    if not session.get("fsp_logged_in"):
+        return redirect(url_for("fsp_login"))
+
+    # --- language ---
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
-    # Load system config
-    system_config = load_config()
+    # --- program resolution (URL first, then session) ---
+    program_id = request.args.get("program_id") or session.get("fsp_program_id")
+    if not program_id:
+        return redirect(url_for("fsp_program_selector", lang=lang))
 
-    # Load display fields config
+    program_id = str(program_id)
+
+    # --- load configs ---
+    system_config = load_config()
     display_config = load_display_config()
 
-    # COLUMN_TO_MATCH now lives ONLY in system_config.json
     column_to_match = system_config.get("COLUMN_TO_MATCH")
+    programs = system_config.get("PROGRAMS", [])
 
-    # Program title and currently-logged FSP username
-    program_title = system_config.get("programTitle", "")
+    # --- resolve program ---
+    program = next(
+        (p for p in programs if str(p.get("programId")) == program_id),
+        None
+    )
+
+    if not program:
+        return redirect(url_for("fsp_program_selector", lang=lang))
+
+    program_title = program.get("koboFormName", f"Program {program_id}")
     username = session.get("fsp_username")
+
+    # --- IMPORTANT: persist program for later routes ---
+    session["fsp_program_id"] = program_id
 
     return render_template(
         "fsp_admin.html",
@@ -1353,49 +1383,64 @@ def fsp_admin():
         t=t,
         config=system_config,
         program_title=program_title,
+        program_id=program_id,   # ✅ this feeds ACTIVE_PROGRAM_ID in JS
         username=username
     )
-
 
 
 @app.route("/sync-fsp")
 def sync_fsp():
     import subprocess
+    import os
+
+    # 🔴 get selected program from session
+    program_id = session.get("fsp_program_id")
+    if not program_id:
+        return jsonify({
+            "success": False,
+            "message": "❌ No program selected"
+        })
+
+    env = os.environ.copy()
+    env["PROGRAM_ID"] = str(program_id)   # 🔑 THIS IS THE FIX
 
     try:
         result = subprocess.run(
             ["python", "offline_sync.py"],
             capture_output=True,
             text=True,
-            encoding='utf-8',
-            errors="replace"
+            encoding="utf-8",
+            errors="replace",
+            env=env                      # 🔑 PASS ENV
         )
-        output = result.stdout.strip()
-        error_output = result.stderr.strip()
 
-        print("\n[DEBUG] STDOUT:\n", output)
-        print("\n[DEBUG] STDERR:\n", error_output)
+        print("\n[DEBUG] STDOUT:\n", result.stdout)
+        print("\n[DEBUG] STDERR:\n", result.stderr)
 
         if result.returncode != 0:
             return jsonify({
                 "success": False,
-                "message": f"❌ Script failed with error:\n{error_output or output}"
+                "message": f"❌ Script failed:\n{result.stderr or result.stdout}"
             })
 
-        for line in output.splitlines():
+        for line in result.stdout.splitlines():
             if "beneficiaries" in line.lower():
-                return jsonify({"success": True, "message": f"✅ {line.strip()}"})
+                return jsonify({
+                    "success": True,
+                    "message": f"✅ {line.strip()}"
+                })
 
         return jsonify({
             "success": True,
-            "message": "✅ Sync completed, but no beneficiaries were found."
+            "message": "✅ Sync completed"
         })
 
     except Exception as e:
         return jsonify({
             "success": False,
-            "message": f"❌ Error running sync: {str(e)}"
+            "message": f"❌ Error running sync: {e}"
         })
+
 @app.route("/fsp-logout")
 def fsp_logout():
     session.pop("fsp_logged_in", None)
