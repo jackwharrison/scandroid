@@ -530,6 +530,9 @@ document.addEventListener('click', function(e) {
   const PROGRAM_CURRENCY = "{{ config.get('programCurrency', '') }}";
 </script>
 
+<script>
+  const ACTIVE_PROGRAM_ID = "{{ program_id }}";
+</script>
 
 <!-- IndexedDB helper -->
 <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
@@ -664,6 +667,12 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
+
+function scopedUUID(uuid) {
+  if (!ACTIVE_PROGRAM_ID) return String(uuid);
+  return `${ACTIVE_PROGRAM_ID}:${uuid}`;
+}
+
   // ---------- IndexedDB ----------
   async function openScandroidDB() {
     return await idb.openDB('scandroid', 13, {
@@ -700,7 +709,10 @@ document.addEventListener('click', function(e) {
     const statusDiv = document.getElementById('statusMessage');
 
     try {
-      const res = await fetch('/api/offline/latest.zip', { cache: 'no-store' });
+      const res = await fetch(
+        `/api/offline/latest.zip?programId=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`,
+        { cache: 'no-store' }
+      );
       if (!res.ok) throw new Error(`Fetch latest.zip failed: ${res.status}`);
       const zipBlob = await res.blob();
       const zip = await JSZip.loadAsync(zipBlob);
@@ -718,7 +730,10 @@ document.addEventListener('click', function(e) {
         await Promise.all(group.map(async rec => {
           const uuid = rec.uuid || rec._uuid;
           if (!uuid) return;
-          await db.put('records', rec);
+          await db.put('records', {
+            ...rec,
+            uuid: scopedUUID(rec.uuid || rec._uuid)
+          });
           written++;
         }));
       }
@@ -732,7 +747,10 @@ document.addEventListener('click', function(e) {
           const uuid = m ? m[1] : null;
           if (!uuid) return null;
           const buf = await entry.async('arraybuffer');
-          return { uuid, bytes: new Uint8Array(buf) };
+          return {
+            uuid: scopedUUID(uuid),
+            bytes: new Uint8Array(buf)
+          };
         }));
         await Promise.all(items.filter(Boolean).map(item => db.put('photos', item)));
         photosWritten += items.filter(Boolean).length;
@@ -749,7 +767,7 @@ document.addEventListener('click', function(e) {
           if (!uuid) continue;
 
           await db.put("transaction", {
-            uuid: uuid,
+            uuid: scopedUUID(uuid),
             amount: t.amount || 0,
             paymentId: t.paymentId
           });
@@ -1115,6 +1133,7 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     for (const p of payments) {
       if (p.status === "success") {
         p.status = "submitted";
+        p.uuid = scopedUUID(p.uuid);
         await store.put(p);
       }
     }

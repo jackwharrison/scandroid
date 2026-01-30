@@ -297,10 +297,10 @@
 
   <div class="program-grid">
     {% for p in programs %}
-      <a
+        <a
         class="program-card"
-        href="/fsp-admin"
-      >
+        href="/select-program/{{ p.id }}"
+        >
         <div class="program-title">
           {{ p.title }}
         </div>
