@@ -1213,7 +1213,7 @@ def fsp_login():
             if res.status_code == 201:
                 session["fsp_logged_in"] = True
                 session["fsp_username"] = username
-                return redirect(url_for("fsp_admin", lang=lang))
+                return redirect(url_for("fsp_program_selector"))
 
             elif res.status_code in (400, 401):
                 error = t["login_error"]
@@ -1225,6 +1225,103 @@ def fsp_login():
             error = t["login_error"]
 
     return render_template("fsp_login.html", lang=lang, t=t, error=error)
+
+@app.route("/fsp-programs")
+def fsp_program_selector():
+    # ------------------------------------------------------
+    # Auth guard
+    # ------------------------------------------------------
+    if not session.get("fsp_logged_in"):
+        return redirect(url_for("fsp_login"))
+
+    # ------------------------------------------------------
+    # Language + translations (MISSING BEFORE)
+    # ------------------------------------------------------
+    lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+    username = session.get("fsp_username")
+
+    # ------------------------------------------------------
+    # Always initialise programs (CRITICAL FIX)
+    # ------------------------------------------------------
+    programs = []
+
+    # ------------------------------------------------------
+    # Load system config
+    # ------------------------------------------------------
+    try:
+        system_config = load_config()
+    except Exception:
+        system_config = {}
+
+    programs_raw = system_config.get("PROGRAMS", [])
+    url121 = system_config.get("url121")
+
+    # ------------------------------------------------------
+    # Resolve program titles from 121
+    # ------------------------------------------------------
+    if url121 and programs_raw:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                },
+                timeout=10
+            )
+
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+
+                for p in programs_raw:
+                    pid = p.get("programId")
+                    title = str(pid)
+
+                    try:
+                        r = requests.get(
+                            f"{url121}/api/programs/{pid}",
+                            cookies=cookies,
+                            timeout=10
+                        )
+                        if r.status_code == 200:
+                            titles = r.json().get("titlePortal", {})
+                            title = titles.get("en") or next(iter(titles.values()), title)
+                    except Exception:
+                        pass
+
+                    programs.append({
+                        "id": str(pid),
+                        "title": title
+                    })
+
+        except Exception as e:
+            print("Program lookup failed:", e)
+
+    # ------------------------------------------------------
+    # Fallback: titles = program IDs
+    # ------------------------------------------------------
+    if not programs:
+        programs = [
+            {
+                "id": str(p.get("programId")),
+                "title": str(p.get("programId"))
+            }
+            for p in programs_raw
+        ]
+
+    # ------------------------------------------------------
+    # Render selector page
+    # ------------------------------------------------------
+    return render_template(
+        "fsp_programs.html",
+        programs=programs,
+        lang=lang,
+        t=t,
+        username=username,
+        program_title="Program Selector"
+    )
 
 
 @app.route("/fsp-admin")
