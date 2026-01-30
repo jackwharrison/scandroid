@@ -743,65 +743,91 @@ def system_config():
 
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
+    config = load_config()
 
-    # -------------------- POST: Save Config --------------------
+    # ============================================================
+    # POST: SAVE CONFIG
+    # ============================================================
     if request.method == "POST":
-        updated_config = load_config()
+        updated = config.copy()
 
-        editable_keys = [
-            "KOBO_SERVER", "KOBO_TOKEN", "ASSET_ID",
-            "url121", "username121", "password121",
-            "programId", "programTitle",
-            "ENCRYPTION_KEY", "programCurrency"
-        ]
+        # ---- Global fields ----
+        for key in [
+            "KOBO_SERVER",
+            "KOBO_TOKEN",
+            "url121",
+            "username121",
+            "password121",
+            "ENCRYPTION_KEY",
+        ]:
+            updated[key] = request.form.get(key, "").strip()
 
-        for key in editable_keys:
-            updated_config[key] = request.form.get(key, updated_config.get(key, ""))
+        # ---- Program mappings ----
+        programs = []
+        program_ids = request.form.getlist("PROGRAMS[][programId]")
+        asset_ids = request.form.getlist("PROGRAMS[][koboAssetId]")
 
-        save_config(updated_config)
+        kobo_server = updated.get("KOBO_SERVER")
+        kobo_token = updated.get("KOBO_TOKEN")
+
+        for pid, asset_id in zip(program_ids, asset_ids):
+            if not pid or not asset_id:
+                continue
+
+            entry = {
+                "programId": int(pid),
+                "koboAssetId": asset_id.strip()
+            }
+
+            # ---- Validate Kobo asset ----
+            try:
+                r = requests.get(
+                    f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                    headers={"Authorization": f"Token {kobo_token}"},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    j = r.json()
+                    entry["koboFormName"] = j.get("name")
+                    entry["koboFormOwner"] = j.get("owner__username")
+            except Exception as e:
+                print("Kobo validation error:", e)
+
+            programs.append(entry)
+
+        updated["PROGRAMS"] = programs
+
+        save_config(updated)
         flash(t["saved_successfully"])
         return redirect(url_for("system_config", lang=lang))
 
-    # -------------------- GET: Load Config --------------------
-    config = load_config()
-
-    def safe_get(k):
-        v = config.get(k)
-        return v if v not in ("", None) else None
-
-    url121 = safe_get("url121")
-    username121 = safe_get("username121")
-    password121 = safe_get("password121")
-    selected_program_id = safe_get("programId")
+    # ============================================================
+    # GET: LOAD DATA FOR UI
+    # ============================================================
+    url121 = config.get("url121")
+    username121 = config.get("username121")
+    password121 = config.get("password121")
 
     token = None
-    program_title = config.get("programTitle")
-    program_currency = config.get("programCurrency")
-    column_to_match_121 = None
+    program_ids = []
     program_options = []
 
-    # ============================================================
-    #                     1. Login to 121 API
-    # ============================================================
-    program_ids = []
+    # ---- Login to 121 ----
     if url121 and username121 and password121:
         try:
-            login_payload = {"username": username121, "password": password121}
-            resp = requests.post(f"{url121}/api/users/login", json=login_payload)
-
-            if resp.status_code == 201:
-                resp_json = resp.json()
-                token = resp_json.get("access_token_general")
-                permissions = resp_json.get("permissions", {})
-                program_ids = [int(pid) for pid in permissions.keys()]
-
+            r = requests.post(
+                f"{url121}/api/users/login",
+                json={"username": username121, "password": password121}
+            )
+            if r.status_code == 201:
+                j = r.json()
+                token = j.get("access_token_general")
+                program_ids = [int(pid) for pid in j.get("permissions", {}).keys()]
         except Exception as e:
-            print("Error logging into 121 API:", e)
+            print("121 login failed:", e)
 
-    # ============================================================
-    #            2. Load all program titles for dropdown
-    # ============================================================
-    if token and program_ids:
+    # ---- Load program titles ----
+    if token:
         for pid in program_ids:
             try:
                 r = requests.get(
@@ -810,109 +836,25 @@ def system_config():
                 )
                 if r.status_code == 200:
                     pdata = r.json()
-                    title_dict = pdata.get("titlePortal", {})
-
-                    title = (
-                        title_dict.get(lang)
-                        or next(iter(title_dict.values()), f"Program {pid}")
-                    )
+                    titles = pdata.get("titlePortal", {})
+                    title = titles.get(lang) or next(iter(titles.values()), f"Program {pid}")
                     program_options.append({"id": pid, "title": title})
-
             except Exception as e:
-                print(f"Error loading program {pid}:", e)
+                print(f"Program load failed ({pid}):", e)
 
-    # ============================================================
-    #            3. Load selected program details
-    # ============================================================
-    if token and selected_program_id:
-        try:
-            resp = requests.get(
-                f"{url121}/api/programs/{selected_program_id}",
-                cookies={"access_token_general": token}
-            )
+    # Existing mappings for UI
+    program_mappings = config.get("PROGRAMS", [])
 
-            if resp.status_code == 200:
-                data = resp.json()
-                title_dict = data.get("titlePortal", {})
-
-                program_title = (
-                    title_dict.get(lang)
-                    or next(iter(title_dict.values()), None)
-                )
-                program_currency = data.get("currency", program_currency)
-
-                config["programTitle"] = program_title
-                config["programCurrency"] = program_currency
-                save_config(config)
-
-        except Exception as e:
-            print("Error fetching program info:", e)
-
-    # ============================================================
-    #               4. Load COLUMN_TO_MATCH from 121
-    # ============================================================
-    if token and selected_program_id:
-        try:
-            resp = requests.get(
-                f"{url121}/api/programs/{selected_program_id}/fsp-configurations",
-                cookies={"access_token_general": token}
-            )
-
-            if resp.status_code == 200:
-                for fsp in resp.json():
-                    for prop in fsp.get("properties", []):
-                        if prop.get("name") == "columnToMatch":
-                            column_to_match_121 = prop.get("value")
-
-            if column_to_match_121:
-                config["COLUMN_TO_MATCH"] = column_to_match_121
-                save_config(config)
-
-        except Exception as e:
-            print("Error fetching columnToMatch:", e)
-
-    # ============================================================
-    #              5. Fetch KOBO FORM METADATA (NEW)
-    # ============================================================
-    kobo_form_name = None
-    kobo_form_owner = None
-
-    try:
-        kobo_server = config.get("KOBO_SERVER", "https://kobo.ifrc.org")
-        kobo_token = config.get("KOBO_TOKEN")
-        asset_id = config.get("ASSET_ID")
-
-        if kobo_token and asset_id:
-            resp = requests.get(
-                f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
-                headers={"Authorization": f"Token {kobo_token}"},
-                timeout=10
-            )
-
-            if resp.status_code == 200:
-                j = resp.json()
-                kobo_form_name = j.get("name")
-                kobo_form_owner = j.get("owner__username")
-
-    except Exception as e:
-        print("Error loading Kobo form metadata:", e)
-
-    # ============================================================
-    #                     Render Template
-    # ============================================================
     return render_template(
         "system_config.html",
         config=config,
-        program_title=program_title,
-        program_currency=program_currency,
-        column_to_match_121=column_to_match_121 or config.get("COLUMN_TO_MATCH"),
         program_options=program_options,
+        program_mappings=program_mappings,
         username=session.get("admin_username"),
         lang=lang,
-        t=t,
-        kobo_form_name=kobo_form_name,
-        kobo_form_owner=kobo_form_owner
+        t=t
     )
+
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
@@ -922,40 +864,36 @@ def config_page():
     lang = request.args.get("lang", "en")
     username = session.get("admin_username", "Admin")
 
-    # -------------------- POST (SAVE) --------------------
+    # ------------------------------------------------------
+    # POST (SAVE DISPLAY CONFIG – PER PROGRAM)
+    # ------------------------------------------------------
     if request.method == "POST":
         config_data = request.get_json()
 
-        # Prevent saving COLUMN_TO_MATCH here
+        program_id = str(config_data.pop("programId"))
         config_data.pop("COLUMN_TO_MATCH", None)
 
         try:
-            save_display_config(config_data)
+            full_config = load_display_config()
+            if "programs" not in full_config:
+                full_config["programs"] = {}
+
+            full_config["programs"][program_id] = config_data
+            save_display_config(full_config)
+
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
 
-    # -------------------- GET (LOAD PAGE) --------------------
+    # ------------------------------------------------------
+    # GET (LOAD PAGE)
+    # ------------------------------------------------------
 
-    # Load existing display config
+    # Load display config
     try:
         config_data = load_display_config()
-        if isinstance(config_data, list):
-            config_data = {
-                "fields": config_data,
-                "photo": {
-                    "enabled": True,
-                    "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
-                }
-            }
     except Exception:
-        config_data = {
-            "fields": [],
-            "photo": {
-                "enabled": True,
-                "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
-            }
-        }
+        config_data = {}
 
     # Load system config
     try:
@@ -963,174 +901,282 @@ def config_page():
     except Exception:
         system_config = {}
 
-    program_title = system_config.get("programTitle", "")
-    column_to_match_121 = None
-    allowed_attributes = []
-    kobo_image_fields = []
+    programs_raw = system_config.get("PROGRAMS", [])
+    programs = []          # UI list (id + title)
+    program_lookup = {}    # Logic lookup (full object)
 
     url121 = system_config.get("url121")
-    program_id = system_config.get("programId")
 
     # ------------------------------------------------------
-    #                 121 PROGRAM ATTRIBUTES
+    # Resolve program titles from 121
     # ------------------------------------------------------
-    if url121 and program_id:
+    if url121 and programs_raw:
         try:
-            # Login to 121
-            login_payload = {
-                "username": system_config.get("username121", ""),
-                "password": system_config.get("password121", "")
-            }
-
-            login_resp = requests.post(f"{url121}/api/users/login", json=login_payload)
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                }
+            )
 
             if login_resp.status_code == 201:
                 token = login_resp.json().get("access_token_general")
                 cookies = {"access_token_general": token}
 
-                # 1️⃣ COLUMN TO MATCH
+                for p in programs_raw:
+                    pid = p.get("programId")
+                    title = str(pid)
+
+                    try:
+                        r = requests.get(
+                            f"{url121}/api/programs/{pid}",
+                            cookies=cookies,
+                            timeout=10
+                        )
+                        if r.status_code == 200:
+                            titles = r.json().get("titlePortal", {})
+                            title = titles.get("en") or next(iter(titles.values()), title)
+                    except Exception:
+                        pass
+
+                    programs.append({
+                        "id": str(pid),
+                        "title": title
+                    })
+                    program_lookup[str(pid)] = p
+
+        except Exception as e:
+            print("Program title lookup failed:", e)
+
+    # Safety fallback
+    if not programs:
+        for p in programs_raw:
+            pid = str(p.get("programId"))
+            programs.append({"id": pid, "title": pid})
+            program_lookup[pid] = p
+
+    # ------------------------------------------------------
+    # Active program selection
+    # ------------------------------------------------------
+    active_program_id = request.args.get("programId")
+    if not active_program_id and programs:
+        active_program_id = programs[0]["id"]
+    active_program_id = str(active_program_id) if active_program_id else None
+
+    # ------------------------------------------------------
+    # Backward compatibility (single → multi)
+    # ------------------------------------------------------
+    if "programs" not in config_data:
+        default_program_id = active_program_id or "default"
+        config_data = {
+            "programs": {
+                default_program_id: {
+                    "fields": config_data.get("fields", []),
+                    "photo": config_data.get(
+                        "photo",
+                        {
+                            "enabled": True,
+                            "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
+                        }
+                    )
+                }
+            }
+        }
+
+    # ------------------------------------------------------
+    # Resolve active program Kobo + 121 config
+    # ------------------------------------------------------
+    program_id = None
+    asset_id = None
+
+    for prog in system_config.get("PROGRAMS", []):
+        if str(prog.get("programId")) == str(active_program_id):
+            program_id = prog.get("programId")
+            asset_id = prog.get("koboAssetId")
+            break
+
+    program_title = system_config.get("programTitle", "")
+    column_to_match_121 = None
+    allowed_attributes = []
+    kobo_image_fields = []
+
+    # ------------------------------------------------------
+    # 121 PROGRAM ATTRIBUTES
+    # ------------------------------------------------------
+    if url121 and program_id:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                }
+            )
+
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+
+                # Column to match
                 try:
-                    resp_fsp = requests.get(
+                    r = requests.get(
                         f"{url121}/api/programs/{program_id}/fsp-configurations",
                         cookies=cookies,
                         timeout=10
                     )
-                    if resp_fsp.status_code == 200:
-                        for fsp in resp_fsp.json():
+                    if r.status_code == 200:
+                        for fsp in r.json():
                             for prop in fsp.get("properties", []):
                                 if prop.get("name") == "columnToMatch":
                                     column_to_match_121 = prop.get("value")
                                     break
-                except Exception as e:
-                    print("Error retrieving fsp-configurations:", e)
+                except Exception:
+                    pass
 
-                # 2️⃣ PROGRAM REGISTRATION ATTRIBUTES
+                # Registration attributes
                 try:
-                    resp_prog = requests.get(
+                    r = requests.get(
                         f"{url121}/api/programs/{program_id}",
                         cookies=cookies,
                         timeout=10
                     )
-                    if resp_prog.status_code == 200:
-                        attrs = resp_prog.json().get("programRegistrationAttributes", [])
-
-                        for attr in attrs:
+                    if r.status_code == 200:
+                        for attr in r.json().get("programRegistrationAttributes", []):
                             name = attr.get("name")
                             if not name:
                                 continue
 
-                            label_obj = attr.get("label") or {}
-
-                            display_label = (
-                                label_obj.get("en")
-                                or next(iter(label_obj.values()), None)
-                                or name
-                            )
+                            labels = attr.get("label") or {}
+                            label = labels.get("en") or next(iter(labels.values()), name)
 
                             allowed_attributes.append({
                                 "name": name,
-                                "label": display_label
+                                "label": label
                             })
-
-                except Exception as e:
-                    print("Error retrieving program attributes:", e)
+                except Exception:
+                    pass
 
         except Exception as e:
-            print("Error retrieving config from 121:", e)
+            print("121 lookup failed:", e)
 
-    # STRICT MODE – Drop invalid fields
+    # ------------------------------------------------------
+    # Strict mode – drop invalid fields per program
+    # ------------------------------------------------------
     if allowed_attributes:
         allowed_names = {a["name"] for a in allowed_attributes}
-        config_data["fields"] = [
-            f for f in config_data.get("fields", [])
-            if f.get("key") in allowed_names
-        ]
+        for pdata in config_data.get("programs", {}).values():
+            pdata["fields"] = [
+                f for f in pdata.get("fields", [])
+                if f.get("key") in allowed_names
+            ]
 
     # ------------------------------------------------------
-    #              KOBO IMAGE FIELD EXTRACTION (FIXED)
+    # Kobo image fields
     # ------------------------------------------------------
-
     def get_full_kobo_path(item):
-        """Return correct Kobo path: using $xpath if available, else parent chain."""
+        if not isinstance(item, dict):
+            return None
+
         if "$xpath" in item:
             return item["$xpath"].replace("/data/", "").replace("data/", "").strip("/")
 
-        # Manual fallback
         parts = []
         current = item
-        while current:
+        while isinstance(current, dict):
             if current.get("name"):
                 parts.append(current["name"])
             current = current.get("parent")
 
-        return "/".join(reversed(parts))
+        return "/".join(reversed(parts)) if parts else None
 
     try:
         token = system_config.get("KOBO_TOKEN")
-        asset_id = system_config.get("ASSET_ID")
         kobo_server = system_config.get("KOBO_SERVER", "https://kobo.ifrc.org")
 
         if token and asset_id:
-            url = f"{kobo_server}/api/v2/assets/{asset_id}/?format=json"
-            resp = requests.get(url, headers={"Authorization": f"Token {token}"}, timeout=10)
+            r = requests.get(
+                f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                headers={"Authorization": f"Token {token}"},
+                timeout=10
+            )
 
-            if resp.status_code == 200:
-                content = resp.json()
-
-                survey = content.get("content", {}).get("survey", [])
-
+            if r.status_code == 200:
+                survey = r.json().get("content", {}).get("survey", [])
                 for item in survey:
+                    if not isinstance(item, dict):
+                        continue
+
                     if item.get("type") == "image":
-                        full_path = get_full_kobo_path(item)
+                        raw_label = item.get("label")
 
-                        # Extract label
-                        labels = item.get("label") or {}
-                        if isinstance(labels, list):
-                            label = labels[0] if labels else full_path
+                        if isinstance(raw_label, dict):
+                            label = (
+                                raw_label.get("English")
+                                or raw_label.get("en")
+                                or next(iter(raw_label.values()), get_full_kobo_path(item))
+                            )
+
+                        elif isinstance(raw_label, list) and raw_label:
+                            first = raw_label[0]
+                            if isinstance(first, dict):
+                                label = (
+                                    first.get("English")
+                                    or first.get("en")
+                                    or next(iter(first.values()), get_full_kobo_path(item))
+                                )
+                            else:
+                                label = str(first)
+
                         else:
-                            label = labels.get("English") or labels.get("en") or next(iter(labels.values()), full_path)
+                            label = get_full_kobo_path(item)
 
-                        kobo_image_fields.append({
-                            "name": full_path,
-                            "label": label
-                        })
-
+                        path = get_full_kobo_path(item)
+                        if path:
+                            kobo_image_fields.append({
+                                "name": path,
+                                "label": label
+                            })
     except Exception as e:
-        print("Error loading Kobo image fields:", e)
-
-    # STRICT MODE for image field
-    if kobo_image_fields:
-        valid_paths = {i["name"] for i in kobo_image_fields}
-        if config_data.get("photo", {}).get("field_name") not in valid_paths:
-            config_data["photo"]["field_name"] = ""
+        print("Kobo lookup failed:", e)
 
     # ------------------------------------------------------
-    # SAVE COLUMN_TO_MATCH IF FOUND
+    # Strict mode – image field per program
+    # ------------------------------------------------------
+    if kobo_image_fields:
+        valid = {i["name"] for i in kobo_image_fields}
+        for pdata in config_data.get("programs", {}).values():
+            if pdata.get("photo", {}).get("field_name") not in valid:
+                pdata.setdefault("photo", {})["field_name"] = ""
+
+    # ------------------------------------------------------
+    # Persist COLUMN_TO_MATCH
     # ------------------------------------------------------
     if column_to_match_121:
         system_config["COLUMN_TO_MATCH"] = column_to_match_121
         try:
             with open("system_config.json", "w", encoding="utf-8") as f:
-                json.dump(system_config, f, ensure_ascii=False, indent=2)
-        except:
+                json.dump(system_config, f, indent=2, ensure_ascii=False)
+        except Exception:
             pass
 
     # ------------------------------------------------------
-    # RENDER PAGE
+    # RENDER
     # ------------------------------------------------------
     return render_template(
         "config.html",
-        config=config_data,
+        full_config=config_data,
+        programs=programs,
+        active_program_id=active_program_id,
         system_config=system_config,
-        column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
         allowed_attributes=allowed_attributes,
         kobo_image_fields=kobo_image_fields,
+        column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
         lang=lang,
         username=username,
         program_title=program_title,
-        t=translations.get(lang, translations["en"])
+        t=translations.get(lang, translations["en"]),
     )
-
 
 
 @app.route("/logout")
