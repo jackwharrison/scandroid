@@ -507,6 +507,19 @@
     <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
     {{ t.back_to_dashboard }}
   </a>
+<div style="margin-bottom:16px;text-align:center;">
+  <label style="font-weight:600;margin-right:8px;">
+    {{ t.program_id or "Program" }}
+  </label>
+  <select id="programSelector" style="padding:8px 12px;border-radius:8px;">
+    {% for p in programs %}
+      <option value="{{ p.id }}">
+        {{ p.title }}
+      </option>
+    {% endfor %}
+  </select>
+
+</div>
 
   <h1>{{ t.config_title }}</h1>
 
@@ -581,8 +594,17 @@
   <div>{{ t.footer_dev }}</div>
   <div>{{ t.footer_support }}</div>
 </footer>
-
 <script>
+/* ============================================================
+   GLOBAL STATE (FIX #1)
+   ============================================================ */
+let FULL_CONFIG = {{ full_config | tojson }};
+let activeProgramId = null;
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
 function makeSelectSearchable(selectEl) {
   if (!selectEl || selectEl.dataset.searchable === 'true') return;
   selectEl.dataset.searchable = 'true';
@@ -593,15 +615,14 @@ function makeSelectSearchable(selectEl) {
   const input = document.createElement('input');
   input.type = 'text';
 
-  // initial value (for loaded config)
   if (selectEl.value) {
     const selectedOption = selectEl.options[selectEl.selectedIndex];
-    if (selectedOption) {
-      input.value = selectedOption.text;
-    }
+    if (selectedOption) input.value = selectedOption.text;
   }
 
-  input.placeholder = selectEl.options.length ? selectEl.options[0].text : 'Search…';
+  input.placeholder = selectEl.options.length
+    ? selectEl.options[0].text
+    : 'Search…';
 
   const dropdown = document.createElement('div');
   dropdown.className = 'searchable-options hidden';
@@ -625,33 +646,18 @@ function makeSelectSearchable(selectEl) {
 
   window.addEventListener('resize', positionDropdown);
 
-  function handleClickOutside(e) {
-    if (!wrapper.contains(e.target) && !dropdown.contains(e.target)) {
-      dropdown.classList.add('hidden');
-    }
-  }
-
   setTimeout(() => {
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', e => {
+      if (!wrapper.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.classList.add('hidden');
+      }
+    });
   }, 0);
-
-  function clearRowErrorForSelect() {
-    const row = selectEl.closest('tr');
-    if (!row) return;
-
-    row.classList.remove('row-error');
-    const visibleInput = row.querySelector('.searchable-select input');
-    if (visibleInput) visibleInput.classList.remove('field-error');
-
-    if (!document.querySelector('.row-error')) {
-      const errorBanner = document.getElementById('formError');
-      if (errorBanner) errorBanner.classList.add('hidden');
-    }
-  }
 
   function render(filter = '') {
     dropdown.innerHTML = '';
     activeIndex = -1;
+
     options
       .filter(o => o.label.toLowerCase().includes(filter.toLowerCase()))
       .forEach(o => {
@@ -661,9 +667,6 @@ function makeSelectSearchable(selectEl) {
           selectEl.value = o.value;
           input.value = o.label;
           dropdown.classList.add('hidden');
-          clearRowErrorForSelect();
-
-          // trigger change so autofill runs
           selectEl.dispatchEvent(new Event('change', { bubbles: true }));
         };
         dropdown.appendChild(div);
@@ -680,9 +683,7 @@ function makeSelectSearchable(selectEl) {
     render(input.value);
     positionDropdown();
     dropdown.classList.remove('hidden');
-    if (!input.value.trim()) {
-      selectEl.value = '';
-    }
+    if (!input.value.trim()) selectEl.value = '';
   });
 
   input.addEventListener('keydown', e => {
@@ -700,15 +701,7 @@ function makeSelectSearchable(selectEl) {
       items[activeIndex].click();
     }
 
-    items.forEach((el, i) => {
-      el.classList.toggle('active', i === activeIndex);
-    });
-  });
-
-  input.addEventListener('blur', () => {
-    if (!input.value.trim()) {
-      selectEl.value = '';
-    }
+    items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
   });
 
   selectEl.style.display = 'none';
@@ -717,29 +710,11 @@ function makeSelectSearchable(selectEl) {
   document.body.appendChild(dropdown);
   wrapper.appendChild(selectEl);
 }
-</script>
 
-<script>
-// Photo toggle behaviour
-function togglePhotoFields() {
-  const enabled = document.getElementById('photoEnabled').checked;
-  const row = document.querySelector('#photoTableBody tr');
-  const inputs = row.querySelectorAll('input');
+/* ============================================================
+   FIELD TABLE LOGIC
+   ============================================================ */
 
-  row.style.opacity = enabled ? "1" : "0.5";
-
-  inputs.forEach(i => {
-    i.disabled = !enabled;
-    i.style.backgroundColor = enabled ? "#fff" : "#f3f4f6";
-    i.style.cursor = enabled ? "text" : "not-allowed";
-  });
-}
-
-window.addEventListener("load", togglePhotoFields);
-</script>
-
-<script>
-// Allowed attributes coming from 121 (name + label)
 const allowedAttributes = {{ allowed_attributes | tojson }};
 const fieldTableBody = document.querySelector('#fieldTable tbody');
 
@@ -756,25 +731,18 @@ function createFieldSelect(selectedKey) {
     const opt = document.createElement('option');
     opt.value = attr.name;
     opt.textContent = attr.label;
-    if (selectedKey && selectedKey === attr.name) {
-      opt.selected = true;
-    }
+    if (attr.name === selectedKey) opt.selected = true;
     select.appendChild(opt);
   });
 
-  // Autofill labels when field is chosen (only if label cells are empty)
   select.addEventListener('change', () => {
     const row = select.closest('tr');
-    if (!row) return;
-
     const attr = allowedAttributes.find(a => a.name === select.value);
-    if (!attr) return;
+    if (!row || !attr) return;
 
     ['en', 'fr', 'ar'].forEach(lang => {
       const input = row.querySelector(`input[name="label_${lang}"]`);
-      if (input && !input.value.trim()) {
-        input.value = attr.label;
-      }
+      if (input && !input.value.trim()) input.value = attr.label;
     });
   });
 
@@ -785,17 +753,9 @@ function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
   const row = document.createElement('tr');
 
   const keyCell = document.createElement('td');
-  if (allowedAttributes.length > 0) {
-    const select = createFieldSelect(item.key || '');
-    keyCell.appendChild(select);
-    makeSelectSearchable(select);
-  } else {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.name = 'key';
-    input.value = item.key || '';
-    keyCell.appendChild(input);
-  }
+  const select = createFieldSelect(item.key);
+  keyCell.appendChild(select);
+  makeSelectSearchable(select);
   row.appendChild(keyCell);
 
   ['en','fr','ar'].forEach(lang => {
@@ -803,17 +763,17 @@ function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
     const input = document.createElement('input');
     input.type = 'text';
     input.name = 'label_' + lang;
-    input.value = (item.labels && item.labels[lang]) || '';
+    input.value = item.labels?.[lang] || '';
     cell.appendChild(input);
     row.appendChild(cell);
   });
 
   const removeCell = document.createElement('td');
   const btn = document.createElement('button');
-  btn.className = 'delete-btn';
   btn.type = 'button';
+  btn.className = 'delete-btn';
   btn.textContent = '❌';
-  btn.onclick = function () { removeRow(btn); };
+  btn.onclick = () => row.remove();
   removeCell.appendChild(btn);
   row.appendChild(removeCell);
 
@@ -824,105 +784,61 @@ function addRow() {
   addRowFromData();
 }
 
-function removeRow(button) {
-  const row = button.closest('tr');
-  if (row) row.remove();
+/* ============================================================
+   LOAD CONFIG (FIX #2)
+   ============================================================ */
 
-  if (!document.querySelector('.row-error')) {
-    const errorBanner = document.getElementById('formError');
-    if (errorBanner) errorBanner.classList.add('hidden');
-  }
-}
+function loadConfig() {
+  fieldTableBody.innerHTML = '';
 
-async function loadConfig() {
-  const config = {{ config | tojson }};
+  const programConfig =
+    FULL_CONFIG?.programs?.[activeProgramId] || { fields: [], photo: {} };
 
-  if (config.fields) {
-    config.fields.forEach(addRowFromData);
-  }
+  programConfig.fields?.forEach(addRowFromData);
 
-  if (config.photo) {
-    document.getElementById('photoEnabled').checked = !!config.photo.enabled;
-    const photoKeySelect = document.getElementById('photoKey');
-    if (config.photo.field_name) {
-      photoKeySelect.value = config.photo.field_name;
-    }
-    document.getElementById('photoLabelEn').value = (config.photo.labels && config.photo.labels.en) || "";
-    document.getElementById('photoLabelFr').value = (config.photo.labels && config.photo.labels.fr) || "";
-    document.getElementById('photoLabelAr').value = (config.photo.labels && config.photo.labels.ar) || "";
-  }
+  document.getElementById('photoEnabled').checked =
+    !!programConfig.photo?.enabled;
+
+  document.getElementById('photoKey').value =
+    programConfig.photo?.field_name || '';
+
+  document.getElementById('photoLabelEn').value =
+    programConfig.photo?.labels?.en || '';
+  document.getElementById('photoLabelFr').value =
+    programConfig.photo?.labels?.fr || '';
+  document.getElementById('photoLabelAr').value =
+    programConfig.photo?.labels?.ar || '';
 
   togglePhotoFields();
   makeSelectSearchable(document.getElementById('photoKey'));
 }
 
+/* ============================================================
+   SAVE (FIX #3 — UPDATE IN-MEMORY STATE)
+   ============================================================ */
+
 document.getElementById('configForm').addEventListener('submit', async e => {
   e.preventDefault();
 
-  const rows = Array.from(document.querySelectorAll('#fieldTable tbody tr'));
+  const rows = [...fieldTableBody.querySelectorAll('tr')];
   const fields = [];
-  let hasError = false;
-  let firstErrorRow = null;
 
-  // clear previous errors
-  rows.forEach(row => {
-    row.classList.remove('row-error');
-    const visInput = row.querySelector('.searchable-select input');
-    if (visInput) visInput.classList.remove('field-error');
-    const keyInput = row.querySelector('[name="key"]');
-    if (keyInput) keyInput.classList.remove('field-error');
-  });
-  const errorBanner = document.getElementById('formError');
-  if (errorBanner) errorBanner.classList.add('hidden');
-
-  rows.forEach(row => {
-    const keySelect = row.querySelector('select[name="key"]');
-    const keyText = row.querySelector('input[name="key"]');
-    const keyEl = keySelect || keyText;
-    if (!keyEl) return;
-
-    const key = (keyEl.value || '').trim();
-
-    if (!key) {
-      hasError = true;
-      if (!firstErrorRow) firstErrorRow = row;
-
-      row.classList.add('row-error');
-
-      const visibleInput =
-        row.querySelector('.searchable-select input') || keyEl;
-      if (visibleInput) visibleInput.classList.add('field-error');
-
-      return;
-    }
-
-    const labelEnEl = row.querySelector('input[name="label_en"]');
-    const labelFrEl = row.querySelector('input[name="label_fr"]');
-    const labelArEl = row.querySelector('input[name="label_ar"]');
+  for (const row of rows) {
+    const keyEl = row.querySelector('[name="key"]');
+    if (!keyEl || !keyEl.value) return;
 
     fields.push({
-      key,
+      key: keyEl.value,
       labels: {
-        en: labelEnEl ? labelEnEl.value : '',
-        fr: labelFrEl ? labelFrEl.value : '',
-        ar: labelArEl ? labelArEl.value : ''
+        en: row.querySelector('[name="label_en"]').value,
+        fr: row.querySelector('[name="label_fr"]').value,
+        ar: row.querySelector('[name="label_ar"]').value
       }
     });
-  });
-
-  if (hasError) {
-    if (errorBanner) errorBanner.classList.remove('hidden');
-    if (firstErrorRow) {
-      firstErrorRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const focusInput =
-        firstErrorRow.querySelector('.searchable-select input') ||
-        firstErrorRow.querySelector('[name="key"]');
-      if (focusInput) focusInput.focus();
-    }
-    return;
   }
 
   const result = {
+    programId: activeProgramId,
     fields,
     photo: {
       enabled: document.getElementById('photoEnabled').checked,
@@ -937,33 +853,40 @@ document.getElementById('configForm').addEventListener('submit', async e => {
 
   const res = await fetch('/config', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(result)
   });
+
+  if (res.ok) {
+    if (!FULL_CONFIG.programs) FULL_CONFIG.programs = {};
+    FULL_CONFIG.programs[activeProgramId] = {
+      fields: result.fields,
+      photo: result.photo
+    };
+  }
 
   alert(res.ok ? '{{ t.saved_successfully }}' : '{{ t.failed_to_save }}');
 });
 
-window.onload = loadConfig;
-</script>
+/* ============================================================
+   PROGRAM SWITCHING
+   ============================================================ */
 
-<script>
-function toggleAccountDropdown() {
-  const menu = document.getElementById('account-menu');
-  const btn = document.querySelector('.account-btn');
-  menu.classList.toggle('hidden');
-  btn.classList.toggle('active');
-}
-
-document.addEventListener('click', function(e) {
-  const menu = document.getElementById('account-menu');
-  const btn = document.querySelector('.account-btn');
-
-  if (!btn.contains(e.target)) {
-    menu.classList.add('hidden');
-    btn.classList.remove('active');
-  }
+document.getElementById('programSelector').addEventListener('change', e => {
+  activeProgramId = e.target.value;
+  loadConfig();
 });
+
+/* ============================================================
+   INITIAL LOAD
+   ============================================================ */
+
+window.onload = () => {
+  const selector = document.getElementById('programSelector');
+  if (!selector?.value) return;
+  activeProgramId = selector.value;
+  loadConfig();
+};
 </script>
 
 </body>

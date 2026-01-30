@@ -1,0 +1,70 @@
+{
+  "programs": {
+    "8": {
+      "fields": [
+        {
+          "key": "Localit",
+          "labels": {
+            "en": "Localité",
+            "fr": "Localité",
+            "ar": "Localité"
+          }
+        },
+        {
+          "key": "Nom_de_la_m_re",
+          "labels": {
+            "en": "Nom de la mère",
+            "fr": "Nom de la mère",
+            "ar": "Nom de la mère"
+          }
+        }
+      ],
+      "photo": {
+        "enabled": true,
+        "field_name": "photo",
+        "labels": {
+          "en": "Photo",
+          "fr": "Photo",
+          "ar": "صورة"
+        }
+      }
+    },
+    "2": {
+      "fields": [
+        {
+          "key": "nom",
+          "labels": {
+            "en": "Nom du répondant",
+            "fr": "Nom du répondant",
+            "ar": "Nom du répondant"
+          }
+        },
+        {
+          "key": "Autre_pays",
+          "labels": {
+            "en": "Autre pays",
+            "fr": "Autre pays",
+            "ar": "Autre pays"
+          }
+        },
+        {
+          "key": "phoneNumber",
+          "labels": {
+            "en": "Phone Number",
+            "fr": "Phone Number",
+            "ar": "Phone Number"
+          }
+        }
+      ],
+      "photo": {
+        "enabled": true,
+        "field_name": "photo",
+        "labels": {
+          "en": "Photo",
+          "fr": "Photo",
+          "ar": "صورة"
+        }
+      }
+    }
+  }
+}

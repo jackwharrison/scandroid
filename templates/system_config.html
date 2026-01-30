@@ -398,25 +398,6 @@
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
         <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}">
 
-        <label for="ASSET_ID">{{ t.asset_id }}</label>
-        <input type="text" id="ASSET_ID" name="ASSET_ID" value="{{ config['ASSET_ID'] }}">
-
-        <h3 style="margin:16px 0 6px 0; font-size:1rem; font-weight:600; color:#374151;">
-          {{ t.kobo_connection }}
-        </h3>
-
-        {% if kobo_form_name %}
-          <p style="margin:4px 0 14px 0; color:#4b5563; font-size:0.9rem;">
-            {{ t.connected_to }} <strong>{{ kobo_form_name }}</strong><br>
-            <span style="color:#6b7280; font-size:0.85rem;">
-              {{ t.form_owner }}: {{ kobo_form_owner }}
-            </span>
-          </p>
-        {% else %}
-          <p style="margin:4px 0 14px 0; color:#b91c1c; font-size:0.9rem;">
-            {{ t.no_form_connected }}
-          </p>
-        {% endif %}
       </div>
 
       <div class="card">
@@ -424,15 +405,108 @@
 
         <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}">
 
-        <label for="programId">{{ t.program_id }}</label>
-        <select id="programId" name="programId">
-          {% for p in program_options %}
-            <option value="{{ p.id }}"
-              {% if config.get('programId')|string == p.id|string %}selected{% endif %}>
-              {{ p.title }}
-            </option>
+        <div id="program-mappings">
+
+        {% if program_mappings %}
+          {% for m in program_mappings %}
+            <div class="program-row"
+                style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end;">
+              <div>
+                <label>{{ t.program_id }}</label>
+                <select name="PROGRAMS[][programId]" class="program-select">
+                  <option value="">— Select program —</option>
+                  {% for p in program_options %}
+                    <option value="{{ p.id }}"
+                      {% if p.id == m.programId %}selected{% endif %}>
+                      {{ p.title }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div>
+                <label>Kobo Asset ID</label>
+                <input type="text"
+                      name="PROGRAMS[][koboAssetId]"
+                      value="{{ m.koboAssetId }}">
+              </div>
+
+              <button type="button"
+                      class="remove-row"
+                      title="Remove"
+                      style="
+                        height:40px;
+                        width:40px;
+                        border-radius:10px;
+                        border:1px solid #e5e7eb;
+                        background:#fff;
+                        cursor:pointer;
+                        font-size:16px;
+                      ">
+                ✕
+              </button>
+
+              {% if m.koboFormName %}
+                <div class="kobo-status"
+                     style="
+                       grid-column: 1 / -1;
+                       margin: 6px 0 0 0;
+                       font-size: 0.85rem;
+                       color: #065f46;
+                     ">
+                  ✓ Connected to <strong>{{ m.koboFormName }}</strong>
+                </div>
+              {% endif %}
+            </div>
+
+
           {% endfor %}
-        </select>
+        {% else %}
+          <!-- fallback: one empty row -->
+          <div class="program-row"
+              style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end;">
+            <div>
+              <label>{{ t.program_id }}</label>
+              <select name="PROGRAMS[][programId]" class="program-select">
+                <option value="">— Select program —</option>
+                {% for p in program_options %}
+                  <option value="{{ p.id }}">{{ p.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div>
+              <label>Kobo Asset ID</label>
+              <input type="text" name="PROGRAMS[][koboAssetId]">
+            </div>
+
+            <button type="button"
+                    class="remove-row"
+                    title="Remove"
+                    style="
+                      height:40px;
+                      width:40px;
+                      border-radius:10px;
+                      border:1px solid #e5e7eb;
+                      background:#fff;
+                      cursor:pointer;
+                      font-size:16px;
+                    ">
+              ✕
+            </button>
+          </div>
+
+        {% endif %}
+
+
+
+        </div>
+
+        <button type="button" id="add-program-row"
+          style="margin-top:8px;padding:6px 12px;border-radius:999px;border:2px dashed var(--violet);background:#fff;color:var(--violet);font-weight:600;cursor:pointer;">
+          ＋ Add program
+        </button>
+
 
         <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
         <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}">
@@ -441,7 +515,8 @@
       </div>
 
     </div>
-
+    <input type="hidden" name="username121" value="{{ config.get('username121','') }}">
+    <input type="hidden" name="password121" value="{{ config.get('password121','') }}">
     <input type="hidden" name="ENCRYPTION_KEY" value="{{ config.get('ENCRYPTION_KEY', '') }}">
     <input type="hidden" name="COLUMN_TO_MATCH" value="{{ config.get('COLUMN_TO_MATCH', '') }}">
 
@@ -471,6 +546,87 @@ document.addEventListener('click', function(e) {
     menu.classList.add('hidden');
     btn.classList.remove('active');
   }
+});
+
+</script>
+<script>
+function updateAddButtonVisibility() {
+  const selects = document.querySelectorAll('.program-select');
+  const addBtn = document.getElementById('add-program-row');
+
+  if (!selects.length) {
+    addBtn.style.display = 'none';
+    return;
+  }
+
+  const selected = new Set(
+    Array.from(selects).map(s => s.value).filter(Boolean)
+  );
+
+  const allProgramIds = Array.from(selects[0].options)
+    .map(o => o.value)
+    .filter(Boolean);
+
+  const hasUnusedPrograms =
+    allProgramIds.some(id => !selected.has(id));
+
+  addBtn.style.display = hasUnusedPrograms
+    ? 'inline-block'
+    : 'none';
+}
+
+
+function refreshProgramOptions() {
+  const selects = document.querySelectorAll('.program-select');
+  const selected = Array.from(selects)
+    .map(s => s.value)
+    .filter(v => v);
+
+  selects.forEach(sel => {
+    Array.from(sel.options).forEach(opt => {
+      if (!opt.value) return;
+      opt.disabled = selected.includes(opt.value) && opt.value !== sel.value;
+    });
+  });
+
+  updateAddButtonVisibility();
+}
+
+document.getElementById('add-program-row').onclick = function () {
+  const container = document.getElementById('program-mappings');
+  const firstRow = container.querySelector('.program-row');
+  const clone = firstRow.cloneNode(true);
+
+  clone.querySelectorAll('input, select').forEach(el => {
+    el.value = '';
+  });
+  clone.querySelectorAll('.kobo-status').forEach(el => el.remove());
+
+  container.appendChild(clone);
+  refreshProgramOptions();
+  updateAddButtonVisibility();
+  clone.querySelector('.program-select').onchange = refreshProgramOptions;
+};
+
+document.querySelectorAll('.program-select').forEach(sel => {
+  sel.onchange = refreshProgramOptions;
+});
+</script>
+
+<script>
+refreshProgramOptions();
+updateAddButtonVisibility();
+</script>
+<script>
+document.getElementById('program-mappings').addEventListener('click', function (e) {
+  const btn = e.target.closest('.remove-row');
+  if (!btn) return;
+
+  const row = btn.closest('.program-row');
+  if (!row) return;
+
+  row.remove();
+  refreshProgramOptions();
 });
 </script>
 
