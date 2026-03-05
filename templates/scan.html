@@ -42,7 +42,8 @@
       align-items: center;
       justify-content: space-between;
       color: white;
-      flex-wrap: wrap;
+      position: relative;
+      z-index: 3000;
     }
 
     .header-left {
@@ -160,13 +161,15 @@
       flex: 1;
       display: flex;
       justify-content: center;
-      padding: 20px;
+      padding: 20px 16px;
+      box-sizing: border-box;
+      width: 100%;
     }
 
-    /* container so back button and card are stacked, and only this is flex item */
     .scan-container {
       width: 100%;
       max-width: 560px;
+      box-sizing: border-box;
     }
 
     .scan-card {
@@ -174,10 +177,10 @@
       border-radius: var(--radius);
       box-shadow: var(--shadow-soft);
       width: 100%;
-      max-width: 560px;
       padding: 20px;
       border: 1px solid var(--line);
       text-align: center;
+      box-sizing: border-box;
     }
 
     .hint {
@@ -250,11 +253,56 @@
       flex-wrap: wrap;
     }
 
-    @media (max-width:576px) {
-      header { flex-direction: column; gap: 10px; }
-      .header-title { padding-left:0; justify-content:center; }
-      .header-account-wrapper { flex-direction: column; gap: 8px; }
-      footer { flex-direction: column; text-align:center; gap: 8px; }
+    @media (max-width: 576px) {
+      header {
+        padding: 8px 12px;
+        gap: 0;
+      }
+
+      .header-left img {
+        height: 26px;
+      }
+
+      .header-title {
+        padding-left: 8px;
+        font-size: 0.85rem;
+        gap: 4px;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      /* Hide national society + program title on small screens, keep just the brand */
+      .header-title .title-divider,
+      .header-title .title-program {
+        display: none;
+      }
+
+      .header-account-wrapper {
+        flex-shrink: 0;
+        gap: 8px;
+      }
+
+      .lang-select select {
+        font-size: 12px;
+        padding: 4px 6px;
+      }
+
+      .account-btn {
+        font-size: 12px;
+        padding: 4px 8px;
+        gap: 4px;
+      }
+
+      .account-icon-svg { width: 14px; height: 14px; }
+      .account-arrow-svg { width: 10px; height: 10px; }
+
+      footer {
+        flex-direction: column;
+        text-align: center;
+        gap: 4px;
+        padding: 14px;
+        font-size: 0.85rem;
+      }
     }
   </style>
 </head>
@@ -268,8 +316,10 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    <span class="title-divider">|</span>
-    <span class="title-program">{{ program_title }}</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
+    {% if program_title %}<span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>{% endif %}
   </div>
 
   <div class="header-account-wrapper">

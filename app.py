@@ -31,6 +31,12 @@ app.secret_key = 'your_secret_key'
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
 Session(app)
+
+@app.context_processor
+def inject_national_society():
+    config = load_config()
+    return {"national_society": config.get("nationalSociety", "")}
+
 def _make_qr_image(data, box_cm=3.0):
     """Return a Pillow image for the QR sized to box_cm × box_cm at 300dpi."""
     qr = qrcode.QRCode(
@@ -240,6 +246,9 @@ translations = {
     "config_system": "System Configuration",
     "config_display": "Configure Fields to Display",
     "fsp_login": "Login for FSP Admins",
+    "program_select_title": "Select a Program",
+    "back_to_programs": "Back to Programs",
+    "program_select_subtitle": "Choose the program you want to work with",
     "fsp_sync_title": "Prepare to Scan",
     "sync_latest": "Sync Latest Records",
     "syncing": "Syncing...",
@@ -378,6 +387,9 @@ translations = {
     "config_system": "Configurer le système ",
     "config_display": "Congifuration des champs de vérification",
     "fsp_login": "Connexion pour les FSP",
+    "program_select_title": "Sélectionner un programme",
+    "back_to_programs": "Retour aux programmes",
+    "program_select_subtitle": "Choisissez le programme avec lequel vous souhaitez travailler",
     "fsp_sync_title": "Synchroniser les enregistrements hors ligne",
     "sync_latest": "Synchroniser les derniers enregistrements",
     "syncing": "Synchronisation...",
@@ -516,6 +528,9 @@ translations = {
     "config_system": "إعدادات النظام",
     "config_display": "تكوين الحقول المعروضة",
     "fsp_login": "تسجيل الدخول لمزودي الخدمات المالية",
+    "program_select_title": "اختر برنامجاً",
+    "back_to_programs": "العودة إلى البرامج",
+    "program_select_subtitle": "اختر البرنامج الذي تريد العمل معه",
     "fsp_sync_title": "📥 مزوّد الخدمة: مزامنة السجلات غير المتصلة",
     "sync_latest": "مزامنة أحدث السجلات",
     "syncing": "جارٍ المزامنة...",
@@ -1369,7 +1384,32 @@ def fsp_admin():
     if not program:
         return redirect(url_for("fsp_program_selector", lang=lang))
 
-    program_title = program.get("koboFormName", f"Program {program_id}")
+    # --- fetch 121 program title ---
+    program_title = f"Program {program_id}"
+    url121 = system_config.get("url121")
+    if url121:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                },
+                timeout=8
+            )
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                r = requests.get(
+                    f"{url121}/api/programs/{program_id}",
+                    cookies={"access_token_general": token},
+                    timeout=8
+                )
+                if r.status_code == 200:
+                    titles = r.json().get("titlePortal", {})
+                    program_title = titles.get(lang) or next(iter(titles.values()), program_title)
+        except Exception as e:
+            print(f"[fsp_admin] Failed to fetch 121 program title: {e}")
+
     username = session.get("fsp_username")
 
     # --- IMPORTANT: persist program for later routes ---
@@ -1455,9 +1495,36 @@ def scan():
     if not session.get("fsp_logged_in"):
         return redirect(url_for("fsp_login", lang=lang))
 
-    # Pull username and program title from the session
     username = session.get("fsp_username", "User")
-    program_title = session.get("program_title", "")
+    program_id = session.get("fsp_program_id")
+
+    # Fetch 121 program title
+    program_title = ""
+    if program_id:
+        system_config = load_config()
+        url121 = system_config.get("url121")
+        if url121:
+            try:
+                login_resp = requests.post(
+                    f"{url121}/api/users/login",
+                    json={
+                        "username": system_config.get("username121", ""),
+                        "password": system_config.get("password121", "")
+                    },
+                    timeout=8
+                )
+                if login_resp.status_code == 201:
+                    token = login_resp.json().get("access_token_general")
+                    r = requests.get(
+                        f"{url121}/api/programs/{program_id}",
+                        cookies={"access_token_general": token},
+                        timeout=8
+                    )
+                    if r.status_code == 200:
+                        titles = r.json().get("titlePortal", {})
+                        program_title = titles.get(lang) or next(iter(titles.values()), "")
+            except Exception as e:
+                print(f"[scan] Failed to fetch 121 program title: {e}")
 
     return render_template(
         "scan.html",

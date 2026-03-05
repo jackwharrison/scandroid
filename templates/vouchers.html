@@ -396,6 +396,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
     <span class="title-divider">|</span>
     <span class="title-program">{{ program_title }}</span>
   </div>

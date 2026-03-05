@@ -326,6 +326,28 @@
     .save-btn:hover {
       background: #ece2ff;
     }
+    /* ---------- TOAST ---------- */
+    #saveToast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #16a34a;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 9999;
+    }
+    #saveToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
   </style>
 
 </head>
@@ -339,8 +361,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    <span class="title-divider">|</span>
-    <span class="title-program">{{ program_title }}</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
   </div>
 
   <div class="header-account-wrapper">
@@ -523,6 +545,20 @@
     <button type="submit" class="save-btn">{{ t.save }}</button>
   </form>
 </div>
+
+<div id="saveToast">✓  {{ t.saved_successfully }}</div>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      const toast = document.getElementById('saveToast');
+      toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); }, 3000);
+    });
+  </script>
+  {% endif %}
+{% endwith %}
 
 <footer>
   <div class="footer-left">{{ t.footer_dev }}</div>

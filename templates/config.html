@@ -438,6 +438,36 @@
       background: #f3f4f6;
     }
 
+    /* ------------------ TOAST ------------------ */
+    #saveToast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #111827;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #saveToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #saveToast.success { background: #16a34a; }
+    #saveToast.error   { background: #dc2626; }
+
     /* Validation error styling */
     .row-error {
       background-color: #fef2f2;
@@ -465,6 +495,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
     <span class="title-divider">|</span>
     <span class="title-program">{{ program_title }}</span>
   </div>
@@ -513,12 +545,11 @@
   </label>
   <select id="programSelector" style="padding:8px 12px;border-radius:8px;">
     {% for p in programs %}
-      <option value="{{ p.id }}">
+      <option value="{{ p.id }}" {% if p.id == active_program_id %}selected{% endif %}>
         {{ p.title }}
       </option>
     {% endfor %}
   </select>
-
 </div>
 
   <h1>{{ t.config_title }}</h1>
@@ -590,11 +621,43 @@
   </form>
 </div>
 
+<div id="saveToast"></div>
+
 <footer>
   <div>{{ t.footer_dev }}</div>
   <div>{{ t.footer_support }}</div>
 </footer>
 <script>
+/* ============================================================
+   ACCOUNT DROPDOWN
+   ============================================================ */
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
+
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  if (btn && !btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('saveToast');
+  toast.textContent = (type === 'success' ? '✓  ' : '✕  ') + message;
+  toast.className = 'show ' + type;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.className = ''; }, 3000);
+}
+
 /* ============================================================
    GLOBAL STATE (FIX #1)
    ============================================================ */
@@ -863,9 +926,10 @@ document.getElementById('configForm').addEventListener('submit', async e => {
       fields: result.fields,
       photo: result.photo
     };
+    showToast('{{ t.saved_successfully }}', 'success');
+  } else {
+    showToast('{{ t.failed_to_save }}', 'error');
   }
-
-  alert(res.ok ? '{{ t.saved_successfully }}' : '{{ t.failed_to_save }}');
 });
 
 /* ============================================================
@@ -883,9 +947,16 @@ document.getElementById('programSelector').addEventListener('change', e => {
 
 window.onload = () => {
   const selector = document.getElementById('programSelector');
-  if (!selector?.value) return;
+  if (!selector) return;
+
+  // Use backend-resolved active program id, falling back to first option
+  const backendActive = '{{ active_program_id }}';
+  if (backendActive && [...selector.options].some(o => o.value === backendActive)) {
+    selector.value = backendActive;
+  }
+
   activeProgramId = selector.value;
-  loadConfig();
+  if (activeProgramId) loadConfig();
 };
 </script>
 
