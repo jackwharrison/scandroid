@@ -65,6 +65,27 @@
           "ar": "صورة"
         }
       }
+    },
+    "12": {
+      "fields": [
+        {
+          "key": "Eligible_selon_la_date_d_arriv",
+          "labels": {
+            "en": "Eligible_selon_la_date_d_arriv",
+            "fr": "Eligible_selon_la_date_d_arriv",
+            "ar": "Eligible_selon_la_date_d_arriv"
+          }
+        }
+      ],
+      "photo": {
+        "enabled": true,
+        "field_name": "photo",
+        "labels": {
+          "en": "Photo",
+          "fr": "Photo",
+          "ar": "صورة"
+        }
+      }
     }
   }
 }

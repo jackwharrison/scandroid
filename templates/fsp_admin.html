@@ -317,28 +317,46 @@
       }
 
       @media (max-width:600px) {
-        /* Stack header elements vertically and center them for better mobile layout */
         header {
-          flex-direction: column;
-          gap: 8px;
-          padding: 12px;
-          align-items: center;
-        }
-
-        .header-title {
-          padding-left: 0;
-          text-align: center;
-        }
-
-        .header-account-wrapper {
-          flex-direction: column;
-          gap: 8px;
-          width: 100%;
-          align-items: center;
+          flex-wrap: wrap;
+          padding: 8px 12px;
+          gap: 4px;
+          row-gap: 6px;
         }
 
         .header-left img {
-          height: 38px;
+          height: 26px;
+        }
+
+        .header-title {
+          flex: 1;
+          padding-left: 10px;
+          font-size: 0.85rem;
+          gap: 4px;
+          white-space: nowrap;
+          overflow: hidden;
+        }
+
+        /* Hide national society + program title on small screens, keep brand */
+        .header-title .title-divider,
+        .header-title .title-program {
+          display: none;
+        }
+
+        .header-account-wrapper {
+          flex-direction: row;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .lang-select select {
+          font-size: 12px;
+          padding: 4px 6px;
+        }
+
+        .account-btn {
+          font-size: 12px;
+          padding: 4px 8px;
         }
 
         main {
@@ -383,6 +401,29 @@
           filter: grayscale(40%);
         }
       }
+      .back-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 16px auto 4px auto;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #002855;
+        text-decoration: none;
+        padding: 7px 14px;
+        background: #ffffff;
+        border-radius: 999px;
+        border: 2px solid #002855;
+        transition: background 0.2s ease;
+        align-self: center;
+      }
+
+      .back-btn:hover { background: #e3e8ef; }
+
+      .back-btn svg {
+        width: 14px;
+        height: 14px;
+      }
   </style>
 
 </head>
@@ -396,8 +437,10 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    <span class="title-divider">|</span>
-    <span class="title-program">{{ program_title }}</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
+    {% if program_title %}<span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>{% endif %}
   </div>
 
   <div class="header-account-wrapper">
@@ -433,6 +476,13 @@
 </header>
 
 <main>
+
+  <a href="/fsp-programs?lang={{ lang }}" class="back-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    {{ t.back_to_programs or "Back to Programs" }}
+  </a>
 
   <!-- SYNC BLOCK -->
   <div class="row-box">
