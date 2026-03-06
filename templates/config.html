@@ -495,8 +495,6 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    {% if national_society %}<span class="title-divider">|</span>
-    <span class="title-program">{{ national_society }}</span>{% endif %}
     <span class="title-divider">|</span>
     <span class="title-program">{{ program_title }}</span>
   </div>
@@ -778,7 +776,8 @@ function makeSelectSearchable(selectEl) {
    FIELD TABLE LOGIC
    ============================================================ */
 
-const allowedAttributes = {{ allowed_attributes | tojson }};
+let allowedAttributes = {{ allowed_attributes | tojson }};
+let koboImageFields = {{ kobo_image_fields | tojson }};
 const fieldTableBody = document.querySelector('#fieldTable tbody');
 
 function createFieldSelect(selectedKey) {
@@ -936,8 +935,38 @@ document.getElementById('configForm').addEventListener('submit', async e => {
    PROGRAM SWITCHING
    ============================================================ */
 
-document.getElementById('programSelector').addEventListener('change', e => {
+document.getElementById('programSelector').addEventListener('change', async e => {
   activeProgramId = e.target.value;
+
+  // Show loading state
+  const selector = document.getElementById('programSelector');
+  selector.disabled = true;
+
+  try {
+    const res = await fetch(`/api/program-attributes/${activeProgramId}`);
+    if (res.ok) {
+      const data = await res.json();
+      allowedAttributes = data.attributes || [];
+      koboImageFields = data.kobo_image_fields || [];
+
+      // Rebuild the photoKey select options
+      const photoKey = document.getElementById('photoKey');
+      const currentVal = photoKey.value;
+      photoKey.innerHTML = '<option value="">{{ t.select_option or "Select..." }}</option>';
+      koboImageFields.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.name;
+        opt.textContent = f.label;
+        if (f.name === currentVal) opt.selected = true;
+        photoKey.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to fetch program attributes:', err);
+  } finally {
+    selector.disabled = false;
+  }
+
   loadConfig();
 });
 

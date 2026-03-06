@@ -40,8 +40,10 @@ PROGRAM_ID = program_id
 ENCRYPTION_KEY = config["ENCRYPTION_KEY"]
 
 display_config = load_display_config()
-FIELD_KEYS = [field["key"] for field in display_config.get("fields", [])]
-PHOTO_FIELD_NAME = display_config.get("photo", {}).get("field_name", "photo")
+_program_config = display_config.get("programs", {}).get(str(PROGRAM_ID), display_config)
+FIELD_KEYS = [field["key"] for field in _program_config.get("fields", [])]
+PHOTO_FIELD_NAME = _program_config.get("photo", {}).get("field_name", "photo")
+print(f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {PROGRAM_ID}: {FIELD_KEYS}")
 
 fernet = Fernet(ENCRYPTION_KEY.encode())
 
@@ -102,6 +104,24 @@ def login_and_get_token():
 # Initialise token/cookies at import-time
 login_and_get_token()
 
+# Fetch COLUMN_TO_MATCH from 121 FSP configuration for this program
+COLUMN_TO_MATCH = config.get("COLUMN_TO_MATCH")  # fallback
+try:
+    r = requests.get(
+        f"{API_BASE}/programs/{PROGRAM_ID}/fsp-configurations",
+        cookies=COOKIES,
+        timeout=10
+    )
+    if r.status_code == 200:
+        for fsp in r.json():
+            for prop in fsp.get("properties", []):
+                if prop.get("name") == "columnToMatch":
+                    COLUMN_TO_MATCH = prop.get("value")
+                    break
+    print(f"[INFO] COLUMN_TO_MATCH for program {PROGRAM_ID}: {COLUMN_TO_MATCH}")
+except Exception as e:
+    print(f"[WARN] Could not fetch columnToMatch from API: {e}. Using fallback: {COLUMN_TO_MATCH}")
+
 
 # ----------------------------------------------------------------------
 # 121 API HELPERS
@@ -142,7 +162,28 @@ def get_registration(program_id, registration_id):
     url = f"{API_BASE}/programs/{program_id}/registrations/{registration_id}"
     response = requests.get(url, cookies=COOKIES)
     response.raise_for_status()
-    return response.json()
+    reg = response.json()
+
+    # 121 API nests attribute values — flatten them to top level
+    # Structure can be: { ..., "data": { "fullName": ... } }
+    # or: { ..., "programRegistrationAttributes": [{"name": ..., "value": ...}] }
+    if isinstance(reg, dict):
+        # Flatten "data" dict if present
+        nested = reg.get("data")
+        if isinstance(nested, dict):
+            for k, v in nested.items():
+                if k not in reg:
+                    reg[k] = v
+
+        # Flatten programRegistrationAttributes list if present
+        for attr in reg.get("programRegistrationAttributes", []):
+            if isinstance(attr, dict):
+                name = attr.get("name") or attr.get("attribute")
+                value = attr.get("value")
+                if name and name not in reg:
+                    reg[name] = value
+
+    return reg
 
 
 def fetch_registrations_bulk(program_id, registration_ids):
@@ -308,7 +349,14 @@ def download_photos_bulk(records, photos_dir):
         uuid = rec["uuid"]
         photo_filename = rec["photo_filename"]
         save_path = os.path.join(photos_dir, photo_filename)
-        download_and_encrypt_photo(uuid, save_path)
+        try:
+            download_and_encrypt_photo(uuid, save_path)
+            if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
+                print(f"[OK] Photo saved: {photo_filename} ({os.path.getsize(save_path)} bytes)")
+            else:
+                print(f"[WARN] Photo file empty or missing after download: {photo_filename}")
+        except Exception as e:
+            print(f"[ERROR] Photo download exception for {uuid}: {e}")
 
     max_workers = min(MAX_WORKERS, len(records)) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -381,7 +429,11 @@ def download_cache(program_id, payment_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        match_key = config.get("COLUMN_TO_MATCH")
+        # Debug: log if any expected fields are missing
+        missing = [k for k in FIELD_KEYS if reg.get(k) is None]
+        if missing:
+            print(f"[DEBUG] reg {reg_id} missing fields {missing}. Top-level keys: {list(reg.keys())[:10]}")
+        match_key = COLUMN_TO_MATCH
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
 
@@ -561,7 +613,11 @@ def download_recent_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        match_key = config.get("COLUMN_TO_MATCH")
+        # Debug: log if any expected fields are missing
+        missing = [k for k in FIELD_KEYS if reg.get(k) is None]
+        if missing:
+            print(f"[DEBUG] reg {reg_id} missing fields {missing}. Top-level keys: {list(reg.keys())[:10]}")
+        match_key = COLUMN_TO_MATCH
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)

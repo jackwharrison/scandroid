@@ -398,6 +398,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const video = document.getElementById('video');
     const startBtn = document.getElementById('startBtn');
     const lang = "{{ lang }}";
+    const PROGRAM_ID = "{{ program_id }}";
 
     const TXT = {
       requesting: "{{ t.requesting_camera or 'Requesting camera… If prompted, tap Allow.' }}",
@@ -477,6 +478,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function dbCheckAlreadyScanned(db, scannedId) {
+      const scopedId = PROGRAM_ID ? `${PROGRAM_ID}:${scannedId}` : null;
       return new Promise((resolve) => {
         const tx = db.transaction("payments", "readonly");
         const store = tx.objectStore("payments");
@@ -487,7 +489,7 @@ document.addEventListener("DOMContentLoaded", () => {
           for (const p of list) {
             if (
               p &&
-              p.uuid === scannedId &&
+              (p.uuid === scannedId || (scopedId && p.uuid === scopedId)) &&
               (p.status === "success" || p.status === "submitted")
             ) {
               resolve(p);
@@ -503,6 +505,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ---------- ROUTING ---------- */
 
+    async function dbGet(db, store, key) {
+      return new Promise((resolve) => {
+        const tx = db.transaction(store, "readonly");
+        const req = tx.objectStore(store).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    }
+
     async function checkAndRouteRecord(scannedId) {
       const dbReq = indexedDB.open("scandroid");
 
@@ -510,16 +521,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const db = dbReq.result;
         let rec = null;
 
-        // Direct lookup
-        rec = await new Promise((resolve) => {
-          const tx = db.transaction("records", "readonly");
-          const store = tx.objectStore("records");
-          const req = store.get(String(scannedId));
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(null);
-        });
+        // Build candidate keys: scoped first (programId:uuid), then raw
+        const scopedId = PROGRAM_ID ? `${PROGRAM_ID}:${scannedId}` : null;
+        const keysToTry = scopedId
+          ? [scopedId, String(scannedId)]
+          : [String(scannedId)];
 
-        // idIndex fallback
+        // Direct lookup — try scoped key first, then raw
+        for (const key of keysToTry) {
+          rec = await dbGet(db, "records", key);
+          if (rec) break;
+        }
+
+        // idIndex fallback — try both scoped and raw prefixes
         if (!rec) {
           const idx = await new Promise((resolve) => {
             const tx = db.transaction("meta", "readonly");
@@ -529,10 +543,11 @@ document.addEventListener("DOMContentLoaded", () => {
             req.onerror = () => resolve({});
           });
 
+          const prefix = scopedId || scannedId;
           const mapped =
-            idx['uuid:' + scannedId] ||
-            idx['reg:' + scannedId] ||
-            idx['kobo:' + scannedId];
+            idx['uuid:' + prefix] || idx['uuid:' + scannedId] ||
+            idx['reg:'  + prefix] || idx['reg:'  + scannedId] ||
+            idx['kobo:' + prefix] || idx['kobo:' + scannedId];
 
           if (mapped) {
             rec = await new Promise((resolve) => {
@@ -545,7 +560,8 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
 
-        // brute-force fallback
+        // brute-force fallback — try scoped then raw
+        if (!rec && scopedId) rec = await dbFindRecordByAnyId(db, scopedId);
         if (!rec) rec = await dbFindRecordByAnyId(db, scannedId);
 
         if (!rec) {
@@ -572,8 +588,12 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+        // rec.uuid is scoped (programId:uuid) — strip prefix before passing to beneficiary page
+        const rawUuid = PROGRAM_ID && rec.uuid.startsWith(PROGRAM_ID + ':')
+          ? rec.uuid.slice(PROGRAM_ID.length + 1)
+          : rec.uuid;
         window.location.href =
-          `/beneficiary-offline?uuid=${encodeURIComponent(rec.uuid)}&lang=${lang}`;
+          `/beneficiary-offline?uuid=${encodeURIComponent(rawUuid)}&lang=${lang}&program_id=${encodeURIComponent(PROGRAM_ID)}`;
       };
 
       dbReq.onerror = () => {

@@ -3,237 +3,117 @@
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title>{{ t["success_title"] }}</title>
-  <link rel="stylesheet" href="/static/style.css" />
-
+  <meta name="theme-color" content="#002855">
   <style>
-    :root { --pad:16px; --gap:12px; --radius:16px; --card:#fff; --ink:#111; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6; }
-
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      margin: 0;
-      padding: 24px;
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --navy:#002855; --pad:16px; --line:#e5e7eb; --bg:#f3f4f6; --card:#fff; --ink:#111; --muted:#6b7280; }
+    html, body { height:100%; margin:0; }
+    body { font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; min-height:100vh; }
+    header { background:var(--navy); padding:12px 24px; display:flex; align-items:center; justify-content:space-between; color:#fff; flex-shrink:0; }
+    .header-left img { height:32px; width:auto; object-fit:contain; }
+    .header-title { flex:1; padding-left:20px; font-size:1.1rem; color:#fff; display:flex; align-items:center; gap:6px; }
+    .title-bold { font-weight:800; letter-spacing:0.3px; }
+    .title-divider { opacity:0.8; }
+    .title-program { font-weight:300; opacity:0.95; }
+    .header-controls { display:flex; align-items:center; gap:12px; }
+    .lang-select select { padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; font-weight:600; cursor:pointer; font-size:14px; }
+    main { flex:1; display:flex; justify-content:center; align-items:center; padding:24px var(--pad); }
+    .card { background:var(--card); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.06); border:1px solid var(--line); width:100%; max-width:440px; overflow:hidden; }
+    .card-body { padding:32px 24px; text-align:center; }
+    .success-icon { font-size:56px; margin-bottom:8px; }
+    h2 { margin:0 0 8px; font-size:1.6rem; color:#065f46; }
+    .success-msg { color:var(--muted); margin:0 0 20px; font-size:15px; }
+    .counter { font-weight:700; color:#002855; font-size:1.1rem; margin:0 0 24px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 16px; }
+    .actions { display:grid; gap:12px; }
+    .btn { padding:13px 16px; font-weight:700; border:none; border-radius:12px; font-size:1rem; cursor:pointer; transition:opacity 0.15s; }
+    .btn:active { opacity:0.75; }
+    .btn-scan { background:#e8f9ef; color:#065f46; border:1px solid #a7f3d0; }
+    .btn-home { background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd; }
+    footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
+    @media (max-width:600px) {
+      header { padding:8px 12px; }
+      .header-left img { height:26px; }
+      .header-title { font-size:0.85rem; padding-left:10px; }
+      .header-title .title-divider, .header-title .title-program { display:none; }
+      .lang-select select { font-size:12px; padding:4px 6px; }
+      footer { flex-direction:column; text-align:center; gap:4px; font-size:0.8rem; padding:10px; }
     }
-
-    .page-wrapper {
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      min-height: calc(100vh - 80px);
-    }
-
-    .card {
-      background: var(--card);
-      border-radius: var(--radius);
-      box-shadow: 0 10px 30px rgba(0,0,0,.06);
-      border: 1px solid var(--line);
-      width: 100%;
-      max-width: 520px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .header {
-      padding: 18px var(--pad);
-      border-bottom: 1px solid var(--line);
-      display: grid;
-      gap: 10px;
-      text-align: center;
-    }
-
-    .logos {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .logos img { height: 42px; }
-
-    .content { padding: 24px; text-align:center; }
-
-    h2 { margin: .5rem 0; font-size: 1.6rem; color: #28a745; }
-
-    .counter {
-      font-weight: 700;
-      color: #007bff;
-      margin: .8rem 0 1.4rem;
-    }
-
-    .actions { 
-      display:grid; 
-      gap:12px; 
-      margin-top:12px;
-    }
-
-    .btn {
-      padding: 12px 16px;
-      font-weight: 700;
-      border: none;
-      border-radius: 12px;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-
-    .btn-scan {
-      background:#e8f9ef;
-      color:#065f46;
-      border:1px solid #a7f3d0;
-    }
-
-    .btn-scan:hover { background:#d1fae5; }
-
-    .btn-home {
-      background:#eff6ff;
-      color:#1d4ed8;
-      border:1px solid #93c5fd;
-    }
-
-    .btn-home:hover { background:#dbeafe; }
-
-    /* Top bar */
-    .voucher-topbar {
-      width: 100%;
-      max-width: 520px;
-      margin: 0 auto 14px auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .topbar-back {
-      background-color: #dc3545;
-      color: white;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-weight: bold;
-      text-decoration: none;
-      border: 1px solid #b91c1c;
-    }
-
-    .topbar-back:hover {
-      background-color: #b91c1c;
-    }
-
-    .lang-form select {
-      padding: 8px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: white;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
   </style>
 </head>
-
 <body>
 
-  <!-- 🔹 TOP BAR (matching voucher page) -->
-  <div class="voucher-topbar">
-    <form method="get" action="/success-offline" class="lang-form">
-      <select name="lang" onchange="this.form.submit()">
-        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
-      </select>
-    </form>
+<header>
+  <div class="header-left"><img src="/instance-static/ns1.png" alt=""></div>
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span><span class="title-program">{{ national_society }}</span>{% endif %}
+    {% if program_title %}<span class="title-divider">|</span><span class="title-program">{{ program_title }}</span>{% endif %}
   </div>
-
-  <div class="page-wrapper">
-    <div class="card">
-
-      <div class="header">
-        <div class="logos">
-          <img src="/instance-static/ns1.png">
-          <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
-          <img src="/instance-static/ns2.png">
-        </div>
-      </div>
-
-      <div class="content">
-
-        <h2>{{ t["success_title"] }}</h2>
-        <p>{{ t["success_message"] }}</p>
-
-        <div id="counter" class="counter">
-          {{ t["payments_ready"] }}: ...
-        </div>
-
-        <div class="actions">
-          <button class="btn btn-scan" onclick="window.location.href='/scan?lang={{ lang }}'">
-            {{ t["scan_next"] }}
-          </button>
-
-          <button class="btn btn-home" onclick="window.location.href='/fsp-admin?lang={{ lang }}'">
-            {{ t["go_home"] }}
-          </button>
-        </div>
-
-      </div>
-
+  <div class="header-controls">
+    <div class="lang-select">
+      <form method="get" action="/success-offline">
+        <input type="hidden" name="program_id" value="{{ program_id }}">
+        <select name="lang" onchange="this.form.submit()">
+          <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+          <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+          <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+        </select>
+      </form>
     </div>
   </div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="card-body">
+      <div class="success-icon">✅</div>
+      <h2>{{ t["success_title"] }}</h2>
+      <p class="success-msg">{{ t["success_message"] }}</p>
+      <div id="counter" class="counter">{{ t["payments_ready"] }}: …</div>
+      <div class="actions">
+        <button class="btn btn-scan" onclick="window.location.href='/scan?lang={{ lang }}'">
+          {{ t["scan_next"] }}
+        </button>
+        <button class="btn btn-home" onclick="window.location.href='/fsp-admin?program_id={{ program_id }}&lang={{ lang }}'">
+          {{ t["go_home"] }}
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div>{{ t.footer_dev or "" }}</div>
+  <div>{{ t.footer_support or "" }}</div>
+</footer>
 
 <script>
-  async function loadCounter() {
+  const ACTIVE_PROGRAM_ID = "{{ program_id or '' }}";
+  window.addEventListener("DOMContentLoaded", async () => {
     try {
       const dbReq = indexedDB.open("scandroid");
-
       dbReq.onsuccess = function () {
         const db = dbReq.result;
-
         if (!db.objectStoreNames.contains("payments")) {
-          document.getElementById("counter").textContent =
-            "{{ t['payments_ready'] }} 0";
+          document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0";
           return;
         }
-
-        const tx = db.transaction("payments", "readonly");
-        const store = tx.objectStore("payments");
-
-        let successCount = 0;
-
-        // Use a cursor to filter by status
-        const cursorReq = store.openCursor();
-        cursorReq.onsuccess = function (e) {
-          const cursor = e.target.result;
-          if (cursor) {
-            const record = cursor.value;
-            if (record.status === "success") {
-              successCount++;
-            }
-            cursor.continue();
-          } else {
-            // No more records → show result
-            document.getElementById("counter").textContent =
-              "{{ t['payments_ready'] }} " + successCount;
-          }
+        const store = db.transaction("payments","readonly").objectStore("payments");
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const count = req.result.filter(p =>
+            p.status === "success" &&
+            (!ACTIVE_PROGRAM_ID || (p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')))
+          ).length;
+          document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: " + count;
         };
-
-        cursorReq.onerror = function () {
-          document.getElementById("counter").textContent =
-            "{{ t['payments_ready'] }}: 0";
-        };
+        req.onerror = () => { document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0"; };
       };
-
-      dbReq.onerror = function () {
-        document.getElementById("counter").textContent =
-          "{{ t['payments_ready'] }}: 0";
-      };
-    } catch (err) {
-      document.getElementById("counter").textContent =
-        "{{ t['payments_ready'] }}: 0";
-    }
-  }
-
-  window.addEventListener("DOMContentLoaded", loadCounter);
+      dbReq.onerror = () => { document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0"; };
+    } catch(e) { document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0"; }
+  });
 </script>
-
-
 </body>
 </html>
