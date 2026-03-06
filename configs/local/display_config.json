@@ -32,7 +32,7 @@
     "2": {
       "fields": [
         {
-          "key": "nom",
+          "key": "fullName",
           "labels": {
             "en": "Nom du répondant",
             "fr": "Nom du répondant",
@@ -69,17 +69,25 @@
     "12": {
       "fields": [
         {
-          "key": "Eligible_selon_la_date_d_arriv",
+          "key": "Localit",
           "labels": {
-            "en": "Eligible_selon_la_date_d_arriv",
-            "fr": "Eligible_selon_la_date_d_arriv",
-            "ar": "Eligible_selon_la_date_d_arriv"
+            "en": "Locality",
+            "fr": "Locality",
+            "ar": "Locality"
+          }
+        },
+        {
+          "key": "healthCentre",
+          "labels": {
+            "en": "Health Centre",
+            "fr": "Health Centre",
+            "ar": "Health Centre"
           }
         }
       ],
       "photo": {
-        "enabled": true,
-        "field_name": "photo",
+        "enabled": false,
+        "field_name": "",
         "labels": {
           "en": "Photo",
           "fr": "Photo",

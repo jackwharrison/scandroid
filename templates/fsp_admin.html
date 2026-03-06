@@ -574,6 +574,7 @@ document.addEventListener('click', function(e) {
 <script>
   // JINJA TEMPLATE VARIABLE
   const t = {{ t | tojson | safe }};
+  const DISPLAY_CONFIG = {{ display_config | tojson | safe }};
 </script>
 
 <script>
@@ -647,8 +648,8 @@ document.addEventListener('click', function(e) {
       if (lastSyncedEl) lastSyncedEl.textContent = formatted;
       if (readyCountEl) readyCountEl.textContent = importResult.written;
 
-      localStorage.setItem("scandroid_last_synced_date", formatted);
-      localStorage.setItem("scandroid_last_synced_count", importResult.written);
+      localStorage.setItem(`scandroid_last_synced_date_${ACTIVE_PROGRAM_ID}`, formatted);
+      localStorage.setItem(`scandroid_last_synced_count_${ACTIVE_PROGRAM_ID}`, importResult.written);
 
     } catch (err) {
       console.error(err);
@@ -834,6 +835,12 @@ function scopedUUID(uuid) {
         value: { importedAt: Date.now(), recordCount: written, photos: photosWritten }
       });
 
+      // Store display config so beneficiary_offline.html can load it offline
+      await db.put('meta', {
+        key: 'displayConfig',
+        value: DISPLAY_CONFIG
+      });
+
       // RETURN COUNTS
       return { written, photosWritten };
 
@@ -862,8 +869,11 @@ function scopedUUID(uuid) {
     const tx = db.transaction('payments', 'readonly');
     const store = tx.objectStore('payments');
     const allPayments = await store.getAll();
-    csvCountEl.textContent = allPayments.length;
-    return allPayments;
+    const programPayments = allPayments.filter(p =>
+      p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
+    );
+    csvCountEl.textContent = programPayments.length;
+    return programPayments;
   }
 
   // Decrypt helper
@@ -892,7 +902,7 @@ function scopedUUID(uuid) {
     return new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
   }
 
-  generateCsvBtn.addEventListener('click', async () => {
+  if (generateCsvBtn) generateCsvBtn.addEventListener('click', async () => {
     generateCsvBtn.disabled = true;
     submitStatus.textContent = "⏳ Generating CSV...";
 
@@ -926,7 +936,7 @@ function scopedUUID(uuid) {
     submitCsvBtn.disabled = false;
   });
 
-  submitCsvBtn.addEventListener('click', async () => {
+  if (submitCsvBtn) submitCsvBtn.addEventListener('click', async () => {
     if (!navigator.onLine) {
       return;
     }
@@ -997,7 +1007,10 @@ function scopedUUID(uuid) {
       const all = await store.getAll();
 
       // Count ONLY pending, not submitted
-      const count = all.filter(p => p.status === "success").length;
+      const count = all.filter(p =>
+        p.status === "success" &&
+        p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
+      ).length;
 
       document.getElementById("peopleScannedCount").textContent = count;
 
@@ -1027,7 +1040,10 @@ async function loadTotalAmount() {
     const payTx = db.transaction("payments", "readonly");
     const payStore = payTx.objectStore("payments");
     const allPayments = await payStore.getAll();
-    const pending = allPayments.filter(p => p.status === "success");
+    const pending = allPayments.filter(p =>
+      p.status === "success" &&
+      p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
+    );
 
     const scannedSet = new Set(pending.map(x => x.uuid));
 
@@ -1095,7 +1111,10 @@ async function loadPaymentsReadyCount() {
   const tx = db.transaction("payments", "readonly");
   const store = tx.objectStore("payments");
   const all = await store.getAll();
-  const pending = all.filter(p => p.status === "success");
+  const pending = all.filter(p =>
+    p.status === "success" &&
+    p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
+  );
 
   document.getElementById("paymentsReadyCount").textContent = pending.length;
   return pending;
@@ -1223,8 +1242,8 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
 </script>
 <script>
   window.addEventListener("DOMContentLoaded", () => {
-    const savedDate = localStorage.getItem("scandroid_last_synced_date");
-    const savedCount = localStorage.getItem("scandroid_last_synced_count");
+    const savedDate = localStorage.getItem(`scandroid_last_synced_date_${ACTIVE_PROGRAM_ID}`);
+    const savedCount = localStorage.getItem(`scandroid_last_synced_count_${ACTIVE_PROGRAM_ID}`);
 
     if (savedDate) {
       const el = document.getElementById("lastSyncedText");

@@ -871,6 +871,89 @@ def system_config():
     )
 
 
+
+@app.route("/api/program-attributes/<int:program_id>")
+def api_program_attributes(program_id):
+    if not session.get("admin_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    system_config = load_config()
+    url121 = system_config.get("url121")
+
+    if not url121:
+        return jsonify({"attributes": [], "kobo_image_fields": []})
+
+    attributes = []
+    kobo_image_fields = []
+
+    try:
+        login_resp = requests.post(
+            f"{url121}/api/users/login",
+            json={
+                "username": system_config.get("username121", ""),
+                "password": system_config.get("password121", "")
+            },
+            timeout=10
+        )
+
+        if login_resp.status_code == 201:
+            token = login_resp.json().get("access_token_general")
+            cookies = {"access_token_general": token}
+
+            # Registration attributes
+            r = requests.get(
+                f"{url121}/api/programs/{program_id}",
+                cookies=cookies,
+                timeout=10
+            )
+            if r.status_code == 200:
+                for attr in r.json().get("programRegistrationAttributes", []):
+                    name = attr.get("name")
+                    if not name:
+                        continue
+                    labels = attr.get("label") or {}
+                    label = labels.get("en") or next(iter(labels.values()), name)
+                    attributes.append({"name": name, "label": label})
+
+    except Exception as e:
+        print(f"[api_program_attributes] Error: {e}")
+
+    # Kobo image fields for this program
+    try:
+        programs = system_config.get("PROGRAMS", [])
+        program = next((p for p in programs if str(p.get("programId")) == str(program_id)), None)
+        if program:
+            asset_id = program.get("koboAssetId")
+            kobo_token = system_config.get("KOBO_TOKEN")
+            kobo_server = system_config.get("KOBO_SERVER", "https://kobo.ifrc.org")
+
+            if asset_id and kobo_token:
+                r = requests.get(
+                    f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                    headers={"Authorization": f"Token {kobo_token}"},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    survey = r.json().get("content", {}).get("survey", [])
+                    for item in survey:
+                        if not isinstance(item, dict) or item.get("type") != "image":
+                            continue
+                        raw_label = item.get("label")
+                        if isinstance(raw_label, list) and raw_label:
+                            label = raw_label[0] if isinstance(raw_label[0], str) else next(iter(raw_label[0].values()), "")
+                        elif isinstance(raw_label, dict):
+                            label = raw_label.get("en") or next(iter(raw_label.values()), "")
+                        else:
+                            label = str(raw_label or "")
+                        xpath = item.get("$xpath", "").replace("/data/", "").replace("data/", "").strip("/")
+                        name = xpath or item.get("name", "")
+                        if name:
+                            kobo_image_fields.append({"name": name, "label": label})
+    except Exception as e:
+        print(f"[api_program_attributes] Kobo error: {e}")
+
+    return jsonify({"attributes": attributes, "kobo_image_fields": kobo_image_fields})
+
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
     if not session.get("admin_logged_in"):
@@ -1370,9 +1453,11 @@ def fsp_admin():
 
     # --- load configs ---
     system_config = load_config()
-    display_config = load_display_config()
+    _full_display = load_display_config()
+    # Pass full display config to template so it can be stored in IndexedDB
+    display_config = _full_display
 
-    column_to_match = system_config.get("COLUMN_TO_MATCH")
+    column_to_match = get_column_to_match(program_id) or system_config.get("COLUMN_TO_MATCH")
     programs = system_config.get("PROGRAMS", [])
 
     # --- resolve program ---
@@ -1531,7 +1616,8 @@ def scan():
         lang=lang,
         t=translations.get(lang, translations["en"]),
         username=username,
-        program_title=program_title
+        program_title=program_title,
+        program_id=program_id or ""
     )
 
 
@@ -1553,14 +1639,29 @@ def api_offline_latest_zip():
     if not os.path.isdir(base_dir):
         return jsonify({"error": "No offline cache found"}), 404
 
-    # Find latest batch directory by modified time
-    batch_dirs = [
-        os.path.join(base_dir, d)
-        for d in os.listdir(base_dir)
-        if os.path.isdir(os.path.join(base_dir, d))
-    ]
+    # Filter by programId if provided
+    program_id_filter = request.args.get("programId")
+
+    batch_dirs = []
+    for d in os.listdir(base_dir):
+        full_path = os.path.join(base_dir, d)
+        if not os.path.isdir(full_path):
+            continue
+        # Check batch_info.json for programId match
+        if program_id_filter:
+            batch_info_path = os.path.join(full_path, "batch_info.json")
+            if os.path.exists(batch_info_path):
+                try:
+                    with open(batch_info_path) as f:
+                        batch_info = json.load(f)
+                    if str(batch_info.get("programId")) != str(program_id_filter):
+                        continue
+                except Exception:
+                    pass
+        batch_dirs.append(full_path)
+
     if not batch_dirs:
-        return jsonify({"error": "No batches found"}), 404
+        return jsonify({"error": "No batches found for this program"}), 404
 
     latest = max(batch_dirs, key=os.path.getmtime)
 
@@ -1596,22 +1697,21 @@ def beneficiary_offline():
     if not uuid:
         uuid = ""
 
-    # load display config (same file you already use)
+    program_id = session.get("fsp_program_id", "")
+
+    # load display config scoped to the active program
     try:
         full_config = load_display_config()
-        display_fields = full_config.get("fields", [])
-        photo_config = full_config.get("photo", {})
+        program_config = full_config.get("programs", {}).get(str(program_id), full_config)
+        display_fields = program_config.get("fields", [])
+        photo_config = program_config.get("photo", {})
     except Exception:
         display_fields = []
         photo_config = {}
 
-    # pass Fernet key for client-side decrypt when we add it
     config = load_config()
     enc_key = config.get("ENCRYPTION_KEY", "")
-    column_to_match = config.get("COLUMN_TO_MATCH")
-    if not column_to_match:
-        raise ValueError("❌ COLUMN_TO_MATCH missing in system_config.json")
-
+    column_to_match = get_column_to_match(program_id) or config.get("COLUMN_TO_MATCH", "")
 
     return render_template(
         "beneficiary_offline.html",
@@ -1621,14 +1721,16 @@ def beneficiary_offline():
         display_fields=display_fields,
         photo_config=photo_config,
         fernet_key=enc_key,
-        column_to_match=column_to_match
+        column_to_match=column_to_match,
+        program_id=program_id
     )
 
 @app.route("/success-offline")
 def success_offline():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
-    return render_template("success_offline.html", lang=lang, t=t)
+    program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
+    return render_template("success_offline.html", lang=lang, t=t, program_id=program_id)
 
 @app.route("/system-config.json")
 def system_config_json():
@@ -1639,6 +1741,33 @@ def system_config_json():
 
     return jsonify({"COLUMN_TO_MATCH": column})
 
+
+
+def get_column_to_match(program_id):
+    """Fetch columnToMatch for a program from the 121 API.
+    Falls back to system_config COLUMN_TO_MATCH if API unavailable."""
+    config = load_config()
+    url121 = config.get("url121")
+
+    if url121 and program_id:
+        try:
+            token = get_121_token()
+            if token:
+                r = requests.get(
+                    f"{url121}/api/programs/{program_id}/fsp-configurations",
+                    cookies={"access_token_general": token},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    for fsp in r.json():
+                        for prop in fsp.get("properties", []):
+                            if prop.get("name") == "columnToMatch":
+                                return prop.get("value")
+        except Exception as e:
+            print(f"[get_column_to_match] API error: {e}")
+
+    # Fallback to stored value
+    return config.get("COLUMN_TO_MATCH")
 
 
 def get_121_token():
@@ -1689,15 +1818,18 @@ def submit_payments():
 
     # Load config
     config = load_config()
-    program_id = config.get("programId")
-    column_to_match = config.get("COLUMN_TO_MATCH")
+    # Use active program from session (multi-program support)
+    program_id = session.get("fsp_program_id") or config.get("programId")
     fernet_key = config.get("ENCRYPTION_KEY")
 
     if not program_id:
-        return "❌ Missing programId in system_config.json", 400
+        return "❌ No active program selected. Please go back and select a program.", 400
+
+    # Fetch column_to_match from 121 API for this specific program
+    column_to_match = get_column_to_match(program_id)
 
     if not column_to_match:
-        return "❌ Missing COLUMN_TO_MATCH in display_config.json", 400
+        return f"❌ Could not determine columnToMatch for program {program_id}. Check 121 FSP configuration.", 400
 
     if not fernet_key:
         return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
@@ -1737,13 +1869,26 @@ def submit_payments():
         match = re.search(r"payment-recent-batch-(\d+)", name)
         return int(match.group(1)) if match else -1
 
-    batch_dirs = sorted(
-        [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")],
-        key=extract_batch_number
-    )
+    # Filter batch dirs to only those belonging to the active program
+    all_dirs = [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")]
+    program_dirs = []
+    for d in all_dirs:
+        batch_info_path = os.path.join(cache_base, d, "batch_info.json")
+        if os.path.exists(batch_info_path):
+            try:
+                with open(batch_info_path) as f:
+                    bi = json.load(f)
+                if str(bi.get("programId")) == str(program_id):
+                    program_dirs.append(d)
+            except Exception:
+                pass
+        else:
+            program_dirs.append(d)  # include legacy batches without batch_info
+
+    batch_dirs = sorted(program_dirs, key=extract_batch_number)
 
     if not batch_dirs:
-        return "❌ No recent payment batches found — run sync first.", 400
+        return "❌ No recent payment batches found for this program — run sync first.", 400
 
     latest_batch = batch_dirs[-1]
     print(f"[DEBUG] Using batch folder: {latest_batch}")
@@ -1856,11 +2001,13 @@ def invalid_qr():
     lang = request.args.get("lang", "en")
     reason = request.args.get("reason", "")
 
+    program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
     return render_template(
         "invalid-qr.html",
         reason=reason,
         lang=lang,
-        t=translations.get(lang, translations["en"])
+        t=translations.get(lang, translations["en"]),
+        program_id=program_id
     )
 
 

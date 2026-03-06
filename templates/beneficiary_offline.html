@@ -6,555 +6,233 @@
   <title>{{ t.title or "Beneficiary Information" }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#ffffff">
-
+  <meta name="theme-color" content="#002855">
   <style>
-    :root { --pad: 16px; --gap: 12px; --radius: 16px; --card: #fff; --ink: #111; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6; }
+    *, *::before, *::after { box-sizing: border-box; }
+    :root { --navy:#002855; --pad:16px; --line:#e5e7eb; --bg:#f3f4f6; --card:#fff; --ink:#111; --muted:#6b7280; }
     html, body { height: 100%; margin: 0; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--ink); }
-    .wrap { max-width: 840px; margin: 0 auto; padding: 24px; }
-    .card { background: var(--card); border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.06); border: 1px solid var(--line); overflow: hidden; }
-    .header { padding: 18px var(--pad); border-bottom: 1px solid var(--line); display: grid; gap: 10px; align-items: center; grid-template-columns: 1fr; text-align: center; }
-    .logos { display: flex; gap: 16px; justify-content: center; align-items: center; flex-wrap: wrap; }
-    .logos img { height: 42px; }
-    h1 { font-size: 28px; margin: 8px 0 0; }
-    .lang-switcher { font-size: 14px; margin-top: 4px; }
-    select { padding: 4px 8px; font-size: 14px; margin-left: 8px; }
-    .section { padding: 18px var(--pad); }
-    .photo-wrap { display: grid; place-items: center; gap: 8px; padding: 8px 0 0; }
-    .photo { width: 220px; height: 220px; border-radius: 12px; background: #f0f3f7; border: 1px dashed #cdd6e1; display: grid; place-items: center; color: #6b7280; font-size: 14px; text-align: center; padding: 8px; }
-    .photo img { width: 220px; height: 220px; object-fit: cover; border-radius: 12px; display: none; }
-    .badge { font-size: 12px; color: var(--muted); }
-    .fields { display: grid; gap: 10px; }
-    .row { display: grid; grid-template-columns: 200px 1fr; gap: 12px; }
-    .label { color: var(--muted); }
-    .value { font-weight: 600; word-break: break-word; }
-    .note { font-size: 12px; color: var(--muted); }
-    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-    .btn { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: #f9fafb; cursor: pointer; font-weight: 700; }
-    .btn-approve { background: #e8f9ef; border-color: #bfe9cf; }
-    .btn-reject  { background: #fdecec; border-color: #f7c5c5; }
-    .key-badge { font-size: 12px; color: #047857; background:#d1fae5; border:1px solid #a7f3d0; padding:4px 8px; border-radius:999px; display:inline-block; }
-    @media (max-width: 640px) { .row { grid-template-columns: 1fr; } .logos img { height: 36px; } h1 { font-size: 24px; } }
+    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; min-height:100vh; }
+    header { background:var(--navy); padding:12px 24px; display:flex; align-items:center; justify-content:space-between; color:#fff; flex-shrink:0; z-index:100; }
+    .header-left img { height:32px; width:auto; object-fit:contain; }
+    .header-title { flex:1; padding-left:20px; font-size:1.1rem; color:#fff; display:flex; align-items:center; gap:6px; }
+    .title-bold { font-weight:800; letter-spacing:0.3px; }
+    .title-divider { opacity:0.8; }
+    .title-program { font-weight:300; opacity:0.95; }
+    .header-controls { display:flex; align-items:center; gap:12px; }
+    .lang-select select { padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; font-weight:600; cursor:pointer; font-size:14px; }
+    .key-badge { font-size:12px; color:#047857; background:#d1fae5; border:1px solid #a7f3d0; padding:4px 10px; border-radius:999px; white-space:nowrap; }
+    main { flex:1; display:flex; justify-content:center; align-items:flex-start; padding:24px var(--pad); }
+    .card { background:var(--card); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.06); border:1px solid var(--line); width:100%; max-width:520px; overflow:hidden; }
+    .section { padding:18px var(--pad); border-bottom:1px solid var(--line); }
+    .section:last-child { border-bottom:none; }
+    .section-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); margin-bottom:12px; }
+    .photo-wrap { display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .photo-box { width:200px; height:200px; border-radius:12px; background:#f0f3f7; border:1px dashed #cdd6e1; display:grid; place-items:center; color:var(--muted); font-size:13px; text-align:center; overflow:hidden; }
+    .photo-box img { width:100%; height:100%; object-fit:cover; display:none; }
+    .photo-badge { font-size:12px; color:var(--muted); }
+    .fields { display:grid; gap:10px; }
+    .field-row { display:grid; grid-template-columns:160px 1fr; gap:12px; align-items:baseline; }
+    .field-label { color:var(--muted); font-size:14px; }
+    .field-value { font-weight:600; word-break:break-word; font-size:14px; }
+    .note { font-size:12px; color:var(--muted); }
+    .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .btn { padding:13px 14px; border-radius:12px; border:1px solid var(--line); background:#f9fafb; cursor:pointer; font-weight:700; font-size:15px; transition:opacity 0.15s; }
+    .btn:active { opacity:0.75; }
+    .btn-approve { background:#e8f9ef; border-color:#bfe9cf; color:#065f46; }
+    .btn-reject  { background:#fdecec; border-color:#f7c5c5; color:#7f1d1d; }
+    .decision-note { font-size:13px; color:var(--muted); margin-top:8px; text-align:center; }
+    footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
+    @media (max-width:600px) {
+      header { padding:8px 12px; }
+      .header-left img { height:26px; }
+      .header-title { font-size:0.85rem; padding-left:10px; }
+      .header-title .title-divider, .header-title .title-program { display:none; }
+      .lang-select select { font-size:12px; padding:4px 6px; }
+      main { padding:16px 12px; }
+      .field-row { grid-template-columns:1fr; gap:2px; }
+      footer { flex-direction:column; text-align:center; gap:4px; font-size:0.8rem; padding:10px; }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="header">
-        <div class="logos">
-          <img src="/instance-static/ns1.png">
-          <img src="{{ url_for('static', filename='scandroid_banner.png') }}" alt="Scandroid">
-          <img src="/instance-static/ns2.png">
-        </div>
-        <h1>{{ t.title or "Beneficiary Information" }}</h1>
-        <div class="lang-switcher">
-          <label for="langSelect">{{ t.language or "Language" }}:</label>
-          <select id="langSelect">
-            <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
-            <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
-            <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
-          </select>
-        </div>
-        <div id="keyStatus" class="key-badge" style="display:none;">Decryption enabled</div>
-      </div>
 
-      <div class="section">
-        {% if photo_config and photo_config.enabled %}
-        <div class="photo-wrap">
-          <div style="font-weight:700; margin-bottom:4px;">{{ photo_config.labels[lang] if photo_config.labels else "Photo" }}</div>
-          <div class="photo">
-            <img id="photo" alt="Photo">
-            <div id="photoMsg">Loading photo…</div>
-          </div>
-          <div class="badge" id="photoBadge"></div>
-        </div>
-        {% endif %}
-      </div>
+<header>
+  <div class="header-left"><img src="/instance-static/ns1.png" alt=""></div>
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span><span class="title-program">{{ national_society }}</span>{% endif %}
+    {% if program_title %}<span class="title-divider">|</span><span class="title-program">{{ program_title }}</span>{% endif %}
+  </div>
+  <div class="header-controls">
+    <div class="lang-select">
+      <select id="langSelect">
+        <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang == 'ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </div>
+    <div id="keyStatus" class="key-badge" style="display:none;">🔓 {{ t.decryption_enabled or "Decryption enabled" }}</div>
+  </div>
+</header>
 
-      <div class="section">
-        <div class="fields" id="fields"></div>
-      </div>
-
-      <div class="section">
-        <div class="actions">
-          <button class="btn btn-approve" id="approveBtn">{{ t.payment_approved or "Payment Approved" }}</button>
-          <button class="btn btn-reject"  id="rejectBtn">{{ t.payment_rejected or "Payment Rejected" }}</button>
+<main>
+  <div class="card">
+    {% if photo_config and photo_config.enabled %}
+    <div class="section">
+      <div class="photo-wrap">
+        <div class="photo-box">
+          <img id="photo" alt="Photo">
+          <div id="photoMsg">{{ t.loading_photo or "Loading photo…" }}</div>
         </div>
-        <div class="note" id="decisionNote" style="margin-top:8px;"></div>
+        <div class="photo-badge" id="photoBadge"></div>
       </div>
     </div>
+    {% endif %}
+    <div class="section">
+      <div class="section-title">{{ t.title or "Beneficiary Information" }}</div>
+      <div class="fields" id="fields"></div>
+    </div>
+    <div class="section">
+      <div class="actions">
+        <button class="btn btn-approve" id="approveBtn">{{ t.payment_approved or "Payment Approved" }}</button>
+        <button class="btn btn-reject"  id="rejectBtn">{{ t.payment_rejected or "Payment Rejected" }}</button>
+      </div>
+      <div class="decision-note" id="decisionNote"></div>
+    </div>
   </div>
+</main>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      const langSelect = document.getElementById("langSelect");
-      langSelect.addEventListener("change", function () {
-        const newLang = this.value;
-        const params = new URLSearchParams(window.location.search);
-        params.set("lang", newLang);
-        window.location.search = params.toString();
-      });
-    });
-  </script>
-</body>
+<footer>
+  <div>{{ t.footer_dev or "" }}</div>
+  <div>{{ t.footer_support or "" }}</div>
+</footer>
 
-
-  <script>
-    /* ---------- Fernet decrypt (WebCrypto) ---------- */
+<script>
+  document.getElementById("langSelect").addEventListener("change", function () {
+    const p = new URLSearchParams(window.location.search);
+    p.set("lang", this.value);
+    window.location.search = p.toString();
+  });
+</script>
+<script>
     const b64u = {
-      toBytes: (s) => {
-        s = s.replace(/-/g, '+').replace(/_/g, '/');
-        while (s.length % 4) s += '=';
-        const bin = atob(s);
-        const out = new Uint8Array(bin.length);
-        for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
-        return out;
-      },
-      fromBytes: (b) => {
-        let s = '';
-        for (let i=0;i<b.length;i++) s += String.fromCharCode(b[i]);
-        return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-      }
+      toBytes:(s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; const bin=atob(s),out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out; },
+      fromBytes:(b)=>{ let s=''; for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
     };
-    function looksEncrypted(val) {
-      if (typeof val !== 'string') return false;
-      if (!val || val.length < 40) return false;
-      return val.startsWith('gAAAAA') || /^[A-Za-z0-9_-]{40,}$/.test(val);
+    function looksEncrypted(val){ return typeof val==='string'&&val.length>=40&&(val.startsWith('gAAAAA')||/^[A-Za-z0-9_-]{40,}$/.test(val)); }
+    async function importHmacKey(raw){ return crypto.subtle.importKey('raw',raw,{name:'HMAC',hash:'SHA-256'},false,['verify']); }
+    async function importAesKey(raw){ return crypto.subtle.importKey('raw',raw,{name:'AES-CBC'},false,['decrypt']); }
+    function concat(...arrs){ let len=0; for(const a of arrs)len+=a.length; const out=new Uint8Array(len); let o=0; for(const a of arrs){out.set(a,o);o+=a.length;} return out; }
+    async function fernetDecryptToBytes(token,keyB64){
+      const key=b64u.toBytes(keyB64); if(key.length!==32)throw new Error('Key must be 32 bytes');
+      const signing=key.slice(0,16),encrypt=key.slice(16,32),raw=b64u.toBytes(token);
+      if(raw.length<1+8+16+32)throw new Error('Token too short');
+      if(raw[0]!==0x80)throw new Error('Bad version');
+      const ts=raw.slice(1,9),iv=raw.slice(9,25),mac=raw.slice(raw.length-32),ct=raw.slice(25,raw.length-32);
+      const msg=concat(new Uint8Array([0x80]),ts,iv,ct);
+      const hmacKey=await importHmacKey(signing);
+      if(!await crypto.subtle.verify('HMAC',hmacKey,mac,msg))throw new Error('HMAC failed');
+      const aesKey=await importAesKey(encrypt);
+      return new Uint8Array(await crypto.subtle.decrypt({name:'AES-CBC',iv},aesKey,ct));
     }
-    async function importHmacKey(raw) {
-      return crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-    }
-    async function importAesKey(raw) {
-      return crypto.subtle.importKey('raw', raw, { name: 'AES-CBC' }, false, ['decrypt']);
-    }
-    function concat(...arrs) {
-      let len=0; for (const a of arrs) len+=a.length;
-      const out = new Uint8Array(len);
-      let o=0; for (const a of arrs) { out.set(a,o); o+=a.length; }
-      return out;
-    }
-    async function fernetDecryptToBytes(token, keyB64) {
-      const key = b64u.toBytes(keyB64);
-      if (key.length !== 32) throw new Error('Key must be 32 bytes');
-      const signing = key.slice(0,16);
-      const encrypt = key.slice(16,32);
-
-      const raw = b64u.toBytes(token);
-      if (raw.length < 1+8+16+32) throw new Error('Token too short');
-      const version = raw[0]; if (version !== 0x80) throw new Error('Bad version');
-
-      const ts = raw.slice(1, 9);
-      const iv = raw.slice(9, 25);
-      const mac = raw.slice(raw.length - 32);
-      const ct  = raw.slice(25, raw.length - 32);
-
-      const msg = concat(new Uint8Array([version]), ts, iv, ct);
-      const hmacKey = await importHmacKey(signing);
-      const ok = await crypto.subtle.verify('HMAC', hmacKey, mac, msg);
-      if (!ok) throw new Error('HMAC failed');
-
-      const aesKey = await importAesKey(encrypt);
-      const pt = new Uint8Array(await crypto.subtle.decrypt({ name:'AES-CBC', iv }, aesKey, ct));
-      return pt;
-    }
-    async function fernetDecryptString(token, keyB64, dec = new TextDecoder()) {
-      const bytes = await fernetDecryptToBytes(token, keyB64);
-      return dec.decode(bytes);
-    }
-    async function fernetDecryptBlob(blobOrBytes, keyB64) {
-      const encBytes = blobOrBytes instanceof Blob
-        ? new Uint8Array(await blobOrBytes.arrayBuffer())
-        : (blobOrBytes instanceof Uint8Array ? blobOrBytes : new Uint8Array(blobOrBytes || []));
-      const tokenB64u = b64u.fromBytes(encBytes);
-      const plain = await fernetDecryptToBytes(tokenB64u, keyB64);
-      return new Blob([plain], { type: 'image/jpeg' });
+    async function fernetDecryptString(token,keyB64,dec=new TextDecoder()){ return dec.decode(await fernetDecryptToBytes(token,keyB64)); }
+    async function fernetDecryptBlob(blobOrBytes,keyB64){
+      const encBytes=blobOrBytes instanceof Blob?new Uint8Array(await blobOrBytes.arrayBuffer()):(blobOrBytes instanceof Uint8Array?blobOrBytes:new Uint8Array(blobOrBytes||[]));
+      return new Blob([await fernetDecryptToBytes(b64u.fromBytes(encBytes),keyB64)],{type:'image/jpeg'});
     }
 
-    /* ---------- IndexedDB ---------- */
-    const DB_NAME = 'scandroid';
-    const DB_VER  = 13;
-    function scopedUUID(uuid) {
-      if (!ACTIVE_PROGRAM_ID) return String(uuid);
-      return `${ACTIVE_PROGRAM_ID}:${uuid}`;
+    const DB_NAME='scandroid',DB_VER=13;
+    function scopedUUID(uuid){ return ACTIVE_PROGRAM_ID?`${ACTIVE_PROGRAM_ID}:${uuid}`:String(uuid); }
+    function openDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open(DB_NAME,DB_VER); r.onupgradeneeded=()=>{ const d=r.result; ['records','photos','meta','decisions','transaction','payments'].forEach(s=>{ if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:s==='meta'?'key':'uuid'}); }); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+    function dbGet(db,store,key){ return new Promise((res,rej)=>{ const r=db.transaction(store,'readonly').objectStore(store).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }); }
+    function dbPut(db,store,value){ return new Promise((res,rej)=>{ const r=db.transaction(store,'readwrite').objectStore(store).put(value); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); }
+    function dbFindRecordByAnyId(db,needle){ return new Promise((res,rej)=>{ const req=db.transaction('records','readonly').objectStore('records').openCursor(); let found=null; const sn=scopedUUID(String(needle)); req.onsuccess=(e)=>{ const c=e.target.result; if(!c)return res(found); const r=c.value,d=r.data||{}; if(r.uuid===sn||scopedUUID(String(r.registrationId||''))===sn||scopedUUID(d._id||'')===sn||scopedUUID(d._uuid||'')===sn){found=r;return res(found);} c.continue(); }; req.onerror=()=>rej(req.error); }); }
+
+    const _params=new URLSearchParams(location.search);
+    const LANG=_params.get('lang')||"{{ lang }}";
+    const SCANNED_ID=_params.get('uuid')||"{{ uuid or '' }}";
+    const ACTIVE_PROGRAM_ID=_params.get('program_id')||"{{ program_id or '' }}";
+    let fieldsConfig={{ display_fields|tojson }};
+    let photoEnabled={{ (photo_config and photo_config.enabled)|tojson }};
+    const SERVER_FERNET_KEY="{{ fernet_key or '' }}";
+    const COLUMN_TO_MATCH="{{ column_to_match }}";
+
+    function renderFields(container,data,keyB64){
+      container.innerHTML="";
+      const rows=Array.isArray(fieldsConfig)?fieldsConfig:[];
+      if(!rows.length){container.innerHTML='<div class="note">No fields configured.</div>';return;}
+      for(const f of rows){
+        const fk=f.key||f.name||f.field; if(!fk)continue;
+        const label=(f.labels&&(f.labels[LANG]||f.labels.en))||fk;
+        const hasVal=data&&Object.prototype.hasOwnProperty.call(data,fk);
+        const raw=hasVal?data[fk]:"";
+        const row=document.createElement('div'); row.className='field-row';
+        const lab=document.createElement('div'); lab.className='field-label'; lab.textContent=label;
+        const v=document.createElement('div'); v.className='field-value';
+        (async()=>{ try{ if(!hasVal||raw===""||raw==null){v.innerHTML='<span class="note">(not available)</span>';} else if(looksEncrypted(String(raw))){ v.textContent=keyB64?await fernetDecryptString(String(raw),keyB64):'(encrypted)'; } else{v.textContent=String(raw);} }catch{v.innerHTML='<span class="note">(decryption failed)</span>';} })();
+        row.appendChild(lab); row.appendChild(v); container.appendChild(row);
+      }
     }
 
-    function openDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VER);
-        req.onupgradeneeded = () => {
-          const db = req.result;
-          if (!db.objectStoreNames.contains('records')) db.createObjectStore('records', { keyPath: 'uuid' });
-          if (!db.objectStoreNames.contains('photos'))  db.createObjectStore('photos',  { keyPath: 'uuid' });
-          if (!db.objectStoreNames.contains('meta'))    db.createObjectStore('meta',    { keyPath: 'key' });
-          if (!db.objectStoreNames.contains('decisions')) db.createObjectStore('decisions', { keyPath: 'uuid' });
-        if (!db.objectStoreNames.contains('transaction')) db.createObjectStore('transaction', { keyPath: 'uuid' });
-        if (!db.objectStoreNames.contains('payments')) db.createObjectStore('payments', { keyPath: 'uuid' });
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror   = () => reject(req.error);
-      });
-    }
-    function dbGet(db, store, key) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(store, 'readonly');
-        const st = tx.objectStore(store);
-        const rq = st.get(key);
-        rq.onsuccess = () => resolve(rq.result || null);
-        rq.onerror   = () => reject(rq.error);
-      });
-    }
-    function dbPut(db, store, value) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite');
-        const st = tx.objectStore(store);
-        const rq = st.put(value);
-        rq.onsuccess = () => resolve(true);
-        rq.onerror   = () => reject(rq.error);
-      });
-    }
-    function dbFindRecordByAnyId(db, needle) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction('records', 'readonly');
-        const st = tx.objectStore('records');
-        const req = st.openCursor();
-        let found = null;
-
-        const scopedNeedle = scopedUUID(String(needle));
-
-        req.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (!cursor) return resolve(found);
-
-          const rec = cursor.value;
-          const d = rec && rec.data || {};
-
-          if (
-            rec.uuid === scopedNeedle ||
-            scopedUUID(rec.registrationId || '') === scopedNeedle ||
-            scopedUUID(d._id || '') === scopedNeedle ||
-            scopedUUID(d._uuid || '') === scopedNeedle
-          ) {
-            found = rec;
-            return resolve(found);
-          }
-
-          cursor.continue();
-        };
-
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-
-    /* ---------- Template inputs ---------- */
-    const LANG = "{{ lang }}";
-    const UUID_FROM_SERVER = "{{ uuid or '' }}";
-    const URL_UUID = new URLSearchParams(location.search).get('uuid') || "";
-    const SCANNED_ID = URL_UUID || UUID_FROM_SERVER;
-    const ACTIVE_PROGRAM_ID = "{{ program_id or '' }}";
-
-    const fieldsConfig = {{ display_fields|tojson }};
-    const photoEnabled = {{ (photo_config and photo_config.enabled)|tojson }};
-    const SERVER_FERNET_KEY = "{{ fernet_key or '' }}"; // <- provided by Flask from system config
-    const COLUMN_TO_MATCH = "{{ column_to_match }}";
-    /* ---------- UI ---------- */
-    function renderFields(container, data, keyB64) {
-      container.innerHTML = "";
-      const rows = Array.isArray(fieldsConfig) ? fieldsConfig : [];
-      for (const f of rows) {
-        const fieldKey = f.key || f.name || f.field;
-        const label = (f.labels && (f.labels[LANG] || f.labels.en)) || fieldKey || "";
-        if (!fieldKey) continue;
-
-        const hasValue = data && Object.prototype.hasOwnProperty.call(data, fieldKey);
-        const raw = hasValue ? data[fieldKey] : "";
-
-        const row = document.createElement('div');
-        row.className = 'row';
-
-        const lab = document.createElement('div');
-        lab.className = 'label';
-        lab.textContent = label;
-
-        const v = document.createElement('div');
-        v.className = 'value';
-
-        (async () => {
-          try {
-            if (!hasValue || raw === "" || raw == null) {
-              v.innerHTML = `<span class="note">(value not available offline)</span>`;
-            } else if (looksEncrypted(String(raw))) {
-              if (!keyB64) {
-                v.innerHTML = `<span class="note">(encrypted — decryption key not set)</span>`;
-              } else {
-                const txt = await fernetDecryptString(String(raw), keyB64);
-                v.textContent = txt;
-              }
-            } else {
-              v.textContent = String(raw);
+    async function loadPage(){
+      const fieldsEl=document.getElementById('fields');
+      const photoMsg=document.getElementById('photoMsg');
+      const photoBadge=document.getElementById('photoBadge');
+      const imgEl=document.getElementById('photo');
+      const keyBadge=document.getElementById('keyStatus');
+      const keyB64=SERVER_FERNET_KEY||"";
+      if(keyB64)keyBadge.style.display='inline-block';
+      if(!SCANNED_ID){fieldsEl.innerHTML='<div class="note">No ID provided.</div>';return;}
+      let db; try{db=await openDB();}catch{fieldsEl.innerHTML='<div class="note">IndexedDB unavailable.</div>';return;}
+      try{
+        const sc=await dbGet(db,'meta','displayConfig');
+        if(sc&&sc.value){const cfg=sc.value,pc=cfg.programs?(cfg.programs[ACTIVE_PROGRAM_ID]||cfg):cfg; if(Array.isArray(pc.fields)&&pc.fields.length)fieldsConfig=pc.fields; if(pc.photo!==undefined)photoEnabled=!!pc.photo.enabled;}
+      }catch(e){console.warn('displayConfig load failed:',e);}
+      let rec=await dbGet(db,'records',scopedUUID(String(SCANNED_ID)));
+      if(!rec){const idx=await dbGet(db,'meta','idIndex');const map=idx&&idx.value||{};const n=String(SCANNED_ID);const mu=map['uuid:'+n]||map['kobo:'+n]||map['reg:'+n];if(mu)rec=await dbGet(db,'records',scopedUUID(mu));}
+      if(!rec)rec=await dbFindRecordByAnyId(db,SCANNED_ID);
+      if(!rec){fieldsEl.innerHTML='<div class="note">No offline record found for this beneficiary.</div>';if(photoMsg)photoMsg.textContent='No photo found in cache.';return;}
+      if(rec.valid===false){window.location.href=`/invalid-qr?reason=${encodeURIComponent(rec.reason||"Invalid QR")}&lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;return;}
+      renderFields(fieldsEl,rec.data||{},keyB64);
+      if(photoEnabled){
+        try{
+          const p=await dbGet(db,'photos',scopedUUID(rec.uuid));
+          if(p&&(p.bytes||p.blob)){
+            if(!keyB64){if(photoBadge)photoBadge.textContent='📦 Encrypted photo cached';if(photoMsg)photoMsg.textContent='Encrypted — no key set';}
+            else{
+              let blob=null;
+              try{ let tok; if(p.blob&&typeof p.blob.text==='function'){tok=await p.blob.text();}else if(p.bytes){tok=new TextDecoder().decode(p.bytes instanceof Uint8Array?p.bytes:new Uint8Array(p.bytes));} if(tok&&tok.length>40){blob=new Blob([await fernetDecryptToBytes(tok.trim(),keyB64)],{type:'image/jpeg'});}else throw new Error('not token'); }catch(e1){ const enc=p.blob?new Uint8Array(await p.blob.arrayBuffer()):(p.bytes instanceof Uint8Array?p.bytes:new Uint8Array(p.bytes||[])); blob=await fernetDecryptBlob(enc,keyB64); }
+              imgEl.src=URL.createObjectURL(blob); imgEl.style.display='block'; if(photoMsg)photoMsg.textContent=''; if(photoBadge)photoBadge.textContent='';
             }
-          } catch {
-            v.innerHTML = `<span class="note">(decryption failed)</span>`;
-          }
-        })();
-
-        row.appendChild(lab);
-        row.appendChild(v);
-        container.appendChild(row);
+          }else{if(photoMsg)photoMsg.textContent='No photo found in cache.';}
+        }catch(e){if(photoMsg)photoMsg.textContent='Photo decryption failed.';}
       }
     }
 
-    async function loadPage() {
-      const fieldsEl = document.getElementById('fields');
-      const photoMsg = document.getElementById('photoMsg');
-      const photoBadge = document.getElementById('photoBadge');
-      const imgEl = document.getElementById('photo');
-      const keyBadge = document.getElementById('keyStatus');
-
-      // Show badge if we have a key from config
-      const keyB64 = SERVER_FERNET_KEY && SERVER_FERNET_KEY.length ? SERVER_FERNET_KEY : "";
-      if (keyB64) keyBadge.style.display = 'inline-block';
-
-      if (!SCANNED_ID) {
-        fieldsEl.innerHTML = `<div class="note">No ID provided. Opened offline shell page.</div>`;
-        if (photoMsg) photoMsg.textContent = 'Photo unavailable (no ID).';
-        return;
-      }
-
-      let db;
-      try { db = await openDB(); }
-      catch { fieldsEl.innerHTML = `<div class="note">IndexedDB unavailable.</div>`; return; }
-
-      // Find record by uuid / _id / registrationId
-      let rec = await dbGet(db, 'records', scopedUUID(String(SCANNED_ID)));
-      if (!rec) {
-        const idx = await dbGet(db, 'meta', 'idIndex');
-        const map = idx && idx.value || {};
-        const n = String(SCANNED_ID);
-        const mappedUuid = map['uuid:' + n] || map['kobo:' + n] || map['reg:' + n] || null;
-        if (mappedUuid) rec = await dbGet(db, 'records', scopedUUID(mappedUuid));
-      }
-      if (!rec) rec = await dbFindRecordByAnyId(db, SCANNED_ID);
-
-      if (!rec) {
-        fieldsEl.innerHTML = `<div class="note">No offline record found for this beneficiary.</div>`;
-        if (photoMsg) photoMsg.textContent = 'No photo found in cache.';
-        return;
-      }
-      if (rec.valid === false) {
-        console.warn("❌ Invalid QR Code:", rec.reason || "Unknown reason");
-
-        window.location.href = `/invalid-qr.html?reason=${
-            encodeURIComponent(rec.reason || "Invalid QR")
-          }&lang=${encodeURIComponent(LANG)}`;
-
-        return;
-      }
-
-      // Decrypt & render fields
-      renderFields(fieldsEl, rec.data || {}, keyB64);
-
-      // Photos
-// Photos (try token-string first, then raw-bytes fallback)
-if (photoEnabled) {
-  try {
-    const p = await dbGet(db, 'photos', scopedUUID(rec.uuid));
-    if (p && (p.bytes || p.blob)) {
-      if (!keyB64) {
-        if (photoBadge) photoBadge.textContent = '📦 Encrypted photo cached on device';
-        if (photoMsg)  photoMsg.textContent  = 'Encrypted — decryption key not set';
-      } else {
-        let decryptedBlob = null;
-
-        // 1) Try treating stored data as a Fernet TOKEN STRING
-        try {
-          let tokenText;
-          if (p.blob && typeof p.blob.text === 'function') {
-            tokenText = await p.blob.text();
-          } else if (p.bytes) {
-            // attempt to decode bytes as UTF-8 token text
-            tokenText = new TextDecoder().decode(
-              p.bytes instanceof Uint8Array ? p.bytes : new Uint8Array(p.bytes)
-            );
-          }
-          if (tokenText && tokenText.length > 40) {
-            const plainBytes = await fernetDecryptToBytes(tokenText.trim(), keyB64);
-            decryptedBlob = new Blob([plainBytes], { type: 'image/jpeg' });
-          } else {
-            throw new Error('Not a token string');
-          }
-        } catch (e1) {
-          console.warn('Photo: token-string decrypt failed, trying raw bytes…', e1);
-
-          // 2) Fallback: treat stored data as raw encrypted bytes (Fernet)
-          const enc = p.blob
-            ? new Uint8Array(await p.blob.arrayBuffer())
-            : (p.bytes instanceof Uint8Array ? p.bytes : new Uint8Array(p.bytes || []));
-          decryptedBlob = await fernetDecryptBlob(enc, keyB64);
-        }
-
-        // Show photo
-        imgEl.src = URL.createObjectURL(decryptedBlob);
-        imgEl.style.display = 'block';
-        if (photoMsg) photoMsg.textContent = '';
-        if (photoBadge) photoBadge.textContent = '';
-      }
-    } else {
-      if (photoMsg) photoMsg.textContent = 'No photo found in cache.';
-    }
-  } catch (e) {
-    console.warn('Photo decrypt/display error:', e);
-    if (photoMsg) photoMsg.textContent = 'Photo decryption failed.';
-  }
-}
-async function handleDecision(status) {
-  try {
-    const db = await openDB();
-    const rec = await dbFindRecordByAnyId(db, SCANNED_ID);
-    if (!rec) {
-      alert("No record found.");
-      return;
+    async function savePaymentDecision(decisionValue){
+      const note=document.getElementById('decisionNote');
+      try{
+        const db=await openDB();
+        const col=COLUMN_TO_MATCH||"phoneNumber";
+        const rec=await dbFindRecordByAnyId(db,SCANNED_ID);
+        if(!rec){alert("No matching record found.");return;}
+        let rawVal=rec.data?.[col]||"";
+        if(!rawVal){alert(`Cannot find value for column "${col}".`);return;}
+        let matchValue=rawVal;
+        if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){try{matchValue=await fernetDecryptString(rawVal,SERVER_FERNET_KEY);}catch(e){console.warn("Decrypt match col failed:",e);}}
+        if(!db.objectStoreNames.contains("payments")){db.close();const u=indexedDB.open(DB_NAME,db.version+1);u.onupgradeneeded=()=>{if(!u.result.objectStoreNames.contains("payments"))u.result.createObjectStore("payments",{keyPath:"uuid"});};u.onsuccess=()=>{u.result.close();location.reload();};return;}
+        const tx=db.transaction("payments","readwrite");
+        tx.objectStore("payments").put({uuid:scopedUUID(rec.uuid),programId:ACTIVE_PROGRAM_ID,status:decisionValue,column_to_match:col,match_value:matchValue,timestamp:new Date().toISOString()});
+        tx.oncomplete=()=>{ note.textContent=`✅ Saved`; setTimeout(()=>{window.location.href=`/success-offline?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;},600); };
+        tx.onerror=()=>{note.textContent="❌ Failed to save locally.";};
+      }catch(err){console.error(err);note.textContent="❌ Unexpected error.";}
     }
 
-    const columnKey = COLUMN_TO_MATCH || "";
-    const matchValue = rec.data?.[columnKey] || "";
-
-
-    const decision = {
-      uuid: scopedUUID(rec.uuid),
-      programId: ACTIVE_PROGRAM_ID,
-      status: status,
-      columnKey: columnKey,
-      matchValue: matchValue,
-      timestamp: new Date().toISOString()
-    };
-
-    await dbPut(db, 'decisions', decision);
-
-
-    console.log("Saving decision to IndexedDB:", decision);
-
-    await dbPut(db, 'decisions', decision);
-
-    window.location.href = `/success-offline?lang=${encodeURIComponent(LANG)}`;
-  } catch (err) {
-    console.error("Failed to save decision:", err);
-    alert("Failed to save decision.");
-  }
-}
-
-
-
-  const note = document.getElementById('decisionNote');
-  const redirectToSuccess = () => {
-    const url = `/success-offline?lang=${encodeURIComponent(LANG)}`;
-    window.location.href = url;
-  };
-
-document.getElementById("approveBtn").addEventListener("click", () => savePaymentDecision("success"));
-document.getElementById("rejectBtn").addEventListener("click", () => {
-  window.location.href = `/success-offline?lang=${encodeURIComponent(LANG)}`;
-});
-
-
-async function savePaymentDecision(decisionValue) {
-  const note = document.getElementById('decisionNote');
-
-  try {
-    const db = await openDB();
-
-    const columnToMatch = COLUMN_TO_MATCH || "phoneNumber";
-
-
-    const rec = await dbFindRecordByAnyId(db, SCANNED_ID);
-    if (!rec) {
-      alert("No matching record found.");
-      return;
-    }
-
-    let matchValueRaw = rec.data?.[columnToMatch] || "";
-
-    if (!matchValueRaw) {
-      alert(`Cannot find value for column "${columnToMatch}".`);
-      return;
-    }
-
-    // 🔥 NEW: decrypt if encrypted
-    let matchValue = matchValueRaw;
-    if (looksEncrypted(matchValueRaw) && SERVER_FERNET_KEY) {
-      try {
-        matchValue = await fernetDecryptString(matchValueRaw, SERVER_FERNET_KEY);
-      } catch (err) {
-        console.warn("⚠️ Could not decrypt match column; using raw value:", err);
-      }
-    }
-
-
-let paymentsStoreExists = db.objectStoreNames.contains("payments");
-if (!paymentsStoreExists) {
-  db.close();
-  const upgradeReq = indexedDB.open(DB_NAME, db.version + 1);
-  upgradeReq.onupgradeneeded = () => {
-    const upgradedDB = upgradeReq.result;
-    if (!upgradedDB.objectStoreNames.contains("payments")) {
-      upgradedDB.createObjectStore("payments", { keyPath: "uuid" });
-    }
-  };
-  upgradeReq.onsuccess = async () => {
-    const upgradedDB = upgradeReq.result;
-    upgradedDB.close();
-    console.log("✅ payments store created via upgrade, reloading to proceed.");
-    location.reload();
-  };
-  upgradeReq.onerror = (event) => {
-    console.error("❌ Upgrade error:", event.target.error);
-    alert("❌ Failed to upgrade offline cache.");
-  };
-  return;
-}
-
-
-    const tx = db.transaction("payments", "readwrite");
-    const store = tx.objectStore("payments");
-
-    const decision = {
-      uuid: scopedUUID(rec.uuid),
-      programId: ACTIVE_PROGRAM_ID,
-      status: decisionValue,
-      column_to_match: columnToMatch,
-      match_value: matchValue,
-      timestamp: new Date().toISOString()
-    };
-
-    store.put(decision);
-
-    tx.oncomplete = () => {
-      console.log("✅ Saved payment decision:", decision);
-      note.textContent = `✅ Saved: ${decisionValue}`;
-      setTimeout(() => {
-        window.location.href = `/success-offline?lang=${encodeURIComponent(LANG)}`;
-      }, 600);
-    };
-
-    tx.onerror = (event) => {
-      console.error("❌ IndexedDB error:", event.target.error);
-      note.textContent = "❌ Failed to save locally.";
-    };
-
-  } catch (err) {
-    console.error("❌ Unexpected error:", err);
-    note.textContent = "❌ Unexpected error.";
-    alert("Error saving decision:\n" + err.message);
-  }
-}
-
-
-    }
-
-    document.addEventListener('DOMContentLoaded', loadPage);
-  </script>
-
-
+    document.addEventListener('DOMContentLoaded',()=>{
+      loadPage();
+      document.getElementById("approveBtn").addEventListener("click",()=>savePaymentDecision("success"));
+      document.getElementById("rejectBtn").addEventListener("click",()=>{window.location.href=`/success-offline?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;});
+    });
+</script>
 </body>
 </html>
