@@ -196,7 +196,7 @@
       renderFields(fieldsEl,rec.data||{},keyB64);
       if(photoEnabled){
         try{
-          const p=await dbGet(db,'photos',scopedUUID(rec.uuid));
+          const rawPhotoUuid=ACTIVE_PROGRAM_ID&&rec.uuid.startsWith(ACTIVE_PROGRAM_ID+':')?rec.uuid.slice(ACTIVE_PROGRAM_ID.length+1):rec.uuid; const p=await dbGet(db,'photos',scopedUUID(rawPhotoUuid));
           if(p&&(p.bytes||p.blob)){
             if(!keyB64){if(photoBadge)photoBadge.textContent='📦 Encrypted photo cached';if(photoMsg)photoMsg.textContent='Encrypted — no key set';}
             else{
