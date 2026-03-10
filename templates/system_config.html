@@ -326,13 +326,14 @@
     .save-btn:hover {
       background: #ece2ff;
     }
-    /* ---------- TOAST ---------- */
-    #saveToast {
+
+    /* ---------- TOAST NOTIFICATION ---------- */
+    #toast {
       position: fixed;
       bottom: 32px;
       left: 50%;
       transform: translateX(-50%) translateY(20px);
-      background: #16a34a;
+      background: #111827;
       color: #fff;
       padding: 12px 24px;
       border-radius: 999px;
@@ -343,11 +344,18 @@
       pointer-events: none;
       transition: opacity 0.25s ease, transform 0.25s ease;
       z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    #saveToast.show {
+
+    #toast.show {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
     }
+
+    #toast.success { background: #16a34a; }
+    #toast.error   { background: #dc2626; }
   </style>
 
 </head>
@@ -361,8 +369,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    {% if national_society %}<span class="title-divider">|</span>
-    <span class="title-program">{{ national_society }}</span>{% endif %}
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>
   </div>
 
   <div class="header-account-wrapper">
@@ -418,7 +426,8 @@
         </select>
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}">
+        <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}"
+               autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;">
 
       </div>
 
@@ -546,20 +555,6 @@
   </form>
 </div>
 
-<div id="saveToast">✓  {{ t.saved_successfully }}</div>
-
-{% with messages = get_flashed_messages() %}
-  {% if messages %}
-  <script>
-    window.addEventListener('DOMContentLoaded', function() {
-      const toast = document.getElementById('saveToast');
-      toast.classList.add('show');
-      setTimeout(() => { toast.classList.remove('show'); }, 3000);
-    });
-  </script>
-  {% endif %}
-{% endwith %}
-
 <footer>
   <div class="footer-left">{{ t.footer_dev }}</div>
   <div class="footer-right">{{ t.footer_support }}</div>
@@ -663,6 +658,52 @@ document.getElementById('program-mappings').addEventListener('click', function (
 
   row.remove();
   refreshProgramOptions();
+});
+</script>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<script>
+function showToast(message, type) {
+  const toast = document.getElementById('toast');
+  toast.textContent = (type === 'error' ? '\u2715  ' : '\u2713  ') + message;
+  toast.className = 'show ' + (type || 'success');
+  setTimeout(function() { toast.className = ''; }, 3500);
+}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      showToast({{ message | tojson }}, {{ "'error'" if category == 'error' else "'success'" }});
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+// Intercept form submit: show toast then submit
+document.querySelector('form[method="post"]').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const form = this;
+  const saveBtn = form.querySelector('.save-btn');
+  saveBtn.disabled = true;
+
+  fetch(window.location.pathname + window.location.search, {
+    method: 'POST',
+    body: new FormData(form)
+  })
+  .then(function(res) {
+    if (res.ok) {
+      showToast('{{ t.saved_successfully }}', 'success');
+    } else {
+      showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error');
+    }
+  })
+  .catch(function() {
+    showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error');
+  })
+  .finally(function() {
+    saveBtn.disabled = false;
+  });
 });
 </script>
 
