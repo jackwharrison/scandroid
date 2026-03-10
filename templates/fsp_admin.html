@@ -424,6 +424,34 @@
         width: 14px;
         height: 14px;
       }
+
+      .program-title-banner {
+        max-width: 720px;
+        width: 100%;
+        text-align: center;
+        padding: 6px 16px;
+      }
+
+      .program-title-banner span {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.2px;
+      }
+
+      .program-title-banner strong {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      @media (max-width: 600px) {
+        .program-title-banner {
+          padding: 4px 12px;
+        }
+        .program-title-banner span {
+          font-size: 0.8rem;
+        }
+      }
   </style>
 
 </head>
@@ -483,6 +511,12 @@
     </svg>
     {{ t.back_to_programs or "Back to Programs" }}
   </a>
+
+  {% if program_title %}
+  <div class="program-title-banner">
+    <span>{{ t.current_program or "Program" }}: <strong>{{ program_title }}</strong></span>
+  </div>
+  {% endif %}
 
   <!-- SYNC BLOCK -->
   <div class="row-box">
