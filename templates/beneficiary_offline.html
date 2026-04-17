@@ -222,7 +222,7 @@
         if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){try{matchValue=await fernetDecryptString(rawVal,SERVER_FERNET_KEY);}catch(e){console.warn("Decrypt match col failed:",e);}}
         if(!db.objectStoreNames.contains("payments")){db.close();const u=indexedDB.open(DB_NAME,db.version+1);u.onupgradeneeded=()=>{if(!u.result.objectStoreNames.contains("payments"))u.result.createObjectStore("payments",{keyPath:"uuid"});};u.onsuccess=()=>{u.result.close();location.reload();};return;}
         const tx=db.transaction("payments","readwrite");
-        tx.objectStore("payments").put({uuid:scopedUUID(rec.uuid),programId:ACTIVE_PROGRAM_ID,status:decisionValue,column_to_match:col,match_value:matchValue,timestamp:new Date().toISOString()});
+        tx.objectStore("payments").put({uuid: rec.uuid,programId:ACTIVE_PROGRAM_ID,status:decisionValue,column_to_match:col,match_value:matchValue,timestamp:new Date().toISOString()});
         tx.oncomplete=()=>{ note.textContent=`✅ Saved`; setTimeout(()=>{window.location.href=`/success-offline?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;},600); };
         tx.onerror=()=>{note.textContent="❌ Failed to save locally.";};
       }catch(err){console.error(err);note.textContent="❌ Unexpected error.";}
