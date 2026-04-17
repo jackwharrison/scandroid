@@ -426,9 +426,9 @@
         </select>
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}"
-               autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;">
-
+        <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN"
+              placeholder="{{ '(saved – leave blank to keep)' if config.get('KOBO_TOKEN') else 'Enter Kobo API Key' }}"
+              autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;">
       </div>
 
       <div class="card">
@@ -541,16 +541,9 @@
 
         <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
         <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}">
-        <input type="hidden" id="username121" name="username121" value="{{ config['username121'] }}">
-        <input type="hidden" id="password121" name="password121" value="{{ config['password121'] }}">
       </div>
 
     </div>
-    <input type="hidden" name="username121" value="{{ config.get('username121','') }}">
-    <input type="hidden" name="password121" value="{{ config.get('password121','') }}">
-    <input type="hidden" name="ENCRYPTION_KEY" value="{{ config.get('ENCRYPTION_KEY', '') }}">
-    <input type="hidden" name="COLUMN_TO_MATCH" value="{{ config.get('COLUMN_TO_MATCH', '') }}">
-
     <button type="submit" class="save-btn">{{ t.save }}</button>
   </form>
 </div>
