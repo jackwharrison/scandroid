@@ -427,7 +427,7 @@
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
         <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN"
-              placeholder="{{ '(••••••••••••••••••••••••••••••••••••)' if config.get('KOBO_TOKEN') else 'Enter Kobo API Key' }}"
+              placeholder="{{ '••••••••••••••••••••••••••••••••••••' if config.get('KOBO_TOKEN') else 'Enter Kobo API Key' }}"
               autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;">
       </div>
 
