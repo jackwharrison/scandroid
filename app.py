@@ -767,15 +767,16 @@ def system_config():
         updated = config.copy()
 
         # ---- Global fields ----
-        for key in [
-            "KOBO_SERVER",
-            "KOBO_TOKEN",
-            "url121",
-            "username121",
-            "password121",
-            "ENCRYPTION_KEY",
-        ]:
+        # Always save these from the form
+        for key in ["KOBO_SERVER", "url121"]:
             updated[key] = request.form.get(key, "").strip()
+
+        # Only overwrite if a new value was submitted
+        for key in ["KOBO_TOKEN", "username121", "password121", "ENCRYPTION_KEY"]:
+            submitted = request.form.get(key, "").strip()
+            if submitted:
+                updated[key] = submitted
+            # else: keep existing value from config.copy()
 
         # ---- Program mappings ----
         programs = []
