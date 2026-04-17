@@ -94,6 +94,56 @@
           "ar": "صورة"
         }
       }
+    },
+    "10": {
+      "fields": [
+        {
+          "key": "prenom",
+          "labels": {
+            "en": "First Name of the Interviewee",
+            "fr": "First Name of the Interviewee",
+            "ar": "First Name of the Interviewee"
+          }
+        },
+        {
+          "key": "nom",
+          "labels": {
+            "en": "Last Name of the interviewee",
+            "fr": "Last Name of the interviewee",
+            "ar": "Last Name of the interviewee"
+          }
+        }
+      ],
+      "photo": {
+        "enabled": true,
+        "field_name": "verification/registrationPicture",
+        "labels": {
+          "en": "Photo",
+          "fr": "Photo",
+          "ar": "صورة"
+        }
+      }
+    },
+    "6": {
+      "fields": [
+        {
+          "key": "phoneNumber",
+          "labels": {
+            "en": "Phone number",
+            "fr": "Phone number",
+            "ar": "Phone number"
+          }
+        }
+      ],
+      "photo": {
+        "enabled": false,
+        "field_name": "verification/registrationPicture",
+        "labels": {
+          "en": "Photo",
+          "fr": "Photo",
+          "ar": "صورة"
+        }
+      }
     }
   }
 }

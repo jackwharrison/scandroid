@@ -1250,11 +1250,11 @@ def config_page():
     # ------------------------------------------------------
     # Persist COLUMN_TO_MATCH
     # ------------------------------------------------------
-    if column_to_match_121:
-        system_config["COLUMN_TO_MATCH"] = column_to_match_121
+    if column_to_match_121 and active_program_id:
+        per_program = system_config.setdefault("COLUMN_TO_MATCH_PER_PROGRAM", {})
+        per_program[str(active_program_id)] = column_to_match_121
         try:
-            with open("system_config.json", "w", encoding="utf-8") as f:
-                json.dump(system_config, f, indent=2, ensure_ascii=False)
+            save_config(system_config)
         except Exception:
             pass
 
@@ -1766,8 +1766,9 @@ def get_column_to_match(program_id):
         except Exception as e:
             print(f"[get_column_to_match] API error: {e}")
 
-    # Fallback to stored value
-    return config.get("COLUMN_TO_MATCH")
+    # Fallback to per-program stored value, then legacy global value
+    per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
 
 
 def get_121_token():

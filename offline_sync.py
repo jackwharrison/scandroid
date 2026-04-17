@@ -399,7 +399,8 @@ def download_cache(program_id, payment_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        match_key = config.get("COLUMN_TO_MATCH")
+        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
 
@@ -579,7 +580,8 @@ def download_recent_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        match_key = config.get("COLUMN_TO_MATCH")
+        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
