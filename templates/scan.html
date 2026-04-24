@@ -492,8 +492,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (
               p &&
               (p.uuid === scannedId || (scopedId && p.uuid === scopedId)) &&
-              (p.status === "success" || p.status === "submitted")
+              p.status === "success"
             ) {
+              // Only block if there's a PENDING payment (not yet submitted).
+              // "submitted" payments are from previous rounds and should
+              // not prevent scanning the same beneficiary for new payments.
               resolve(p);
               return;
             }

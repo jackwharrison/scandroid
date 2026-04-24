@@ -877,6 +877,27 @@ function scopedUUID(uuid) {
         value: DISPLAY_CONFIG
       });
 
+      // -------------------------------------------------------
+      // CLEAR OLD "submitted" PAYMENTS for this program.
+      // After a successful sync, any previously-submitted payments
+      // are stale — the new batch from 121 is the source of truth.
+      // Keeping them would block re-scanning the same beneficiary
+      // for new payment rounds.
+      // -------------------------------------------------------
+      if (db.objectStoreNames.contains("payments")) {
+        const payTx = db.transaction("payments", "readwrite");
+        const payStore = payTx.objectStore("payments");
+        const allPay = await payStore.getAll();
+        for (const p of allPay) {
+          if (
+            p.status === "submitted" &&
+            p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
+          ) {
+            await payStore.delete(p.uuid);
+          }
+        }
+      }
+
       // RETURN COUNTS
       return { written, photosWritten };
 
@@ -1238,7 +1259,10 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     for (const p of payments) {
       if (p.status === "success") {
         p.status = "submitted";
-        p.uuid = scopedUUID(p.uuid);
+        // p.uuid is already scoped (e.g. "programId:uuid") from
+        // savePaymentDecision — do NOT re-scope it, or we create
+        // a duplicate record and the original "success" entry
+        // is never cleared.
         await store.put(p);
       }
     }
