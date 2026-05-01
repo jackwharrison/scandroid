@@ -241,11 +241,23 @@
       const note=document.getElementById('decisionNote');
       try{
         const db=await openDB();
-        const col=COLUMN_TO_MATCH||"phoneNumber";
+        // Prefer the per-program columnToMatch stashed by the FSP admin sync.
+        // The baked-in COLUMN_TO_MATCH from the rendered HTML can be stale
+        // (e.g. when the service worker serves a precached shell that was
+        // rendered before the user's session knew about the program).
+        let col=COLUMN_TO_MATCH;
+        try{
+          const stored=await dbGet(db,'meta',`columnToMatch:${ACTIVE_PROGRAM_ID}`);
+          if(stored&&stored.value) col=stored.value;
+        }catch(e){console.warn('columnToMatch lookup failed:',e);}
+        if(!col) col="phoneNumber"; // last-resort default
         const rec=await dbFindRecordByAnyId(db,SCANNED_ID);
         if(!rec){alert("No matching record found.");return;}
         let rawVal=rec.data?.[col]||"";
-        if(!rawVal){alert(`Cannot find value for column "${col}".`);return;}
+        if(!rawVal){
+          alert(`Cannot find value for column "${col}". Please re-sync from the FSP admin page and try again.`);
+          return;
+        }
         let matchValue=rawVal;
         if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){try{matchValue=await fernetDecryptString(rawVal,SERVER_FERNET_KEY);}catch(e){console.warn("Decrypt match col failed:",e);}}
         if(!db.objectStoreNames.contains("payments")){db.close();const u=indexedDB.open(DB_NAME,db.version+1);u.onupgradeneeded=()=>{if(!u.result.objectStoreNames.contains("payments"))u.result.createObjectStore("payments",{keyPath:"uuid"});};u.onsuccess=()=>{u.result.close();location.reload();};return;}

@@ -927,6 +927,32 @@ function scopedUUID(uuid) {
         value: DISPLAY_CONFIG
       });
 
+      // Fetch and persist the program-specific columnToMatch from the server.
+      // The beneficiary offline page reads this from IndexedDB at decision time,
+      // which avoids the stale-shell problem where the SW serves a precached
+      // HTML containing the wrong (or empty) baked-in COLUMN_TO_MATCH.
+      try {
+        const ctmRes = await fetch(
+          `/api/column-to-match/${encodeURIComponent(ACTIVE_PROGRAM_ID)}`,
+          { cache: 'no-store' }
+        );
+        if (ctmRes.ok) {
+          const ctmJson = await ctmRes.json();
+          const column = ctmJson && ctmJson.columnToMatch;
+          if (column) {
+            await db.put('meta', {
+              key: `columnToMatch:${ACTIVE_PROGRAM_ID}`,
+              value: column
+            });
+            console.log(`[Sync] columnToMatch for program ${ACTIVE_PROGRAM_ID}: ${column}`);
+          }
+        } else {
+          console.warn(`[Sync] columnToMatch fetch failed: HTTP ${ctmRes.status}`);
+        }
+      } catch (ctmErr) {
+        console.warn('[Sync] columnToMatch fetch errored (continuing):', ctmErr);
+      }
+
       // RETURN COUNTS
       return { written, photosWritten };
 
