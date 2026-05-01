@@ -75,6 +75,98 @@ def encrypt_photo(photo_bytes):
 
 
 # ----------------------------------------------------------------------
+# FIELD RESOLUTION
+# ----------------------------------------------------------------------
+
+# Common containers in the 121 registration payload where program-specific
+# attributes (custom fields like prenom, age, verification/registrationPicture)
+# may live instead of being top-level keys.
+_PROGRAM_ATTR_CONTAINERS = (
+    "programRegistrationAttributes",
+    "registrationProgramAttributes",
+    "programAttributeData",
+    "programAttributes",
+    "data",
+    "attributes",
+)
+
+
+def _walk_path(obj, parts):
+    """Walk a list of path segments through a nested dict. Returns None on miss."""
+    cur = obj
+    for part in parts:
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    return cur
+
+
+def resolve_field(reg, key):
+    """
+    Resolve a display_config field key against a 121 registration payload.
+
+    Tries, in order:
+      1. Literal top-level key (preserves existing behaviour)
+      2. Slash-notation walk (e.g. "verification/registrationPicture")
+      3. Common program-attribute containers (top-level)
+      4. Common program-attribute containers (slash walk inside them)
+      5. Basename after the last slash, at top level and inside containers
+    Returns None if nothing matched.
+    """
+    if not isinstance(reg, dict) or not key:
+        return None
+
+    # 1) literal top-level
+    if key in reg:
+        return reg[key]
+
+    # Pre-compute slash parts and basename for reuse
+    has_slash = "/" in key
+    parts = key.split("/") if has_slash else [key]
+    basename = parts[-1] if has_slash else key
+
+    # 2) slash-path walk at top level
+    if has_slash:
+        val = _walk_path(reg, parts)
+        if val is not None:
+            return val
+
+    # 3 & 4) try known program-attribute containers
+    for container_name in _PROGRAM_ATTR_CONTAINERS:
+        container = reg.get(container_name)
+        if container is None:
+            continue
+
+        # Container is a dict keyed by attribute name
+        if isinstance(container, dict):
+            if key in container:
+                return container[key]
+            if has_slash:
+                val = _walk_path(container, parts)
+                if val is not None:
+                    return val
+            if basename in container:
+                return container[basename]
+
+        # Container is a list of {name, value} pairs (also common in 121)
+        elif isinstance(container, list):
+            for entry in container:
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("name") or entry.get("key") or entry.get("attribute")
+                if name == key or name == basename:
+                    # Return value if present, else the whole entry
+                    return entry.get("value", entry)
+
+    # 5) last resort: basename at top level
+    if has_slash and basename in reg:
+        return reg[basename]
+
+    return None
+
+
+# ----------------------------------------------------------------------
 # AUTH / SESSION
 # ----------------------------------------------------------------------
 
@@ -398,11 +490,11 @@ def download_cache(program_id, payment_id):
             print(f"[!] No registration data for {reg_id}")
             continue
 
-        filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
+        filtered_data = {key: resolve_field(reg, key) for key in FIELD_KEYS}
         per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
         match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
-            filtered_data[match_key] = reg.get(match_key)
+            filtered_data[match_key] = resolve_field(reg, match_key)
 
         encrypted_data = encrypt_data(filtered_data)
 
@@ -579,11 +671,11 @@ def download_recent_payments_cache(program_id):
             print(f"[!] Failed registration fetch for {reg_id}")
             continue
 
-        filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
+        filtered_data = {key: resolve_field(reg, key) for key in FIELD_KEYS}
         per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
         match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
-            filtered_data[match_key] = reg.get(match_key)
+            filtered_data[match_key] = resolve_field(reg, match_key)
         encrypted_data = encrypt_data(filtered_data)
 
         photo_filename = f"{uuid}.enc"
