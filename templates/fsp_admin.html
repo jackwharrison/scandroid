@@ -811,6 +811,51 @@ function scopedUUID(uuid) {
 
       const db = await openScandroidDB();
 
+      // ---- SAFETY NET: clear stale data for this program before importing ----
+      // Bump SYNC_SCHEMA_VERSION whenever the on-disk record/photo/transaction
+      // shape changes. On version mismatch we wipe ALL program-scoped data
+      // for this program so users never get stuck with corrupted records.
+      const SYNC_SCHEMA_VERSION = 2;
+      try {
+        const versionMeta = await db.get('meta', `syncSchemaVersion:${ACTIVE_PROGRAM_ID}`);
+        const storedVersion = versionMeta && versionMeta.value;
+        const versionMismatch = storedVersion !== SYNC_SCHEMA_VERSION;
+
+        // Always clear program-scoped records/photos/transactions before re-importing
+        // (prevents stale rows from previous syncs sticking around).
+        // On schema mismatch, also clear payments and any per-program meta.
+        const prefix = ACTIVE_PROGRAM_ID + ':';
+        const storesToClean = ['records', 'photos', 'transaction'];
+        if (versionMismatch) storesToClean.push('payments');
+
+        for (const storeName of storesToClean) {
+          if (!db.objectStoreNames.contains(storeName)) continue;
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          let cursor = await store.openCursor();
+          while (cursor) {
+            const key = cursor.key;
+            if (typeof key === 'string' && key.startsWith(prefix)) {
+              await cursor.delete();
+            }
+            cursor = await cursor.continue();
+          }
+          await tx.done;
+        }
+
+        if (versionMismatch) {
+          console.log(`[Sync] Schema version mismatch (had ${storedVersion}, expected ${SYNC_SCHEMA_VERSION}) — cleared cache for program ${ACTIVE_PROGRAM_ID}`);
+          await db.put('meta', {
+            key: `syncSchemaVersion:${ACTIVE_PROGRAM_ID}`,
+            value: SYNC_SCHEMA_VERSION
+          });
+        }
+      } catch (clearErr) {
+        // If clearing fails for any reason, log and continue — fresh writes
+        // below will at least overwrite same-keyed records.
+        console.warn('[Sync] Pre-import clear failed (continuing):', clearErr);
+      }
+
       // Import records
       let written = 0;
       for (const group of chunk(records, 50)) {
@@ -876,27 +921,6 @@ function scopedUUID(uuid) {
         key: 'displayConfig',
         value: DISPLAY_CONFIG
       });
-
-      // -------------------------------------------------------
-      // CLEAR OLD "submitted" PAYMENTS for this program.
-      // After a successful sync, any previously-submitted payments
-      // are stale — the new batch from 121 is the source of truth.
-      // Keeping them would block re-scanning the same beneficiary
-      // for new payment rounds.
-      // -------------------------------------------------------
-      if (db.objectStoreNames.contains("payments")) {
-        const payTx = db.transaction("payments", "readwrite");
-        const payStore = payTx.objectStore("payments");
-        const allPay = await payStore.getAll();
-        for (const p of allPay) {
-          if (
-            p.status === "submitted" &&
-            p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
-          ) {
-            await payStore.delete(p.uuid);
-          }
-        }
-      }
 
       // RETURN COUNTS
       return { written, photosWritten };
@@ -1259,10 +1283,7 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     for (const p of payments) {
       if (p.status === "success") {
         p.status = "submitted";
-        // p.uuid is already scoped (e.g. "programId:uuid") from
-        // savePaymentDecision — do NOT re-scope it, or we create
-        // a duplicate record and the original "success" entry
-        // is never cleared.
+        p.uuid = scopedUUID(p.uuid);
         await store.put(p);
       }
     }

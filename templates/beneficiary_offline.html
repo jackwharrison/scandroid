@@ -41,6 +41,10 @@
     .btn-approve { background:#e8f9ef; border-color:#bfe9cf; color:#065f46; }
     .btn-reject  { background:#fdecec; border-color:#f7c5c5; color:#7f1d1d; }
     .decision-note { font-size:13px; color:var(--muted); margin-top:8px; text-align:center; }
+    .amount-block { background:#f8fafc; border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .amount-label { color:var(--muted); font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; }
+    .amount-value { font-size:22px; font-weight:800; color:var(--navy); }
+    .amount-block.hidden { display:none; }
     footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
     @media (max-width:600px) {
       header { padding:8px 12px; }
@@ -91,6 +95,10 @@
     <div class="section">
       <div class="section-title">{{ t.title or "Beneficiary Information" }}</div>
       <div class="fields" id="fields"></div>
+    </div>
+    <div class="section amount-block hidden" id="amountBlock">
+      <div class="amount-label">{{ t.payment_amount or "Payment Amount" }}</div>
+      <div class="amount-value" id="amountValue">—</div>
     </div>
     <div class="section">
       <div class="actions">
@@ -156,6 +164,7 @@
     let photoEnabled={{ (photo_config and photo_config.enabled)|tojson }};
     const SERVER_FERNET_KEY="{{ fernet_key or '' }}";
     const COLUMN_TO_MATCH="{{ column_to_match }}";
+    const PROGRAM_CURRENCY="{{ program_currency or '' }}";
 
     function renderFields(container,data,keyB64){
       container.innerHTML="";
@@ -194,6 +203,23 @@
       if(!rec){fieldsEl.innerHTML='<div class="note">No offline record found for this beneficiary.</div>';if(photoMsg)photoMsg.textContent='No photo found in cache.';return;}
       if(rec.valid===false){window.location.href=`/invalid-qr?reason=${encodeURIComponent(rec.reason||"Invalid QR")}&lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;return;}
       renderFields(fieldsEl,rec.data||{},keyB64);
+      // Show payment amount: prefer transaction store, fall back to rec.amount
+      try{
+        let amount=null;
+        try{
+          const txRec=await dbGet(db,'transaction',rec.uuid);
+          if(txRec&&txRec.amount!=null&&txRec.amount!=='') amount=txRec.amount;
+        }catch(e){console.warn('Transaction store lookup failed:',e);}
+        if(amount==null&&rec.amount!=null&&rec.amount!=='') amount=rec.amount;
+        if(amount!=null){
+          const amountBlock=document.getElementById('amountBlock');
+          const amountValue=document.getElementById('amountValue');
+          const num=Number(amount);
+          const formatted=Number.isFinite(num)?num.toLocaleString(undefined,{maximumFractionDigits:2}):String(amount);
+          amountValue.textContent=PROGRAM_CURRENCY?`${formatted} ${PROGRAM_CURRENCY}`:formatted;
+          amountBlock.classList.remove('hidden');
+        }
+      }catch(e){console.warn('Could not load payment amount:',e);}
       if(photoEnabled){
         try{
           const rawPhotoUuid=ACTIVE_PROGRAM_ID&&rec.uuid.startsWith(ACTIVE_PROGRAM_ID+':')?rec.uuid.slice(ACTIVE_PROGRAM_ID.length+1):rec.uuid; const p=await dbGet(db,'photos',scopedUUID(rawPhotoUuid));
