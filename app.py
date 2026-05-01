@@ -295,7 +295,7 @@ translations = {
     "home_fsp": "Financial Service Provider",
     "fsp_login": "Log in for Financial Service Provider",
     "step_4_generate": "📤 Step 4. Generate Payments to Send to 121",
-    "payments_ready": "🔄 Payments ready to submit to 121",
+    "payments_ready": "🔄 Payments ready to submit to 121:",
     "generate_csv": "Step 4. Generate Payments CSV",
     "download_csv": "⬇️ Download CSV",
     "step_5_send": "✅ Step 5. Send Payments to 121",
@@ -325,7 +325,7 @@ translations = {
     "success_title": "Successfully submitted",
     "success_message": "You may now scan the next beneficiary.",
     "loading_counter": "Payments ready to push to 121: ...",
-    "payments_ready": "Payments ready to push to 121",
+    "payments_ready": "Payments ready to push to 121:",
     "scan_next": "Scan next beneficiary",
     "go_home": "Finished scanning? Go to homepage",
     "payment_prep": "Prepare to Send Payments",
@@ -353,6 +353,7 @@ translations = {
     "form_owner": "Owner",
     "no_form_connected": "Unable to load form details",
     "kobo_connection": "Kobo Connection",
+    "payment_amount": "Payment Amount",
 }
 ,
 "fr": {
@@ -436,7 +437,7 @@ translations = {
     "home_fsp": "Prestataire de services financiers",
     "fsp_login": "Connexion pour le prestataire de services financiers",
     "step_4_generate": "📤 Étape 4. Générer les paiements à envoyer à 121",
-    "payments_ready": "🔄 Paiements prêts à être soumis à 121 ",
+    "payments_ready": "🔄 Paiements prêts à être soumis à 121 :",
     "generate_csv": "Étape 4. Générer un CSV",
     "download_csv": "⬇️ Télécharger le CSV",
     "step_5_send": "✅ Étape 5. Envoyer les paiements à 121",
@@ -493,7 +494,8 @@ translations = {
     "connected_to": "Connecté au formulaire :",
     "form_owner": "Propriétaire",
     "no_form_connected": "Impossible de charger les détails du formulaire",
-    "kobo_connection": "Connexion Kobo"
+    "kobo_connection": "Connexion Kobo",
+    "payment_amount": "Montant du paiement",
 }
 ,
 "ar": {
@@ -576,7 +578,7 @@ translations = {
     "home_fsp": "مزود خدمات مالية",
     "fsp_login": "تسجيل الدخول لمزود الخدمة المالية",
     "step_4_generate": "📤 الخطوة 4. إنشاء الدفعات لإرسالها إلى 121",
-    "payments_ready": "🔄 الدفعات الجاهزة للإرسال إلى 121",
+    "payments_ready": "🔄 الدفعات الجاهزة للإرسال إلى 121:",
     "generate_csv": "إنشاء ملف CSV",
     "download_csv": "⬇️ تحميل ملف CSV",
     "step_5_send": "✅ الخطوة 5. إرسال الدفعات إلى 121",
@@ -634,7 +636,8 @@ translations = {
     "connected_to": "متصل بالنموذج:",
     "form_owner": "المالك",
     "no_form_connected": "تعذّر تحميل تفاصيل النموذج",
-    "kobo_connection": "اتصال كوبا" 
+    "kobo_connection": "اتصال كوبا",
+    "payment_amount": "مبلغ الدفع",
     }
 }
 
@@ -1690,7 +1693,7 @@ def ping():
 
 @app.route("/beneficiary-offline")
 def beneficiary_offline():
-    # expected: /beneficiary-offline?uuid=<registrationReferenceId>&lang=en
+    # expected: /beneficiary-offline?uuid=<registrationReferenceId>&lang=en&program_id=<id>
     uuid = request.args.get("uuid")
     lang = request.args.get("lang", session.get("lang", "en"))
     session["lang"] = lang
@@ -1698,12 +1701,16 @@ def beneficiary_offline():
     if not uuid:
         uuid = ""
 
-    program_id = session.get("fsp_program_id", "")
+    # Prefer URL param, fall back to session (handles SW precache and fresh tabs)
+    program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
 
     # load display config scoped to the active program
     try:
         full_config = load_display_config()
-        program_config = full_config.get("programs", {}).get(str(program_id), full_config)
+        programs_map = full_config.get("programs", {}) or {}
+        # Empty dict fallback (NOT the root config) — the root has no 'photo' key
+        # so falling back to it would silently disable the photo section.
+        program_config = programs_map.get(str(program_id), {}) if program_id else {}
         display_fields = program_config.get("fields", [])
         photo_config = program_config.get("photo", {})
     except Exception:
@@ -1723,7 +1730,8 @@ def beneficiary_offline():
         photo_config=photo_config,
         fernet_key=enc_key,
         column_to_match=column_to_match,
-        program_id=program_id
+        program_id=program_id,
+        program_currency=config.get("programCurrency", ""),
     )
 
 @app.route("/success-offline")
