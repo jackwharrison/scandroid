@@ -1,5 +1,5 @@
 /* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v22'; // Change this on every deploy
+const CACHE_VERSION = 'v23'; // Change this on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
