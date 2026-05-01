@@ -1751,6 +1751,21 @@ def system_config_json():
     return jsonify({"COLUMN_TO_MATCH": column})
 
 
+@app.route("/api/column-to-match/<program_id>")
+def api_column_to_match(program_id):
+    """
+    Returns the columnToMatch for a specific program, fetched fresh from the 121
+    API (with system_config fallback). The FSP admin page calls this during
+    sync so the offline beneficiary page can use the correct value at decision
+    time, even when its HTML shell was precached without session context.
+    """
+    config = load_config()
+    column = get_column_to_match(program_id) or config.get("COLUMN_TO_MATCH")
+    if not column:
+        return jsonify({"error": "columnToMatch could not be resolved"}), 404
+    return jsonify({"programId": str(program_id), "columnToMatch": column})
+
+
 
 def get_column_to_match(program_id):
     """Fetch columnToMatch for a program from the 121 API.
