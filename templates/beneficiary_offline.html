@@ -45,6 +45,7 @@
     .amount-label { color:var(--muted); font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; }
     .amount-value { font-size:22px; font-weight:800; color:var(--navy); }
     .amount-block.hidden { display:none; }
+    .photo-section.hidden { display:none; }
     footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
     @media (max-width:600px) {
       header { padding:8px 12px; }
@@ -81,8 +82,7 @@
 
 <main>
   <div class="card">
-    {% if photo_config and photo_config.enabled %}
-    <div class="section">
+    <div class="section photo-section hidden" id="photoSection">
       <div class="photo-wrap">
         <div class="photo-box">
           <img id="photo" alt="Photo">
@@ -91,7 +91,6 @@
         <div class="photo-badge" id="photoBadge"></div>
       </div>
     </div>
-    {% endif %}
     <div class="section">
       <div class="section-title">{{ t.title or "Beneficiary Information" }}</div>
       <div class="fields" id="fields"></div>
@@ -220,6 +219,9 @@
           amountBlock.classList.remove('hidden');
         }
       }catch(e){console.warn('Could not load payment amount:',e);}
+      // Reveal photo section if photos are enabled (config may come from server OR meta.displayConfig)
+      const photoSection=document.getElementById('photoSection');
+      if(photoEnabled&&photoSection)photoSection.classList.remove('hidden');
       if(photoEnabled){
         try{
           const rawPhotoUuid=ACTIVE_PROGRAM_ID&&rec.uuid.startsWith(ACTIVE_PROGRAM_ID+':')?rec.uuid.slice(ACTIVE_PROGRAM_ID.length+1):rec.uuid; const p=await dbGet(db,'photos',scopedUUID(rawPhotoUuid));
