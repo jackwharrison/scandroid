@@ -1823,186 +1823,231 @@ def submit_payments():
     import io
     import os
     import json
+    import traceback
     from datetime import datetime
     from cryptography.fernet import Fernet
 
-    # Load config
-    config = load_config()
-    # Use active program from session (multi-program support)
-    program_id = session.get("fsp_program_id") or config.get("programId")
-    fernet_key = config.get("ENCRYPTION_KEY")
-
-    if not program_id:
-        return "❌ No active program selected. Please go back and select a program.", 400
-
-    # Fetch column_to_match from 121 API for this specific program
-    column_to_match = get_column_to_match(program_id)
-
-    if not column_to_match:
-        return f"❌ Could not determine columnToMatch for program {program_id}. Check 121 FSP configuration.", 400
-
-    if not fernet_key:
-        return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
-
-    # Fernet decryptor
     try:
-        fernet = Fernet(fernet_key.encode())
-    except Exception as e:
-        return f"❌ Invalid Fernet key: {e}", 400
+        # Load config
+        config = load_config()
+        # Use active program from session (multi-program support)
+        program_id = session.get("fsp_program_id") or config.get("programId")
+        fernet_key = config.get("ENCRYPTION_KEY")
 
-    # Get uploaded CSV file
-    if 'csv' not in request.files:
-        return "❌ No CSV file provided", 400
+        if not program_id:
+            return "❌ No active program selected. Please go back and select a program.", 400
 
-    file = request.files['csv']
-    if file.filename == '':
-        return "❌ Empty filename", 400
+        # Fetch column_to_match from 121 API for this specific program
+        column_to_match = get_column_to_match(program_id)
 
-    try:
-        csv_content = file.stream.read().decode("utf-8")
-    except Exception as e:
-        return f"❌ Failed to read CSV: {e}", 400
+        if not column_to_match:
+            return f"❌ Could not determine columnToMatch for program {program_id}. Check 121 FSP configuration.", 400
 
-    reader = csv.DictReader(io.StringIO(csv_content))
-    rows = list(reader)
+        if not fernet_key:
+            return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
 
-    if not rows:
-        return "❌ CSV is empty", 400
+        # Fernet decryptor
+        try:
+            fernet = Fernet(fernet_key.encode())
+        except Exception as e:
+            return f"❌ Invalid Fernet key: {e}", 400
 
-    # -------------------------------
-    # LOAD OFFLINE CACHE FOR PAYMENT MAPPING
-    # -------------------------------
-    cache_base = "offline-cache"
+        # Get uploaded CSV file
+        if 'csv' not in request.files:
+            return "❌ No CSV file provided", 400
 
-    import re
-    def extract_batch_number(name):
-        match = re.search(r"payment-recent-batch-(\d+)", name)
-        return int(match.group(1)) if match else -1
+        file = request.files['csv']
+        if file.filename == '':
+            return "❌ Empty filename", 400
 
-    # Filter batch dirs to only those belonging to the active program
-    all_dirs = [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")]
-    program_dirs = []
-    for d in all_dirs:
-        batch_info_path = os.path.join(cache_base, d, "batch_info.json")
-        if os.path.exists(batch_info_path):
-            try:
-                with open(batch_info_path) as f:
-                    bi = json.load(f)
-                if str(bi.get("programId")) == str(program_id):
-                    program_dirs.append(d)
-            except Exception:
-                pass
-        else:
-            program_dirs.append(d)  # include legacy batches without batch_info
+        try:
+            csv_content = file.stream.read().decode("utf-8")
+        except Exception as e:
+            return f"❌ Failed to read CSV: {e}", 400
 
-    batch_dirs = sorted(program_dirs, key=extract_batch_number)
+        reader = csv.DictReader(io.StringIO(csv_content))
+        rows = list(reader)
 
-    if not batch_dirs:
-        return "❌ No recent payment batches found for this program — run sync first.", 400
+        if not rows:
+            return "❌ CSV is empty", 400
 
-    latest_batch = batch_dirs[-1]
-    print(f"[DEBUG] Using batch folder: {latest_batch}")
+        # -------------------------------
+        # LOAD OFFLINE CACHE FOR PAYMENT MAPPING
+        # -------------------------------
+        cache_base = "offline-cache"
 
-    reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
-    if not os.path.exists(reg_cache_path):
-        return "❌ registrations_cache.json missing — run sync again.", 400
+        import re
+        def extract_batch_number(name):
+            match = re.search(r"payment-recent-batch-(\d+)", name)
+            return int(match.group(1)) if match else -1
 
-    try:
-        with open(reg_cache_path, "r", encoding="utf-8") as f:
-            reg_data = json.load(f)
-    except Exception as e:
-        return f"❌ Failed to load registrations_cache.json — {e}", 500
+        # Defensive: cache_base may not exist on a fresh deployment
+        if not os.path.isdir(cache_base):
+            return (
+                f"❌ Offline cache directory '{cache_base}' not found on the server. "
+                "Run sync first to create it.",
+                400,
+            )
 
-    # -------------------------------
-    # BUILD MAP: plaintext match column → paymentId
-    # -------------------------------
-    match_to_pid = {}
+        # Filter batch dirs to only those belonging to the active program
+        all_dirs = [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")]
+        program_dirs = []
+        for d in all_dirs:
+            batch_info_path = os.path.join(cache_base, d, "batch_info.json")
+            if os.path.exists(batch_info_path):
+                try:
+                    with open(batch_info_path) as f:
+                        bi = json.load(f)
+                    if str(bi.get("programId")) == str(program_id):
+                        program_dirs.append(d)
+                except Exception:
+                    pass
+            else:
+                program_dirs.append(d)  # include legacy batches without batch_info
 
-    for record in reg_data:
-        uuid = record.get("uuid")
-        payment_id = record.get("paymentId")
+        batch_dirs = sorted(program_dirs, key=extract_batch_number)
 
-        encrypted_value = record.get("data", {}).get(column_to_match, "")
+        if not batch_dirs:
+            return "❌ No recent payment batches found for this program — run sync first.", 400
 
-        if encrypted_value and payment_id:
-            try:
-                decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
-                match_to_pid[decrypted_value] = payment_id
-            except Exception as e:
-                print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+        latest_batch = batch_dirs[-1]
+        print(f"[DEBUG] Using batch folder: {latest_batch}")
 
-    # -------------------------------
-    # GROUP CSV ROWS BY paymentId
-    # -------------------------------
-    grouped = {}
+        reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
+        if not os.path.exists(reg_cache_path):
+            return "❌ registrations_cache.json missing — run sync again.", 400
 
-    for row in rows:
-        raw_value = row.get(column_to_match, "").strip()
-        status = row.get("status", "").strip()
+        try:
+            with open(reg_cache_path, "r", encoding="utf-8") as f:
+                reg_data = json.load(f)
+        except Exception as e:
+            return f"❌ Failed to load registrations_cache.json — {e}", 500
 
-        # If incoming value is still encrypted (rare)
-        if raw_value.startswith("gAAAA"):
-            try:
-                raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
-            except Exception as e:
-                print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+        # -------------------------------
+        # BUILD MAP: plaintext match column → paymentId
+        # -------------------------------
+        match_to_pid = {}
+
+        for record in reg_data:
+            uuid = record.get("uuid")
+            payment_id = record.get("paymentId")
+
+            encrypted_value = record.get("data", {}).get(column_to_match, "")
+
+            if encrypted_value and payment_id:
+                try:
+                    decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
+                    match_to_pid[decrypted_value] = payment_id
+                except Exception as e:
+                    print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+
+        # -------------------------------
+        # GROUP CSV ROWS BY paymentId
+        # -------------------------------
+        grouped = {}
+
+        for row in rows:
+            raw_value = row.get(column_to_match, "").strip()
+            status = row.get("status", "").strip()
+
+            # If incoming value is still encrypted (rare)
+            if raw_value.startswith("gAAAA"):
+                try:
+                    raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
+                except Exception as e:
+                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+                    continue
+
+            payment_id = match_to_pid.get(raw_value)
+
+            if not payment_id:
+                print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
-        payment_id = match_to_pid.get(raw_value)
-
-        if not payment_id:
-            print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
-            continue
-
-        grouped.setdefault(payment_id, []).append({
-            column_to_match: raw_value,
-            "status": status
-        })
-
-    if not grouped:
-        return "❌ No valid rows to submit — check your CSV and sync data.", 400
-
-    # -------------------------------
-    # SUBMIT TO 121 /paymentId/excel-reconciliation
-    # -------------------------------
-    token = get_121_token()
-    if not token:
-        return "❌ Login to 121 failed", 401
-
-    success_count = 0
-    fail_count = 0
-
-    for pid, items in grouped.items():
-        output_buffer = io.StringIO()
-        writer = csv.DictWriter(output_buffer, fieldnames=[column_to_match, "status"])
-        writer.writeheader()
-
-        for item in items:
-            writer.writerow({
-                column_to_match: item[column_to_match],
-                "status": item["status"]
+            grouped.setdefault(payment_id, []).append({
+                column_to_match: raw_value,
+                "status": status
             })
 
-        upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
+        if not grouped:
+            return (
+                f"❌ No valid rows to submit. Either the CSV's '{column_to_match}' values "
+                "don't match any cached registration, or the column name in the CSV differs "
+                "from the configured matching field. Re-sync and try again.",
+                400,
+            )
 
-        files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+        # -------------------------------
+        # SUBMIT TO 121 /paymentId/excel-reconciliation
+        # -------------------------------
+        token = get_121_token()
+        if not token:
+            return "❌ Login to 121 failed", 401
 
-        upload_resp = requests.post(upload_url, files=files, cookies={"access_token_general": token})
+        success_count = 0
+        fail_count = 0
+        failure_details = []
 
-        if upload_resp.status_code == 201:
-            success_count += 1
-            print(f"[OK] Submitted to paymentId {pid}")
+        for pid, items in grouped.items():
+            output_buffer = io.StringIO()
+            writer = csv.DictWriter(output_buffer, fieldnames=[column_to_match, "status"])
+            writer.writeheader()
+
+            for item in items:
+                writer.writerow({
+                    column_to_match: item[column_to_match],
+                    "status": item["status"]
+                })
+
+            upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
+
+            files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+
+            try:
+                upload_resp = requests.post(
+                    upload_url,
+                    files=files,
+                    cookies={"access_token_general": token},
+                    timeout=30,
+                )
+            except requests.RequestException as e:
+                fail_count += 1
+                failure_details.append(f"paymentId {pid}: network error — {e}")
+                print(f"[ERROR] Network error submitting paymentId {pid}: {e}")
+                continue
+
+            if upload_resp.status_code == 201:
+                success_count += 1
+                print(f"[OK] Submitted to paymentId {pid}")
+            else:
+                fail_count += 1
+                snippet = (upload_resp.text or "")[:300]
+                failure_details.append(
+                    f"paymentId {pid}: HTTP {upload_resp.status_code} — {snippet}"
+                )
+                print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+
+        # -------------------------------
+        # FINAL RESPONSE
+        # -------------------------------
+        if success_count > 0:
+            msg = f"✅ Submitted to {success_count} paymentId(s)."
+            if fail_count:
+                msg += f" ❌ {fail_count} failed: " + " | ".join(failure_details)
+            return msg, 200
         else:
-            fail_count += 1
-            print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+            detail = " | ".join(failure_details) if failure_details else "no details available"
+            return f"❌ All submissions failed. {detail}", 502
 
-    # -------------------------------
-    # FINAL RESPONSE
-    # -------------------------------
-    if success_count > 0:
-        return f"✅ Submitted to {success_count} paymentId(s). ❌ {fail_count} failed.", 200
-    else:
-        return "❌ All submissions failed.", 500
+    except Exception as e:
+        # Last-resort handler: surface a readable message to the frontend
+        # AND log the full traceback for server-side debugging.
+        tb = traceback.format_exc()
+        print(f"[FATAL] /submit-payments crashed: {e}\n{tb}")
+        return (
+            f"❌ Server error in /submit-payments: {type(e).__name__}: {e}",
+            500,
+        )
 
 
 @app.route("/invalid-qr")
