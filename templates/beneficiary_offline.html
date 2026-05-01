@@ -156,7 +156,6 @@
     let photoEnabled={{ (photo_config and photo_config.enabled)|tojson }};
     const SERVER_FERNET_KEY="{{ fernet_key or '' }}";
     const COLUMN_TO_MATCH="{{ column_to_match }}";
-    const PROGRAM_CURRENCY="{{ program_currency or '' }}";
 
     function renderFields(container,data,keyB64){
       container.innerHTML="";
@@ -195,20 +194,6 @@
       if(!rec){fieldsEl.innerHTML='<div class="note">No offline record found for this beneficiary.</div>';if(photoMsg)photoMsg.textContent='No photo found in cache.';return;}
       if(rec.valid===false){window.location.href=`/invalid-qr?reason=${encodeURIComponent(rec.reason||"Invalid QR")}&lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;return;}
       renderFields(fieldsEl,rec.data||{},keyB64);
-      // Show payment amount from transaction store
-      try{
-        const txRec=await dbGet(db,'transaction',rec.uuid);
-        if(txRec&&txRec.amount!=null){
-          const amountRow=document.createElement('div'); amountRow.className='field-row';
-          const amountLabel=document.createElement('div'); amountLabel.className='field-label';
-          amountLabel.textContent={{ t.payment_amount|tojson }};
-          const amountValue=document.createElement('div'); amountValue.className='field-value';
-          const formatted=Number(txRec.amount).toLocaleString();
-          amountValue.textContent=PROGRAM_CURRENCY?`${formatted} ${PROGRAM_CURRENCY}`:formatted;
-          amountRow.appendChild(amountLabel); amountRow.appendChild(amountValue);
-          fieldsEl.appendChild(amountRow);
-        }
-      }catch(e){console.warn('Could not load transaction amount:',e);}
       if(photoEnabled){
         try{
           const rawPhotoUuid=ACTIVE_PROGRAM_ID&&rec.uuid.startsWith(ACTIVE_PROGRAM_ID+':')?rec.uuid.slice(ACTIVE_PROGRAM_ID.length+1):rec.uuid; const p=await dbGet(db,'photos',scopedUUID(rawPhotoUuid));
