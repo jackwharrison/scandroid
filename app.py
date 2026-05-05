@@ -1165,14 +1165,14 @@ def config_page():
     # ------------------------------------------------------
     # Strict mode – drop invalid fields per program
     # ------------------------------------------------------
-    if allowed_attributes:
+    if allowed_attributes and active_program_id:
         allowed_names = {a["name"] for a in allowed_attributes}
-        for pdata in config_data.get("programs", {}).values():
+        pdata = config_data.get("programs", {}).get(active_program_id)
+        if pdata:
             pdata["fields"] = [
                 f for f in pdata.get("fields", [])
                 if f.get("key") in allowed_names
             ]
-
     # ------------------------------------------------------
     # Kobo image fields
     # ------------------------------------------------------
