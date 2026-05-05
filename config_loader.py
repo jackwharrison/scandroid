@@ -1,43 +1,41 @@
 import json
 import os
 
-ENV = os.getenv("SCANDROID_ENV", "local")     # local | azure
-CONTEXT = os.getenv("SCANDROID_CONTEXT", "local")
+def _get_paths():
+    env = os.getenv("SCANDROID_ENV", "local")
+    context = os.getenv("SCANDROID_CONTEXT", "local")
 
-if ENV == "azure":
-    BASE_PATH = f"/home/site/configs/{CONTEXT}"
-else:
-    BASE_PATH = os.path.join(
-        os.path.dirname(__file__),
-        "configs",
-        CONTEXT
+    if env == "azure":
+        base = f"/home/site/configs/{context}"
+    else:
+        base = os.path.join(os.path.dirname(__file__), "configs", context)
+
+    os.makedirs(base, exist_ok=True)
+    return (
+        os.path.join(base, "system_config.json"),
+        os.path.join(base, "display_config.json"),
     )
 
-os.makedirs(BASE_PATH, exist_ok=True)
-
-SYSTEM_PATH = os.path.join(BASE_PATH, "system_config.json")
-DISPLAY_PATH = os.path.join(BASE_PATH, "display_config.json")
-
-
 def load_config():
-    if not os.path.exists(SYSTEM_PATH):
+    system_path, _ = _get_paths()
+    if not os.path.exists(system_path):
         return {}
-    with open(SYSTEM_PATH, "r", encoding="utf-8") as f:
+    with open(system_path, "r", encoding="utf-8") as f:
         return json.load(f)
-
 
 def save_config(data):
-    with open(SYSTEM_PATH, "w", encoding="utf-8") as f:
+    system_path, _ = _get_paths()
+    with open(system_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-
 def load_display_config():
-    if not os.path.exists(DISPLAY_PATH):
+    _, display_path = _get_paths()
+    if not os.path.exists(display_path):
         return {}
-    with open(DISPLAY_PATH, "r", encoding="utf-8") as f:
+    with open(display_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 def save_display_config(data):
-    with open(DISPLAY_PATH, "w", encoding="utf-8") as f:
+    _, display_path = _get_paths()
+    with open(display_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
