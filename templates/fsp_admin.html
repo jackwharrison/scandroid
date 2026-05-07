@@ -396,12 +396,33 @@
           padding: 14px;
           font-size: 0.85rem;
         }
+      }
 
-        .btn-disabled {
-          opacity: 0.5;
-          pointer-events: none;
-          filter: grayscale(40%);
-        }
+      .btn-disabled {
+        opacity: 0.5;
+        pointer-events: none;
+        filter: grayscale(40%);
+        cursor: not-allowed !important;
+      }
+
+      /* Inline tooltip / hint shown next to a disabled button */
+      .offline-hint {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 6px 10px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .offline-hint.visible { display: inline-flex; }
+      .offline-hint::before {
+        content: "⚠";
+        font-size: 0.95rem;
       }
       .back-btn {
         display: inline-flex;
@@ -531,6 +552,9 @@
         {{ t.last_synced or "Last synced:" }}
         <span id="lastSyncedText">Not synced yet</span>
       </div>
+      <div id="syncOfflineHint" class="offline-hint">
+        {{ t.cannot_sync_offline or "Cannot sync while offline" }}
+      </div>
     </div>
 
     <button id="syncBtn">
@@ -572,6 +596,10 @@
       </div>
 
       <div id="sendError" class="error-box" style="display:none;"></div>
+
+      <div id="sendOfflineHint" class="offline-hint">
+        {{ t.cannot_send_offline or "Cannot send while offline" }}
+      </div>
     </div>
 
     <button id="sendBtn">
@@ -755,6 +783,11 @@ document.addEventListener('click', function(e) {
     }
   }
 
+
+  // Default to whatever the browser tells us — flipped accurately by the
+  // first ping a moment later. This means the Sync/Send buttons reflect
+  // connectivity from the very first paint, not after 3 minutes of pings.
+  setOnlineState(navigator.onLine);
 
   checkOnline();
   setInterval(checkOnline, 60000);
@@ -1321,17 +1354,31 @@ window.addEventListener("DOMContentLoaded", () => {
 function updateOnlineButtonState(isOnline) {
     const syncBtn = document.getElementById("syncBtn");
     const sendBtn = document.getElementById("sendBtn");
+    const syncHint = document.getElementById("syncOfflineHint");
+    const sendHint = document.getElementById("sendOfflineHint");
 
     if (isOnline) {
         syncBtn.disabled = false;
         sendBtn.disabled = false;
         syncBtn.classList.remove("btn-disabled");
         sendBtn.classList.remove("btn-disabled");
+        syncBtn.removeAttribute("aria-disabled");
+        sendBtn.removeAttribute("aria-disabled");
+        syncBtn.removeAttribute("title");
+        sendBtn.removeAttribute("title");
+        if (syncHint) syncHint.classList.remove("visible");
+        if (sendHint) sendHint.classList.remove("visible");
     } else {
         syncBtn.disabled = true;
         sendBtn.disabled = true;
         syncBtn.classList.add("btn-disabled");
         sendBtn.classList.add("btn-disabled");
+        syncBtn.setAttribute("aria-disabled", "true");
+        sendBtn.setAttribute("aria-disabled", "true");
+        syncBtn.title = "Cannot sync while offline";
+        sendBtn.title = "Cannot send while offline";
+        if (syncHint) syncHint.classList.add("visible");
+        if (sendHint) sendHint.classList.add("visible");
     }
 }
 </script>
