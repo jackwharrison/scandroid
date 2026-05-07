@@ -701,7 +701,19 @@ document.addEventListener('click', function(e) {
   // Service worker
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js?v=2', { updateViaCache: 'none' }).catch(()=>{});
+      navigator.serviceWorker.register('/service-worker.js?v=3', { updateViaCache: 'none' })
+        .then(() => {
+          // Warm the cache for offline FSP flow.
+          // We're authenticated here, so /scan returns the real rendered page
+          // (not a redirect to /fsp-login), and the SW will cache it.
+          // Fire-and-forget; failure is fine — the SW also caches lazily on
+          // first real navigation.
+          ['/scan', '/invalid-qr', '/beneficiary-offline', '/success-offline']
+            .forEach(path => {
+              fetch(path, { credentials: 'same-origin', cache: 'no-store' }).catch(()=>{});
+            });
+        })
+        .catch(()=>{});
     });
   }
 
@@ -757,12 +769,7 @@ document.addEventListener('click', function(e) {
 
 function scopedUUID(uuid) {
   if (!ACTIVE_PROGRAM_ID) return String(uuid);
-  const s = String(uuid);
-  // Idempotent: if the value is already scoped to this program, leave it alone.
-  // Prevents accidental double-prefixing (e.g. "10:abc" → "10:10:abc").
-  const prefix = `${ACTIVE_PROGRAM_ID}:`;
-  if (s.startsWith(prefix)) return s;
-  return `${prefix}${s}`;
+  return `${ACTIVE_PROGRAM_ID}:${uuid}`;
 }
 
   // ---------- IndexedDB ----------
@@ -815,51 +822,6 @@ function scopedUUID(uuid) {
       const records = JSON.parse(jsonText) || [];
 
       const db = await openScandroidDB();
-
-      // ---- SAFETY NET: clear stale data for this program before importing ----
-      // Bump SYNC_SCHEMA_VERSION whenever the on-disk record/photo/transaction
-      // shape changes. On version mismatch we wipe ALL program-scoped data
-      // for this program so users never get stuck with corrupted records.
-      const SYNC_SCHEMA_VERSION = 2;
-      try {
-        const versionMeta = await db.get('meta', `syncSchemaVersion:${ACTIVE_PROGRAM_ID}`);
-        const storedVersion = versionMeta && versionMeta.value;
-        const versionMismatch = storedVersion !== SYNC_SCHEMA_VERSION;
-
-        // Always clear program-scoped records/photos/transactions before re-importing
-        // (prevents stale rows from previous syncs sticking around).
-        // On schema mismatch, also clear payments and any per-program meta.
-        const prefix = ACTIVE_PROGRAM_ID + ':';
-        const storesToClean = ['records', 'photos', 'transaction'];
-        if (versionMismatch) storesToClean.push('payments');
-
-        for (const storeName of storesToClean) {
-          if (!db.objectStoreNames.contains(storeName)) continue;
-          const tx = db.transaction(storeName, 'readwrite');
-          const store = tx.objectStore(storeName);
-          let cursor = await store.openCursor();
-          while (cursor) {
-            const key = cursor.key;
-            if (typeof key === 'string' && key.startsWith(prefix)) {
-              await cursor.delete();
-            }
-            cursor = await cursor.continue();
-          }
-          await tx.done;
-        }
-
-        if (versionMismatch) {
-          console.log(`[Sync] Schema version mismatch (had ${storedVersion}, expected ${SYNC_SCHEMA_VERSION}) — cleared cache for program ${ACTIVE_PROGRAM_ID}`);
-          await db.put('meta', {
-            key: `syncSchemaVersion:${ACTIVE_PROGRAM_ID}`,
-            value: SYNC_SCHEMA_VERSION
-          });
-        }
-      } catch (clearErr) {
-        // If clearing fails for any reason, log and continue — fresh writes
-        // below will at least overwrite same-keyed records.
-        console.warn('[Sync] Pre-import clear failed (continuing):', clearErr);
-      }
 
       // Import records
       let written = 0;
@@ -927,32 +889,6 @@ function scopedUUID(uuid) {
         value: DISPLAY_CONFIG
       });
 
-      // Fetch and persist the program-specific columnToMatch from the server.
-      // The beneficiary offline page reads this from IndexedDB at decision time,
-      // which avoids the stale-shell problem where the SW serves a precached
-      // HTML containing the wrong (or empty) baked-in COLUMN_TO_MATCH.
-      try {
-        const ctmRes = await fetch(
-          `/api/column-to-match/${encodeURIComponent(ACTIVE_PROGRAM_ID)}`,
-          { cache: 'no-store' }
-        );
-        if (ctmRes.ok) {
-          const ctmJson = await ctmRes.json();
-          const column = ctmJson && ctmJson.columnToMatch;
-          if (column) {
-            await db.put('meta', {
-              key: `columnToMatch:${ACTIVE_PROGRAM_ID}`,
-              value: column
-            });
-            console.log(`[Sync] columnToMatch for program ${ACTIVE_PROGRAM_ID}: ${column}`);
-          }
-        } else {
-          console.warn(`[Sync] columnToMatch fetch failed: HTTP ${ctmRes.status}`);
-        }
-      } catch (ctmErr) {
-        console.warn('[Sync] columnToMatch fetch errored (continuing):', ctmErr);
-      }
-
       // RETURN COUNTS
       return { written, photosWritten };
 
@@ -981,9 +917,7 @@ function scopedUUID(uuid) {
     const tx = db.transaction('payments', 'readonly');
     const store = tx.objectStore('payments');
     const allPayments = await store.getAll();
-    // Only count pending ("success") payments for this program — not already-submitted ones.
     const programPayments = allPayments.filter(p =>
-      p.status === "success" &&
       p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
     );
     csvCountEl.textContent = programPayments.length;
@@ -1309,10 +1243,6 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     if (!res.ok) throw new Error(text || "Failed submitting payments");
 
     // SUCCESS → update status = submitted
-    // NOTE: p.uuid is already program-scoped (loadPaymentsReadyCount filters
-    // by `${ACTIVE_PROGRAM_ID}:` prefix), so DON'T re-scope here. Re-scoping
-    // would produce "10:10:abc-..." keys and create duplicate records instead
-    // of updating the existing ones.
     const db = await openScandroidDB();
     const tx = db.transaction("payments", "readwrite");
     const store = tx.objectStore("payments");
@@ -1320,6 +1250,7 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     for (const p of payments) {
       if (p.status === "success") {
         p.status = "submitted";
+        p.uuid = scopedUUID(p.uuid);
         await store.put(p);
       }
     }
@@ -1374,80 +1305,9 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
   });
 </script>
 <script>
-// -------------------------------------------------------------
-// One-time self-healing: clean up payments with double-prefixed
-// keys (e.g. "10:10:abc-...") created by an earlier bug where the
-// post-submit handler re-scoped already-scoped UUIDs. Runs on every
-// page load; idempotent — does nothing once duplicates are gone.
-// -------------------------------------------------------------
-async function cleanupDoubledPaymentKeys() {
-  if (!ACTIVE_PROGRAM_ID) return;
-  try {
-    const db = await openScandroidDB();
-    if (!db.objectStoreNames.contains("payments")) return;
-
-    const doublePrefix = `${ACTIVE_PROGRAM_ID}:${ACTIVE_PROGRAM_ID}:`;
-    const singlePrefix = `${ACTIVE_PROGRAM_ID}:`;
-
-    const all = await db.transaction("payments", "readonly")
-      .objectStore("payments").getAll();
-
-    const doubled = all.filter(p =>
-      typeof p.uuid === "string" && p.uuid.startsWith(doublePrefix)
-    );
-    if (!doubled.length) return;
-
-    console.log(`[cleanup] Found ${doubled.length} doubled payment key(s) — repairing`);
-
-    // Index originals by their (correct) key for fast lookup
-    const byKey = new Map(
-      all
-        .filter(p => typeof p.uuid === "string" && p.uuid.startsWith(singlePrefix)
-                  && !p.uuid.startsWith(doublePrefix))
-        .map(p => [p.uuid, p])
-    );
-
-    const tx = db.transaction("payments", "readwrite");
-    const store = tx.objectStore("payments");
-
-    for (const dup of doubled) {
-      // The "real" key is dup.uuid with one prefix stripped.
-      const realKey = dup.uuid.slice(ACTIVE_PROGRAM_ID.length + 1); // strip first "10:"
-      const original = byKey.get(realKey);
-
-      if (original) {
-        // Original exists. The duplicate (status="submitted") tells us the send
-        // succeeded, so promote the original from "success" → "submitted".
-        if (dup.status === "submitted" && original.status === "success") {
-          original.status = "submitted";
-          // Carry across the submission timestamp if present
-          if (dup.timestamp) original.timestamp = dup.timestamp;
-          await store.put(original);
-        }
-        // Delete the doubled duplicate
-        await store.delete(dup.uuid);
-      } else {
-        // No original — re-key the duplicate to its correct single-prefixed key.
-        const fixed = { ...dup, uuid: realKey };
-        await store.put(fixed);
-        await store.delete(dup.uuid);
-      }
-    }
-
-    await tx.done;
-    console.log("[cleanup] Done.");
-  } catch (e) {
-    console.warn("[cleanup] Failed (non-fatal):", e);
-  }
-}
-</script>
-<script>
-window.addEventListener("DOMContentLoaded", async () => {
-  // Self-heal first, then refresh all counters that depend on payments
-  await cleanupDoubledPaymentKeys();
+window.addEventListener("DOMContentLoaded", () => {
+  // Restore payments ready count
   loadPaymentsReadyCount().catch(console.error);
-  if (typeof loadPeopleScannedCount === "function") loadPeopleScannedCount().catch(console.error);
-  if (typeof loadTotalAmount === "function") loadTotalAmount().catch(console.error);
 
   // Restore last payment submission
   const savedSubmission = localStorage.getItem("scandroid_last_payment_submission");
