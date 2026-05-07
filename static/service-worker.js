@@ -1,9 +1,14 @@
-/* Scandroid PWA service worker — v7 */
-const CACHE_VERSION = 'v25'; // Change this on every deploy
+/* Scandroid PWA service worker — v8 */
+const CACHE_VERSION = 'v26'; // bump on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
+// NOTE: We deliberately do NOT precache /scan, /fsp-admin, /fsp-login here
+// because they're auth-protected. During install the user is often
+// unauthenticated, so precaching would store a redirect to /fsp-login
+// instead of the real page. We let them be cached lazily on first
+// successful (authenticated) navigation instead.
 const PRECACHE_URLS = [
-  "/", "/fsp-login", "/fsp-admin",   "/scan", "/invalid-qr",
+  "/", "/invalid-qr",
   "/beneficiary-offline", "/success-offline",
   "/static/scandroid.png", "/static/scandroid_banner.png",
   "/static/ns1.png", "/static/ns2.png",
@@ -27,30 +32,26 @@ self.addEventListener("install", (event) => {
   );
 });
 
-
 self.addEventListener("activate", (event) => {
   self.clients.claim();
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys
-          .filter(k => k !== CACHE_NAME)
-          .map(k => caches.delete(k))
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
       )
     )
   );
 });
 
+// Routes that require auth on the server, but MUST work offline once cached.
+// Strategy: network-first with very short timeout, fall back to cache.
+// On success we update the cache, but ONLY if response is a real 200 HTML
+// (never cache redirects — they would poison the offline experience).
+const APP_SHELL_AUTH_ROUTES = ["/scan", "/fsp-admin", "/fsp-login"];
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  if (
-    url.pathname.startsWith("/fsp-admin") ||
-    url.pathname.startsWith("/fsp-login")
-  ) {
-    event.respondWith(networkFirstNavigation(req));
-    return;
-  }
 
   if (req.method !== "GET") return;
 
@@ -64,24 +65,28 @@ self.addEventListener("fetch", (event) => {
         .then(() => new Response("", { status: 204 }))
         .catch(() => new Response("", { status: 503 }))
     );
-    return; // ← VERY IMPORTANT
+    return;
   }
 
-  // Special handling for Kobo sync ZIP
+  // Special handling for Kobo sync ZIP (online-only, but cache last-good)
   if (url.pathname === "/api/offline/latest.zip") {
     event.respondWith(networkThenCache(req));
     return;
   }
-  // NEVER cache scan page – auth-protected, may redirect
-  if (url.pathname === "/scan") {
-    event.respondWith(networkFirstNavigation(req));
+
+  // -------- AUTH-PROTECTED APP SHELL ROUTES --------
+  // These must work offline. Use network-first with short timeout
+  // and only cache 200 HTML (not redirects).
+  if (APP_SHELL_AUTH_ROUTES.includes(url.pathname)) {
+    event.respondWith(networkFirstWithCacheUpdate(req, 1500));
     return;
   }
 
   // -------- OFFLINE-FIRST APP ROUTES --------
   const offlineFirstRoutes = [
     "/beneficiary-offline",
-    "/success-offline"
+    "/success-offline",
+    "/invalid-qr"
   ];
 
   if (offlineFirstRoutes.includes(url.pathname)) {
@@ -98,7 +103,6 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirstNavigation(req));
     return;
   }
-
 
   // Static assets
   if (isStatic(req)) {
@@ -120,6 +124,54 @@ function isStatic(req) {
   );
 }
 
+/**
+ * Network-first with timeout for auth-protected app-shell routes.
+ * - If network succeeds AND response is a real 200 (not a redirect),
+ *   update the cache and return the fresh response.
+ * - If network fails / times out, return whatever is in cache.
+ * - Cache lookup ignores query strings so /scan?lang=fr still works.
+ */
+async function networkFirstWithCacheUpdate(req, timeoutMs) {
+  const cache = await caches.open(CACHE_NAME);
+  const url = new URL(req.url);
+
+  const fetchPromise = (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(req, { cache: "no-store", signal: controller.signal });
+      clearTimeout(timer);
+      // Only cache real 200 OK HTML — never redirects, never errors.
+      if (res && res.ok && !res.redirected && res.status === 200) {
+        try {
+          // Cache under the bare path so query strings don't fragment cache.
+          cache.put(url.pathname, res.clone());
+        } catch (e) {
+          console.warn("[SW] cache.put failed:", e);
+        }
+      }
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      throw e;
+    }
+  })();
+
+  try {
+    return await fetchPromise;
+  } catch (e) {
+    // Offline / timeout — try cache (ignoreSearch so query strings are tolerated)
+    let cached = await cache.match(req, { ignoreSearch: true });
+    if (cached) return cached;
+    cached = await cache.match(url.pathname);
+    if (cached) return cached;
+    return new Response(
+      "<h1>Offline</h1><p>This page hasn't been cached yet. Please connect to the internet once and reload it before going offline.</p>",
+      { status: 503, headers: { "Content-Type": "text/html" } }
+    );
+  }
+}
+
 async function networkFirstNavigation(req) {
   try {
     return await fetch(req, { cache: "no-store" });
@@ -127,22 +179,16 @@ async function networkFirstNavigation(req) {
     const cache = await caches.open(CACHE_NAME);
     const url = new URL(req.url);
 
-      let cached = await cache.match(req, { ignoreSearch: true });
-      if (cached) return cached;
+    let cached = await cache.match(req, { ignoreSearch: true });
+    if (cached) return cached;
 
-      let path = url.pathname;
-
-      // Try raw path
-      cached = await cache.match(path);
-      if (cached) return cached;
-
-      // Try with trailing slash
-      cached = await cache.match(path + '/');
-      if (cached) return cached;
-
-      // Try .html fallback
-      cached = await cache.match(path + '.html');
-      if (cached) return cached;
+    let path = url.pathname;
+    cached = await cache.match(path);
+    if (cached) return cached;
+    cached = await cache.match(path + '/');
+    if (cached) return cached;
+    cached = await cache.match(path + '.html');
+    if (cached) return cached;
 
     const offline = await cache.match("/offline");
     return offline || new Response("Offline", { status: 503 });
@@ -154,16 +200,25 @@ async function cacheFirst(req) {
   const cached = await cache.match(req, { ignoreSearch: true });
   if (cached) return cached;
 
-  const fresh = await fetch(req);
-  cache.put(req, fresh.clone());
-  return fresh;
+  try {
+    const fresh = await fetch(req);
+    if (fresh && fresh.ok && !fresh.redirected) {
+      cache.put(req, fresh.clone());
+    }
+    return fresh;
+  } catch (e) {
+    return new Response(
+      "<h1>Offline</h1><p>This page hasn't been cached yet.</p>",
+      { status: 503, headers: { "Content-Type": "text/html" } }
+    );
+  }
 }
 
 async function networkThenCache(req) {
   try {
     const res = await fetch(req, { cache: "no-store" });
     const cache = await caches.open(CACHE_NAME);
-    cache.put(req, res.clone());
+    if (res && res.ok) cache.put(req, res.clone());
     return res;
   } catch (e) {
     const cache = await caches.open(CACHE_NAME);
