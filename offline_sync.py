@@ -1,5 +1,8 @@
 import os
 import json
+import sys
+print("[DIAG] executable:", sys.executable, file=sys.stderr)
+print("[DIAG] sys.path:", sys.path, file=sys.stderr)
 import requests
 from datetime import datetime, timedelta
 from collections import defaultdict

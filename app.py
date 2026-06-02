@@ -730,13 +730,9 @@ def admin_dashboard():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
-    # Load title from system_config.json
-    config = load_config()
-    program_title = config.get("programTitle", "")
 
     return render_template(
         "admin_dashboard.html",
-        program_title=program_title,
         lang=lang,
         t=t,
         username=session.get("admin_username")
