@@ -1,3 +1,18 @@
+# --- Application Insights / Azure Monitor setup -----------------------------
+# Configure as early as possible, before the instrumented libraries (Flask,
+# requests) do any work. Only activates when the connection string env var is
+# present, so local development is unaffected.
+import os
+import logging
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+    configure_azure_monitor(enable_live_metrics=True)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+# ----------------------------------------------------------------------------
+
 from flask import Flask, render_template, request, send_file, redirect, session, url_for, flash, jsonify, send_from_directory
 import requests
 from io import BytesIO
@@ -806,7 +821,7 @@ def system_config():
                     entry["koboFormName"] = j.get("name")
                     entry["koboFormOwner"] = j.get("owner__username")
             except Exception as e:
-                print("Kobo validation error:", e)
+                logger.error("Kobo validation error: %s", e)
 
             programs.append(entry)
 
@@ -839,7 +854,7 @@ def system_config():
                 token = j.get("access_token_general")
                 program_ids = [int(pid) for pid in j.get("permissions", {}).keys()]
         except Exception as e:
-            print("121 login failed:", e)
+            logger.warning("121 login failed: %s", e)
 
     # ---- Load program titles ----
     if token:
@@ -855,7 +870,7 @@ def system_config():
                     title = titles.get(lang) or next(iter(titles.values()), f"Program {pid}")
                     program_options.append({"id": pid, "title": title})
             except Exception as e:
-                print(f"Program load failed ({pid}):", e)
+                logger.warning(f"Program load failed ({pid}): %s", e)
 
     # Existing mappings for UI
     program_mappings = config.get("PROGRAMS", [])
@@ -916,7 +931,7 @@ def api_program_attributes(program_id):
                     attributes.append({"name": name, "label": label})
 
     except Exception as e:
-        print(f"[api_program_attributes] Error: {e}")
+        logger.error(f"[api_program_attributes] Error: {e}")
 
     # Kobo image fields for this program
     try:
@@ -950,7 +965,7 @@ def api_program_attributes(program_id):
                         if name:
                             kobo_image_fields.append({"name": name, "label": label})
     except Exception as e:
-        print(f"[api_program_attributes] Kobo error: {e}")
+        logger.error(f"[api_program_attributes] Kobo error: {e}")
 
     return jsonify({"attributes": attributes, "kobo_image_fields": kobo_image_fields})
 
@@ -1045,7 +1060,7 @@ def config_page():
                     program_lookup[str(pid)] = p
 
         except Exception as e:
-            print("Program title lookup failed:", e)
+            logger.warning("Program title lookup failed: %s", e)
 
     # Safety fallback
     if not programs:
@@ -1156,7 +1171,7 @@ def config_page():
                     pass
 
         except Exception as e:
-            print("121 lookup failed:", e)
+            logger.warning("121 lookup failed: %s", e)
 
     # ------------------------------------------------------
     # Strict mode – drop invalid fields per program
@@ -1236,7 +1251,7 @@ def config_page():
                                 "label": label
                             })
     except Exception as e:
-        print("Kobo lookup failed:", e)
+        logger.warning("Kobo lookup failed: %s", e)
 
     # ------------------------------------------------------
     # Strict mode – image field per program
@@ -1395,7 +1410,7 @@ def fsp_program_selector():
                     })
 
         except Exception as e:
-            print("Program lookup failed:", e)
+            logger.warning("Program lookup failed: %s", e)
 
     # ------------------------------------------------------
     # Fallback: titles = program IDs
@@ -1493,7 +1508,7 @@ def fsp_admin():
                     titles = r.json().get("titlePortal", {})
                     program_title = titles.get(lang) or next(iter(titles.values()), program_title)
         except Exception as e:
-            print(f"[fsp_admin] Failed to fetch 121 program title: {e}")
+            logger.warning(f"[fsp_admin] Failed to fetch 121 program title: {e}")
 
     username = session.get("fsp_username")
 
@@ -1539,8 +1554,8 @@ def sync_fsp():
             env=env                      # 🔑 PASS ENV
         )
 
-        print("\n[DEBUG] STDOUT:\n", result.stdout)
-        print("\n[DEBUG] STDERR:\n", result.stderr)
+        logger.debug("\n[DEBUG] STDOUT:\n %s", result.stdout)
+        logger.debug("\n[DEBUG] STDERR:\n %s", result.stderr)
 
         if result.returncode != 0:
             return jsonify({
@@ -1609,7 +1624,7 @@ def scan():
                         titles = r.json().get("titlePortal", {})
                         program_title = titles.get(lang) or next(iter(titles.values()), "")
             except Exception as e:
-                print(f"[scan] Failed to fetch 121 program title: {e}")
+                logger.warning(f"[scan] Failed to fetch 121 program title: {e}")
 
     return render_template(
         "scan.html",
@@ -1784,7 +1799,7 @@ def get_column_to_match(program_id):
                             if prop.get("name") == "columnToMatch":
                                 return prop.get("value")
         except Exception as e:
-            print(f"[get_column_to_match] API error: {e}")
+            logger.error(f"[get_column_to_match] API error: {e}")
 
     # Fallback to per-program stored value, then legacy global value
     per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
@@ -1799,7 +1814,7 @@ def get_121_token():
     base_url = config.get("url121")
 
     if not username or not password or not base_url:
-        print("❌ Missing 121 credentials")
+        logger.error("❌ Missing 121 credentials")
         return None
 
     login_url = f"{base_url}/api/users/login"
@@ -1812,19 +1827,19 @@ def get_121_token():
         )
 
         if resp.status_code != 201:
-            print(f"❌ Login failed ({resp.status_code}): {resp.text}")
+            logger.error(f"❌ Login failed ({resp.status_code}): {resp.text}")
             return None
 
         # 121 API returns token in JSON (correct behaviour)
         token = resp.json().get("access_token_general")
         if not token:
-            print("❌ Login succeeded but no token returned")
+            logger.error("❌ Login succeeded but no token returned")
             return None
 
         return token
 
     except Exception as e:
-        print(f"❌ 121 API error: {e}")
+        logger.error(f"❌ 121 API error: {e}")
         return None
 
 
@@ -1922,7 +1937,7 @@ def submit_payments():
             return "❌ No recent payment batches found for this program — run sync first.", 400
 
         latest_batch = batch_dirs[-1]
-        print(f"[DEBUG] Using batch folder: {latest_batch}")
+        logger.debug(f"[DEBUG] Using batch folder: {latest_batch}")
 
         reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
         if not os.path.exists(reg_cache_path):
@@ -1950,7 +1965,7 @@ def submit_payments():
                     decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
                     match_to_pid[decrypted_value] = payment_id
                 except Exception as e:
-                    print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+                    logger.warning(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
 
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
@@ -1966,13 +1981,13 @@ def submit_payments():
                 try:
                     raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
                 except Exception as e:
-                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+                    logger.warning(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
                     continue
 
             payment_id = match_to_pid.get(raw_value)
 
             if not payment_id:
-                print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
+                logger.warning(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
             grouped.setdefault(payment_id, []).append({
@@ -2024,19 +2039,19 @@ def submit_payments():
             except requests.RequestException as e:
                 fail_count += 1
                 failure_details.append(f"paymentId {pid}: network error — {e}")
-                print(f"[ERROR] Network error submitting paymentId {pid}: {e}")
+                logger.error(f"[ERROR] Network error submitting paymentId {pid}: {e}")
                 continue
 
             if upload_resp.status_code == 201:
                 success_count += 1
-                print(f"[OK] Submitted to paymentId {pid}")
+                logger.info(f"[OK] Submitted to paymentId {pid}")
             else:
                 fail_count += 1
                 snippet = (upload_resp.text or "")[:300]
                 failure_details.append(
                     f"paymentId {pid}: HTTP {upload_resp.status_code} — {snippet}"
                 )
-                print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+                logger.error(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
 
         # -------------------------------
         # FINAL RESPONSE
@@ -2054,7 +2069,7 @@ def submit_payments():
         # Last-resort handler: surface a readable message to the frontend
         # AND log the full traceback for server-side debugging.
         tb = traceback.format_exc()
-        print(f"[FATAL] /submit-payments crashed: {e}\n{tb}")
+        logger.error(f"[FATAL] /submit-payments crashed: {e}\n{tb}")
         return (
             f"❌ Server error in /submit-payments: {type(e).__name__}: {e}",
             500,

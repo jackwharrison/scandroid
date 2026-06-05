@@ -7,3 +7,4 @@ Pillow
 Flask-Session
 openpyxl
 xlrd
+azure-monitor-opentelemetry
