@@ -1,18 +1,3 @@
-# --- Application Insights / Azure Monitor setup -----------------------------
-# Configure as early as possible, before the instrumented libraries (Flask,
-# requests) do any work. Only activates when the connection string env var is
-# present, so local development is unaffected.
-import os
-import logging
-from azure.monitor.opentelemetry import configure_azure_monitor
-
-if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-    configure_azure_monitor(enable_live_metrics=True)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-# ----------------------------------------------------------------------------
-
 from flask import Flask, render_template, request, send_file, redirect, session, url_for, flash, jsonify, send_from_directory
 import requests
 from io import BytesIO
@@ -67,7 +52,40 @@ def _make_qr_image(data, box_cm=3.0):
     img = img.resize((target_px, target_px))
     return img
 
-def _draw_voucher(c, item, static_folder):
+
+# ---------------------------------------------------------------------------
+# Instance-static helpers (used by the voucher designer + voucher rendering)
+#
+# Per-program voucher logos are stored in the same instance static folder that
+# /instance-static/<filename> serves from. On Azure that is the per-context
+# config folder; locally it falls back to the app's static/ folder.
+# ---------------------------------------------------------------------------
+def _instance_static_dir():
+    env = os.getenv("SCANDROID_ENV", "local")
+    context = os.getenv("SCANDROID_CONTEXT", "local")
+    if env == "azure":
+        path = f"/home/site/configs/{context}/static"
+    else:
+        path = os.path.join(app.root_path, "static")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _resolve_logo_path(filename, static_folder=None):
+    """Return the on-disk path for a stored logo filename, or None."""
+    if not filename:
+        return None
+    bases = [_instance_static_dir()]
+    if static_folder:
+        bases.append(static_folder)
+    for base in bases:
+        candidate = os.path.join(base, filename)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _draw_voucher(c, item, static_folder, design=None):
     """
     Draw one voucher on an A5 LANDSCAPE page matching the provided layout.
     Supports dynamic CSV fields.
@@ -84,9 +102,20 @@ def _draw_voucher(c, item, static_folder):
     logo_height = 2.5 * cm       # height of left logo
     logo_top_y = height - margin - 1.0*cm   # move logos DOWN slightly (was -0.0)
 
-    # LEFT LOGO (ns1)
+    # Per-program design (title / subtitle / logos), with hardcoded fallbacks
+    design = design or {}
+    left_logo_path = (
+        _resolve_logo_path(design.get("logo1"), static_folder)
+        or os.path.join(static_folder, "ns1.png")
+    )
+    right_logo_path = (
+        _resolve_logo_path(design.get("logo2"), static_folder)
+        or os.path.join(static_folder, "ns2.png")
+    )
+
+    # LEFT LOGO
     try:
-        logo1 = ImageReader(os.path.join(static_folder, "ns1.png"))
+        logo1 = ImageReader(left_logo_path)
         c.drawImage(
             logo1,
             margin,                          # <--- as far left as possible
@@ -100,9 +129,9 @@ def _draw_voucher(c, item, static_folder):
     except:
         left_logo_top = height - margin - 0.5*cm
 
-    # RIGHT LOGO (ns2) – wide logo, scale by width
+    # RIGHT LOGO – wide logo, scale by width
     try:
-        logo2 = ImageReader(os.path.join(static_folder, "ns2.png"))
+        logo2 = ImageReader(right_logo_path)
         max_width = 5.0 * cm
 
         img_w, img_h = logo2.getSize()
@@ -138,16 +167,26 @@ def _draw_voucher(c, item, static_folder):
     )
 
     # --- MAIN TITLE just below "Project" ---
+    title_text = design.get("title") or "CASH ON THE MOVE"
     title_y = project_y - 1.4*cm
     c.setFont("DejaVu", 22)
-    c.drawCentredString(width/2, title_y, "CASH ON THE MOVE")
+    c.drawCentredString(width/2, title_y, title_text)
 
-    # Subtitle lines
+    # Subtitle lines (newline-separated; falls back to the original copy)
+    subtitle_raw = design.get("subtitle")
+    if subtitle_raw:
+        subtitle_lines = [ln.strip() for ln in str(subtitle_raw).splitlines() if ln.strip()]
+    else:
+        subtitle_lines = [
+            "Supporting people on the move especially those",
+            "in vulnerable situations",
+        ]
+
     c.setFont("DejaVu", 11)
-    c.drawCentredString(width/2, title_y - 1.0*cm,
-                        "Supporting people on the move especially those")
-    c.drawCentredString(width/2, title_y - 1.6*cm,
-                        "in vulnerable situations")
+    sub_y = title_y - 1.0*cm
+    for line in subtitle_lines:
+        c.drawCentredString(width/2, sub_y, line)
+        sub_y -= 0.6*cm
     # ---- QR CODE ------------------------------------------------------------
     qr_box_size = 5.0 * cm
     qr_x = margin + 0.6*cm
@@ -209,9 +248,10 @@ def _draw_voucher(c, item, static_folder):
         )
 
 
-def generate_vouchers_pdf(rows, static_folder):
+def generate_vouchers_pdf(rows, static_folder, design=None):
     """
     rows: list of dicts with keys: referenceId, name
+    design: optional per-program voucher design (title/subtitle/logos)
     returns BytesIO of PDF
     """
     from io import BytesIO
@@ -221,12 +261,147 @@ def generate_vouchers_pdf(rows, static_folder):
     c = canvas.Canvas(pdf_io, pagesize=landscape(A5))
 
     for r in rows:
-        _draw_voucher(c, r, static_folder)
+        _draw_voucher(c, r, static_folder, design=design)
         c.showPage()
 
     c.save()
     pdf_io.seek(0)
     return pdf_io
+
+
+# ---------------------------------------------------------------------------
+# Program list + voucher design storage helpers
+# ---------------------------------------------------------------------------
+def resolve_programs(system_config=None):
+    """Return (programs, lookup).
+
+    programs: list of {"id": str, "title": str} for the program dropdowns.
+    lookup:   {program_id: raw program object}.
+
+    Tries to resolve human-readable titles from 121 (same approach as the
+    field-config page); falls back to the program id if that fails.
+    """
+    if system_config is None:
+        try:
+            system_config = load_config()
+        except Exception:
+            system_config = {}
+
+    programs_raw = system_config.get("PROGRAMS", [])
+    programs, lookup = [], {}
+    url121 = system_config.get("url121")
+
+    if url121 and programs_raw:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", ""),
+                },
+                timeout=10,
+            )
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+                for p in programs_raw:
+                    pid = p.get("programId")
+                    title = str(pid)
+                    try:
+                        r = requests.get(
+                            f"{url121}/api/programs/{pid}",
+                            cookies=cookies,
+                            timeout=10,
+                        )
+                        if r.status_code == 200:
+                            titles = r.json().get("titlePortal", {}) or {}
+                            title = titles.get("en") or next(iter(titles.values()), title)
+                    except Exception:
+                        pass
+                    programs.append({"id": str(pid), "title": title})
+                    lookup[str(pid)] = p
+        except Exception as e:
+            print("Program title lookup failed:", e)
+
+    # Fallback: ids only
+    if not programs:
+        for p in programs_raw:
+            pid = str(p.get("programId"))
+            programs.append({"id": pid, "title": pid})
+            lookup[pid] = p
+
+    return programs, lookup
+
+
+# Note: SVG is intentionally excluded — ReportLab's ImageReader cannot render
+# SVG into the voucher PDF, so only raster formats are accepted.
+ALLOWED_LOGO_EXT = {"png", "jpg", "jpeg"}
+
+
+def load_voucher_designs():
+    """All per-program voucher designs stored in display_config.json."""
+    try:
+        cfg = load_display_config()
+    except Exception:
+        cfg = {}
+    return (cfg or {}).get("voucher_designs", {}) or {}
+
+
+def get_voucher_design(program_id):
+    if program_id is None:
+        return None
+    return load_voucher_designs().get(str(program_id))
+
+
+def save_voucher_design(program_id, design):
+    cfg = load_display_config() or {}
+    cfg.setdefault("voucher_designs", {})
+    cfg["voucher_designs"][str(program_id)] = design
+    save_display_config(cfg)
+
+
+def _save_logo_file(file_storage, program_id, slot):
+    """Persist an uploaded logo to the instance static folder; return filename.
+
+    Raises ValueError if the file isn't an accepted raster format.
+    """
+    original = (file_storage.filename or "").lower()
+    ext = original.rsplit(".", 1)[-1] if "." in original else ""
+    if ext not in ALLOWED_LOGO_EXT:
+        raise ValueError("Unsupported logo format. Please use a PNG or JPG image.")
+    filename = f"voucher_logo_{program_id}_{slot}.{ext}"
+    file_storage.save(os.path.join(_instance_static_dir(), filename))
+    return filename
+
+
+def _logo_url(filename):
+    """Served URL for a stored logo, cache-busted by file mtime.
+
+    Logo filenames are stable per program/slot and get overwritten on re-upload,
+    so without a version param browsers would keep showing the old image.
+    """
+    if not filename:
+        return None
+    url = f"/instance-static/{filename}"
+    path = _resolve_logo_path(filename)
+    if path:
+        try:
+            url += f"?v={int(os.path.getmtime(path))}"
+        except OSError:
+            pass
+    return url
+
+
+def _design_for_client(design):
+    """Shape a stored design for the browser (logo filenames -> served URLs)."""
+    design = design or {}
+    return {
+        "title": design.get("title", ""),
+        "subtitle": design.get("subtitle", ""),
+        "logo1_url": _logo_url(design.get("logo1")),
+        "logo2_url": _logo_url(design.get("logo2")),
+    }
+
 
 translations = {
 "en": {
@@ -369,6 +544,28 @@ translations = {
     "no_form_connected": "Unable to load form details",
     "kobo_connection": "Kobo Connection",
     "payment_amount": "Payment Amount",
+    "voucher_design": "Voucher Design",
+    "voucher_design_desc": "Customise the title, subtitle and logos printed on each program's vouchers.",
+    "voucher_design_title": "Voucher Design",
+    "voucher_design_settings": "Design settings",
+    "voucher_design_settings_desc": "These replace the values printed on the voucher. Each program keeps its own design.",
+    "voucher_title_label": "Title",
+    "voucher_subtitle_label": "Subtitle",
+    "voucher_logos_label": "Logos",
+    "voucher_left_logo": "Left logo",
+    "voucher_right_logo": "Right logo",
+    "voucher_logo_upload": "Upload",
+    "voucher_logo_remove": "remove",
+    "voucher_no_logo": "No logo",
+    "voucher_live_preview": "Live preview",
+    "voucher_preview_desc": "A5 landscape, matching the printed voucher layout.",
+    "voucher_save_design": "Save design",
+    "voucher_design_saved": "Design saved",
+    "voucher_design_save_failed": "Could not save design",
+    "voucher_design_incomplete_title": "Voucher design not completed",
+    "voucher_design_incomplete_desc": "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers.",
+    "voucher_design_go": "Design this voucher",
+    "program": "Program",
 }
 ,
 "fr": {
@@ -821,7 +1018,7 @@ def system_config():
                     entry["koboFormName"] = j.get("name")
                     entry["koboFormOwner"] = j.get("owner__username")
             except Exception as e:
-                logger.error("Kobo validation error: %s", e)
+                print("Kobo validation error:", e)
 
             programs.append(entry)
 
@@ -854,7 +1051,7 @@ def system_config():
                 token = j.get("access_token_general")
                 program_ids = [int(pid) for pid in j.get("permissions", {}).keys()]
         except Exception as e:
-            logger.warning("121 login failed: %s", e)
+            print("121 login failed:", e)
 
     # ---- Load program titles ----
     if token:
@@ -870,7 +1067,7 @@ def system_config():
                     title = titles.get(lang) or next(iter(titles.values()), f"Program {pid}")
                     program_options.append({"id": pid, "title": title})
             except Exception as e:
-                logger.warning(f"Program load failed ({pid}): %s", e)
+                print(f"Program load failed ({pid}):", e)
 
     # Existing mappings for UI
     program_mappings = config.get("PROGRAMS", [])
@@ -931,7 +1128,7 @@ def api_program_attributes(program_id):
                     attributes.append({"name": name, "label": label})
 
     except Exception as e:
-        logger.error(f"[api_program_attributes] Error: {e}")
+        print(f"[api_program_attributes] Error: {e}")
 
     # Kobo image fields for this program
     try:
@@ -965,7 +1162,7 @@ def api_program_attributes(program_id):
                         if name:
                             kobo_image_fields.append({"name": name, "label": label})
     except Exception as e:
-        logger.error(f"[api_program_attributes] Kobo error: {e}")
+        print(f"[api_program_attributes] Kobo error: {e}")
 
     return jsonify({"attributes": attributes, "kobo_image_fields": kobo_image_fields})
 
@@ -1060,7 +1257,7 @@ def config_page():
                     program_lookup[str(pid)] = p
 
         except Exception as e:
-            logger.warning("Program title lookup failed: %s", e)
+            print("Program title lookup failed:", e)
 
     # Safety fallback
     if not programs:
@@ -1171,7 +1368,7 @@ def config_page():
                     pass
 
         except Exception as e:
-            logger.warning("121 lookup failed: %s", e)
+            print("121 lookup failed:", e)
 
     # ------------------------------------------------------
     # Strict mode – drop invalid fields per program
@@ -1251,7 +1448,7 @@ def config_page():
                                 "label": label
                             })
     except Exception as e:
-        logger.warning("Kobo lookup failed: %s", e)
+        print("Kobo lookup failed:", e)
 
     # ------------------------------------------------------
     # Strict mode – image field per program
@@ -1410,7 +1607,7 @@ def fsp_program_selector():
                     })
 
         except Exception as e:
-            logger.warning("Program lookup failed: %s", e)
+            print("Program lookup failed:", e)
 
     # ------------------------------------------------------
     # Fallback: titles = program IDs
@@ -1508,7 +1705,7 @@ def fsp_admin():
                     titles = r.json().get("titlePortal", {})
                     program_title = titles.get(lang) or next(iter(titles.values()), program_title)
         except Exception as e:
-            logger.warning(f"[fsp_admin] Failed to fetch 121 program title: {e}")
+            print(f"[fsp_admin] Failed to fetch 121 program title: {e}")
 
     username = session.get("fsp_username")
 
@@ -1554,8 +1751,8 @@ def sync_fsp():
             env=env                      # 🔑 PASS ENV
         )
 
-        logger.debug("\n[DEBUG] STDOUT:\n %s", result.stdout)
-        logger.debug("\n[DEBUG] STDERR:\n %s", result.stderr)
+        print("\n[DEBUG] STDOUT:\n", result.stdout)
+        print("\n[DEBUG] STDERR:\n", result.stderr)
 
         if result.returncode != 0:
             return jsonify({
@@ -1624,7 +1821,7 @@ def scan():
                         titles = r.json().get("titlePortal", {})
                         program_title = titles.get(lang) or next(iter(titles.values()), "")
             except Exception as e:
-                logger.warning(f"[scan] Failed to fetch 121 program title: {e}")
+                print(f"[scan] Failed to fetch 121 program title: {e}")
 
     return render_template(
         "scan.html",
@@ -1799,7 +1996,7 @@ def get_column_to_match(program_id):
                             if prop.get("name") == "columnToMatch":
                                 return prop.get("value")
         except Exception as e:
-            logger.error(f"[get_column_to_match] API error: {e}")
+            print(f"[get_column_to_match] API error: {e}")
 
     # Fallback to per-program stored value, then legacy global value
     per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
@@ -1814,7 +2011,7 @@ def get_121_token():
     base_url = config.get("url121")
 
     if not username or not password or not base_url:
-        logger.error("❌ Missing 121 credentials")
+        print("❌ Missing 121 credentials")
         return None
 
     login_url = f"{base_url}/api/users/login"
@@ -1827,19 +2024,19 @@ def get_121_token():
         )
 
         if resp.status_code != 201:
-            logger.error(f"❌ Login failed ({resp.status_code}): {resp.text}")
+            print(f"❌ Login failed ({resp.status_code}): {resp.text}")
             return None
 
         # 121 API returns token in JSON (correct behaviour)
         token = resp.json().get("access_token_general")
         if not token:
-            logger.error("❌ Login succeeded but no token returned")
+            print("❌ Login succeeded but no token returned")
             return None
 
         return token
 
     except Exception as e:
-        logger.error(f"❌ 121 API error: {e}")
+        print(f"❌ 121 API error: {e}")
         return None
 
 
@@ -1937,7 +2134,7 @@ def submit_payments():
             return "❌ No recent payment batches found for this program — run sync first.", 400
 
         latest_batch = batch_dirs[-1]
-        logger.debug(f"[DEBUG] Using batch folder: {latest_batch}")
+        print(f"[DEBUG] Using batch folder: {latest_batch}")
 
         reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
         if not os.path.exists(reg_cache_path):
@@ -1965,7 +2162,7 @@ def submit_payments():
                     decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
                     match_to_pid[decrypted_value] = payment_id
                 except Exception as e:
-                    logger.warning(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+                    print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
 
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
@@ -1981,13 +2178,13 @@ def submit_payments():
                 try:
                     raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
                 except Exception as e:
-                    logger.warning(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
                     continue
 
             payment_id = match_to_pid.get(raw_value)
 
             if not payment_id:
-                logger.warning(f"[!] No paymentId found for {column_to_match}: {raw_value}")
+                print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
             grouped.setdefault(payment_id, []).append({
@@ -2039,19 +2236,19 @@ def submit_payments():
             except requests.RequestException as e:
                 fail_count += 1
                 failure_details.append(f"paymentId {pid}: network error — {e}")
-                logger.error(f"[ERROR] Network error submitting paymentId {pid}: {e}")
+                print(f"[ERROR] Network error submitting paymentId {pid}: {e}")
                 continue
 
             if upload_resp.status_code == 201:
                 success_count += 1
-                logger.info(f"[OK] Submitted to paymentId {pid}")
+                print(f"[OK] Submitted to paymentId {pid}")
             else:
                 fail_count += 1
                 snippet = (upload_resp.text or "")[:300]
                 failure_details.append(
                     f"paymentId {pid}: HTTP {upload_resp.status_code} — {snippet}"
                 )
-                logger.error(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+                print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
 
         # -------------------------------
         # FINAL RESPONSE
@@ -2069,7 +2266,7 @@ def submit_payments():
         # Last-resort handler: surface a readable message to the frontend
         # AND log the full traceback for server-side debugging.
         tb = traceback.format_exc()
-        logger.error(f"[FATAL] /submit-payments crashed: {e}\n{tb}")
+        print(f"[FATAL] /submit-payments crashed: {e}\n{tb}")
         return (
             f"❌ Server error in /submit-payments: {type(e).__name__}: {e}",
             500,
@@ -2089,6 +2286,87 @@ def invalid_qr():
         lang=lang,
         t=translations.get(lang, translations["en"]),
         program_id=program_id
+    )
+
+
+@app.route("/voucher-design", methods=["GET", "POST"])
+def voucher_design():
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
+
+    lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+    username = session.get("admin_username", "Admin")
+
+    # ------------------------------------------------------
+    # POST (SAVE A PROGRAM'S VOUCHER DESIGN) – multipart form
+    # ------------------------------------------------------
+    if request.method == "POST":
+        program_id = request.form.get("programId")
+        if not program_id:
+            return jsonify({"success": False, "error": "Missing programId"}), 400
+
+        existing = get_voucher_design(program_id) or {}
+        design = {
+            "title": (request.form.get("title") or "").strip(),
+            "subtitle": (request.form.get("subtitle") or "").strip(),
+            "logo1": existing.get("logo1"),
+            "logo2": existing.get("logo2"),
+        }
+
+        # Explicit clears
+        if request.form.get("logo1_clear") == "1":
+            design["logo1"] = None
+        if request.form.get("logo2_clear") == "1":
+            design["logo2"] = None
+
+        # New uploads (overwrite)
+        try:
+            f1 = request.files.get("logo1")
+            if f1 and f1.filename:
+                design["logo1"] = _save_logo_file(f1, program_id, "left")
+            f2 = request.files.get("logo2")
+            if f2 and f2.filename:
+                design["logo2"] = _save_logo_file(f2, program_id, "right")
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)}), 400
+
+        try:
+            save_voucher_design(program_id, design)
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+        return jsonify({"success": True, "design": _design_for_client(design)})
+
+    # ------------------------------------------------------
+    # GET (LOAD PAGE)
+    # ------------------------------------------------------
+    try:
+        system_config = load_config()
+    except Exception:
+        system_config = {}
+
+    programs, _ = resolve_programs(system_config)
+    designs = load_voucher_designs()
+
+    active_program_id = request.args.get("programId")
+    if not active_program_id and programs:
+        active_program_id = programs[0]["id"]
+    active_program_id = str(active_program_id) if active_program_id else None
+
+    designs_client = {str(pid): _design_for_client(d) for pid, d in designs.items()}
+
+    program_title = system_config.get("programTitle", "")
+
+    return render_template(
+        "voucher_design.html",
+        programs=programs,
+        active_program_id=active_program_id,
+        designs=designs_client,
+        program_title=program_title,
+        lang=lang,
+        username=username,
+        t=t,
     )
 
 
@@ -2115,12 +2393,25 @@ def vouchers_page():
     # Program title from session OR fallback to system_config
     program_title = session.get("program_title") or system_config.get("programTitle", "")
 
+    # Program dropdown + which programs already have a saved voucher design
+    programs, _ = resolve_programs(system_config)
+    designs = load_voucher_designs()
+    designs_status = {str(p["id"]): (str(p["id"]) in designs) for p in programs}
+
+    active_program_id = request.args.get("programId")
+    if not active_program_id and programs:
+        active_program_id = programs[0]["id"]
+    active_program_id = str(active_program_id) if active_program_id else None
+
     return render_template(
         "vouchers.html",
         lang=lang,
         t=t,
         program_title=program_title,
-        username=username
+        username=username,
+        programs=programs,
+        designs_status=designs_status,
+        active_program_id=active_program_id,
     )
 
 
@@ -2248,6 +2539,7 @@ def vouchers_upload():
         # Save metadata
         session["voucher_file_path"] = upload_path
         session["voucher_count"] = len(rows)
+        session["voucher_program_id"] = request.form.get("program_id") or None
 
         return jsonify({"success": True, "count": len(rows)})
 
@@ -2386,11 +2678,15 @@ def vouchers_download():
         return redirect(url_for("vouchers_page"))
 
     # -----------------------------
-    # Generate PDF
+    # Generate PDF (using the selected program's design, if any)
     # -----------------------------
+    program_id = session.get("voucher_program_id")
+    design = get_voucher_design(program_id) if program_id else None
+
     pdf_io = generate_vouchers_pdf(
         rows,
-        static_folder=os.path.join(app.root_path, "static")
+        static_folder=os.path.join(app.root_path, "static"),
+        design=design,
     )
 
     return send_file(
