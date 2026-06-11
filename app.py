@@ -99,11 +99,11 @@ def _draw_voucher(c, item, static_folder, design=None):
     # ---- BORDER -------------------------------------------------------------
     c.setLineWidth(0.8)
     c.rect(margin, margin, inner_w, inner_h)
-    logo_height = 2.5 * cm       # height of left logo
     logo_top_y = height - margin - 1.0*cm   # move logos DOWN slightly (was -0.0)
 
-    # Per-program design (title / subtitle / logos), with hardcoded fallbacks
+    # Per-program design (title / subtitle / logos / sizes), with hardcoded fallbacks
     design = design or {}
+    logo_height = LEFT_LOGO_HEIGHT_CM.get(_clean_size(design.get("logo1_size")), 2.5) * cm
     left_logo_path = (
         _resolve_logo_path(design.get("logo1"), static_folder)
         or os.path.join(static_folder, "ns1.png")
@@ -132,7 +132,7 @@ def _draw_voucher(c, item, static_folder, design=None):
     # RIGHT LOGO – wide logo, scale by width
     try:
         logo2 = ImageReader(right_logo_path)
-        max_width = 5.0 * cm
+        max_width = RIGHT_LOGO_WIDTH_CM.get(_clean_size(design.get("logo2_size")), 5.0) * cm
 
         img_w, img_h = logo2.getSize()
         scale = max_width / img_w
@@ -337,6 +337,17 @@ def resolve_programs(system_config=None):
 # SVG into the voucher PDF, so only raster formats are accepted.
 ALLOWED_LOGO_EXT = {"png", "jpg", "jpeg"}
 
+# Per-logo prominence. Values stored in the design; mapped to real dimensions
+# at render time (left logo is sized by height, right logo by width).
+LOGO_SIZES = {"small", "medium", "large"}
+LEFT_LOGO_HEIGHT_CM = {"small": 1.8, "medium": 2.5, "large": 3.3}
+RIGHT_LOGO_WIDTH_CM = {"small": 4.0, "medium": 5.0, "large": 6.2}
+
+
+def _clean_size(value):
+    value = (value or "").strip().lower()
+    return value if value in LOGO_SIZES else "medium"
+
 
 def load_voucher_designs():
     """All per-program voucher designs stored in display_config.json."""
@@ -400,6 +411,8 @@ def _design_for_client(design):
         "subtitle": design.get("subtitle", ""),
         "logo1_url": _logo_url(design.get("logo1")),
         "logo2_url": _logo_url(design.get("logo2")),
+        "logo1_size": _clean_size(design.get("logo1_size")),
+        "logo2_size": _clean_size(design.get("logo2_size")),
     }
 
 
@@ -565,6 +578,10 @@ translations = {
     "voucher_design_incomplete_title": "Voucher design not completed",
     "voucher_design_incomplete_desc": "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers.",
     "voucher_design_go": "Design this voucher",
+    "voucher_logo_size": "Size",
+    "voucher_size_small": "Small",
+    "voucher_size_medium": "Medium",
+    "voucher_size_large": "Large",
     "program": "Program",
 }
 ,
@@ -2312,6 +2329,8 @@ def voucher_design():
             "subtitle": (request.form.get("subtitle") or "").strip(),
             "logo1": existing.get("logo1"),
             "logo2": existing.get("logo2"),
+            "logo1_size": _clean_size(request.form.get("logo1_size") or existing.get("logo1_size")),
+            "logo2_size": _clean_size(request.form.get("logo2_size") or existing.get("logo2_size")),
         }
 
         # Explicit clears
