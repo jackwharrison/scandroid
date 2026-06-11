@@ -165,6 +165,18 @@
       background: none; border: none; cursor: pointer; text-decoration: underline;
     }
 
+    .logo-size { margin-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .logo-size .size-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .size-seg { display: inline-flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    .size-seg button {
+      width: 30px; padding: 5px 0; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+      background: #fff; color: var(--muted); border: none; border-right: 1px solid #e5e7eb;
+      transition: background .15s ease, color .15s ease;
+    }
+    .size-seg button:last-child { border-right: none; }
+    .size-seg button:hover { background: #f3f4f6; }
+    .size-seg button.active { background: var(--violet); color: #fff; }
+
     .save-btn {
       margin-top: 26px; width: 100%; padding: 12px 20px; font-size: 1rem; font-weight: 700;
       background: #fff; color: var(--violet); border: 2px solid var(--violet); border-radius: 999px;
@@ -184,6 +196,9 @@
     .v-logos { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .v-logo { height: 11%; min-height: 30px; display: flex; align-items: center; }
     .voucher .v-logo img { max-height: 46px; max-width: 130px; object-fit: contain; }
+    .voucher .v-logo.size-small img  { max-height: 33px; max-width: 95px; }
+    .voucher .v-logo.size-medium img { max-height: 46px; max-width: 130px; }
+    .voucher .v-logo.size-large img  { max-height: 61px; max-width: 168px; }
     .v-logo.left { justify-content: flex-start; }
     .v-logo.right { justify-content: flex-end; }
     .v-logo .placeholder {
@@ -329,6 +344,14 @@
               <input type="file" id="logo1Input" accept="image/png, image/jpeg">
             </label>
             <button type="button" class="logo-clear" id="logo1Clear" style="display:none;">{{ t.voucher_logo_remove or "remove" }}</button>
+            <div class="logo-size" data-slot="1">
+              <span class="size-label">{{ t.voucher_logo_size or "Size" }}</span>
+              <div class="size-seg" id="logo1Size">
+                <button type="button" data-size="small"  title="{{ t.voucher_size_small or 'Small' }}" aria-label="{{ t.voucher_size_small or 'Small' }}">S</button>
+                <button type="button" data-size="medium" title="{{ t.voucher_size_medium or 'Medium' }}" aria-label="{{ t.voucher_size_medium or 'Medium' }}">M</button>
+                <button type="button" data-size="large"  title="{{ t.voucher_size_large or 'Large' }}" aria-label="{{ t.voucher_size_large or 'Large' }}">L</button>
+              </div>
+            </div>
           </div>
 
           <div class="logo-uploader">
@@ -339,6 +362,14 @@
               <input type="file" id="logo2Input" accept="image/png, image/jpeg">
             </label>
             <button type="button" class="logo-clear" id="logo2Clear" style="display:none;">{{ t.voucher_logo_remove or "remove" }}</button>
+            <div class="logo-size" data-slot="2">
+              <span class="size-label">{{ t.voucher_logo_size or "Size" }}</span>
+              <div class="size-seg" id="logo2Size">
+                <button type="button" data-size="small"  title="{{ t.voucher_size_small or 'Small' }}" aria-label="{{ t.voucher_size_small or 'Small' }}">S</button>
+                <button type="button" data-size="medium" title="{{ t.voucher_size_medium or 'Medium' }}" aria-label="{{ t.voucher_size_medium or 'Medium' }}">M</button>
+                <button type="button" data-size="large"  title="{{ t.voucher_size_large or 'Large' }}" aria-label="{{ t.voucher_size_large or 'Large' }}">L</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="sub-hint" style="margin-top:10px;">PNG or JPG. A PNG with a transparent background works best.</div>
@@ -427,6 +458,8 @@ function getState(pid) {
       logo1File: null, logo2File: null,
       logo1Data: null, logo2Data: null,   // dataURL preview of a pending file
       logo1Cleared: false, logo2Cleared: false,
+      logo1Size: (s && s.logo1_size) ? s.logo1_size : "medium",
+      logo2Size: (s && s.logo2_size) ? s.logo2_size : "medium",
     };
   }
   return state[pid];
@@ -450,6 +483,8 @@ const vLogo1 = document.getElementById('vLogo1');
 const vLogo2 = document.getElementById('vLogo2');
 const logo1Preview = document.getElementById('logo1Preview');
 const logo2Preview = document.getElementById('logo2Preview');
+const logo1Size = document.getElementById('logo1Size');
+const logo2Size = document.getElementById('logo2Size');
 
 const PLACEHOLDER = {
   1: "{{ t.voucher_left_logo or 'Left logo' }}",
@@ -472,6 +507,16 @@ function renderLogoSlot(n) {
   const previewEl = (n === 1) ? logo1Preview : logo2Preview;
   const voucherEl = (n === 1) ? vLogo1 : vLogo2;
   const clearBtn  = (n === 1) ? logo1Clear : logo2Clear;
+  const sideClass = (n === 1) ? 'left' : 'right';
+  const size = s['logo' + n + 'Size'] || 'medium';
+
+  // keep the size buttons in sync
+  const segEl = (n === 1) ? logo1Size : logo2Size;
+  segEl.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', b.dataset.size === size);
+  });
+
+  voucherEl.className = 'v-logo ' + sideClass + ' size-' + size;
 
   if (url) {
     previewEl.innerHTML = '<img src="' + url + '" alt="">';
@@ -540,6 +585,17 @@ function handleClear(n) {
 logo1Clear.addEventListener('click', () => handleClear(1));
 logo2Clear.addEventListener('click', () => handleClear(2));
 
+function wireSize(segEl, n) {
+  segEl.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      getState(activeProgramId)['logo' + n + 'Size'] = btn.dataset.size;
+      renderLogoSlot(n);
+    });
+  });
+}
+wireSize(logo1Size, 1);
+wireSize(logo2Size, 2);
+
 /* ============================================================
    PROGRAM SWITCHING
    ============================================================ */
@@ -557,6 +613,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   fd.append('programId', activeProgramId);
   fd.append('title', s.title || '');
   fd.append('subtitle', s.subtitle || '');
+  fd.append('logo1_size', s.logo1Size || 'medium');
+  fd.append('logo2_size', s.logo2Size || 'medium');
 
   if (s.logo1File) fd.append('logo1', s.logo1File);
   else if (s.logo1Cleared) fd.append('logo1_clear', '1');
@@ -575,6 +633,8 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     s.subtitle = d.subtitle;
     s.logo1Url = d.logo1_url;
     s.logo2Url = d.logo2_url;
+    s.logo1Size = d.logo1_size || 'medium';
+    s.logo2Size = d.logo2_size || 'medium';
     s.logo1File = s.logo2File = null;
     s.logo1Data = s.logo2Data = null;
     s.logo1Cleared = s.logo2Cleared = false;
