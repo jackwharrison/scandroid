@@ -235,8 +235,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    <span class="title-divider">|</span>
-    <span class="title-program"> Red Cross Log-in</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
   </div>
 
   <div class="lang-select">

@@ -303,6 +303,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
     <span class="title-divider">|</span>
     <span class="title-program">{{ program_title }}</span>
   </div>
@@ -355,6 +357,12 @@
         <h2>{{ t.config_display }}</h2>
         <p>{{ t.config_display_desc or "Configure which fields and details are shown to FSPs." }}</p>
         <a href="/config?lang={{ lang }}" class="btn-outline">{{ t.config_display }}</a>
+      </div>
+
+      <div class="section">
+        <h2>{{ t.voucher_design or "Voucher Design" }}</h2>
+        <p>{{ t.voucher_design_desc or "Customise the title, subtitle and logos printed on each program's vouchers." }}</p>
+        <a href="/voucher-design?lang={{ lang }}" class="btn-outline">{{ t.voucher_design or "Voucher Design" }}</a>
       </div>
 
       <div class="section">

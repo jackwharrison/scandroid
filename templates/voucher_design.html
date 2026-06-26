@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>{{ t.voucher_design_title or "Voucher Design" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <style>
+    :root {
+      --pad: 20px;
+      --gap: 24px;
+      --radius: 16px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --violet: #7c3aed;
+      --blue: #1d4ed8;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ------------------ HEADER ------------------ */
+    header {
+      background-color: var(--navy);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: white;
+      position: relative;
+      z-index: 3000;
+      box-sizing: border-box;
+    }
+    .header-left img { height: 32px; width: auto; object-fit: contain; }
+    .header-title {
+      flex: 1;
+      padding-left: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 1.1rem;
+      color: #fff;
+      white-space: nowrap;
+    }
+    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; opacity: 0.95; }
+
+    .header-account-wrapper { display: flex; align-items: center; gap: 16px; position: relative; }
+    .lang-select select {
+      padding: 6px 10px; border-radius: 8px; border: 1px solid #d1d5db;
+      background: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .account-icon-svg { width: 16px; height: 16px; filter: invert(100%); }
+    .account-arrow-svg { width: 12px; height: 12px; filter: invert(100%); margin-left: 4px; transition: transform .15s ease; }
+    .account-btn {
+      background: transparent; border: none; color: #fff; padding: 6px 10px;
+      border-radius: 18px; cursor: pointer; font-size: 14px; font-weight: 500;
+      display: flex; align-items: center; gap: 6px; transition: border .2s ease;
+    }
+    .account-btn:hover { border: 1px solid rgba(255,255,255,0.9); }
+    .account-btn.active .account-arrow-svg { transform: rotate(180deg); }
+    .account-menu {
+      position: absolute; background: #fff; top: 48px; right: 0; min-width: 220px;
+      border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); z-index: 3001; padding: 10px 0;
+    }
+    .hidden { display: none; }
+    .account-menu-item { padding: 10px 16px; font-size: 14px; color: #000; text-decoration: none; display: block; }
+    .account-menu-item:hover { background: #f2f2f2; }
+    .account-menu-divider { border-top: 1px solid #e5e7eb; margin: 6px 0; }
+    .user-info { font-size: 13px; }
+
+    /* ------------------ WRAPPER ------------------ */
+    .wrapper {
+      width: 100%;
+      max-width: 1080px;
+      margin: 24px auto 40px auto;
+      padding: 0 20px;
+      box-sizing: border-box;
+      flex: 1;
+    }
+
+    .page-back-btn {
+      display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px;
+      font-size: 0.95rem; font-weight: 600; color: var(--navy); text-decoration: none;
+      padding: 8px 14px; background: #fff; border-radius: 999px; border: 2px solid var(--navy);
+      transition: 0.2s ease;
+    }
+    .page-back-btn:hover { background: #e3e8ef; }
+    .page-back-btn img { width: 14px; height: 14px; }
+
+    h1 { text-align: center; margin-bottom: 16px; font-size: 1.6rem; }
+
+    .program-row { margin-bottom: 16px; text-align: center; }
+    .program-row label { font-weight: 600; margin-right: 8px; }
+    .program-row select {
+      padding: 8px 12px; border-radius: 8px; border: 1px solid #d1d5db;
+      background: #fff; font-size: 0.95rem; cursor: pointer; min-width: 260px;
+    }
+
+    .design-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(340px, 1.1fr);
+      gap: var(--gap);
+      align-items: start;
+    }
+    @media (max-width: 860px) { .design-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card); padding: var(--pad); border-radius: var(--radius);
+      border: 1px solid var(--line); box-shadow: var(--shadow-soft); box-sizing: border-box;
+    }
+    .card h2 { margin-top: 0; margin-bottom: 4px; font-size: 1.2rem; }
+    .card .card-hint { margin: 0 0 18px 0; color: var(--muted); font-size: 0.9rem; }
+
+    .field { margin-bottom: 18px; }
+    .field label { display: block; font-weight: 600; font-size: 0.92rem; margin-bottom: 6px; }
+    .field input[type="text"], .field textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 0.95rem; box-sizing: border-box; font-family: inherit; color: var(--ink);
+    }
+    .field textarea { resize: vertical; min-height: 64px; line-height: 1.4; }
+    .field input[type="text"]:focus, .field textarea:focus {
+      outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+    }
+    .field .sub-hint { color: var(--muted); font-size: 0.8rem; margin-top: 6px; }
+
+    .logo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 480px) { .logo-grid { grid-template-columns: 1fr; } }
+
+    .logo-uploader {
+      border: 1px dashed #cfe2ff; background: #f8fbff; border-radius: 12px;
+      padding: 14px; text-align: center; transition: background .2s ease;
+    }
+    .logo-uploader:hover { background: #f2f7ff; }
+    .logo-uploader .logo-caption { font-weight: 600; font-size: 0.85rem; margin-bottom: 10px; }
+    .logo-preview { height: 64px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+    .logo-preview img { max-height: 64px; max-width: 100%; object-fit: contain; }
+    .logo-preview .empty {
+      color: var(--muted); font-size: 0.8rem; border: 1px dashed #cbd5e1;
+      border-radius: 8px; padding: 12px 16px; width: 100%; box-sizing: border-box;
+    }
+    input[type="file"] { display: none; }
+    .logo-btn {
+      display: inline-block; padding: 6px 14px; border-radius: 999px; border: 2px solid var(--blue);
+      color: var(--blue); background: #fff; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    }
+    .logo-btn:hover { background: #eaf1ff; }
+    .logo-clear {
+      display: inline-block; margin-left: 6px; font-size: 0.8rem; color: var(--muted);
+      background: none; border: none; cursor: pointer; text-decoration: underline;
+    }
+
+    .logo-size { margin-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .logo-size .size-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .size-seg { display: inline-flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+    .size-seg button {
+      width: 30px; padding: 5px 0; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+      background: #fff; color: var(--muted); border: none; border-right: 1px solid #e5e7eb;
+      transition: background .15s ease, color .15s ease;
+    }
+    .size-seg button:last-child { border-right: none; }
+    .size-seg button:hover { background: #f3f4f6; }
+    .size-seg button.active { background: var(--violet); color: #fff; }
+
+    .save-btn {
+      margin-top: 26px; width: 100%; padding: 12px 20px; font-size: 1rem; font-weight: 700;
+      background: #fff; color: var(--violet); border: 2px solid var(--violet); border-radius: 999px;
+      cursor: pointer; transition: background .2s ease;
+    }
+    .save-btn:hover { background: #ece2ff; }
+
+    .preview-stage { background: #eef1f5; border-radius: 12px; padding: 18px; }
+    .voucher {
+      background: #fff; aspect-ratio: 1.414 / 1; width: 100%; box-sizing: border-box;
+      padding: 4.5%; position: relative; box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+    }
+    .voucher-border {
+      border: 1.5px solid #111; width: 100%; height: 100%; box-sizing: border-box;
+      padding: 4%; display: flex; flex-direction: column;
+    }
+    .v-logos { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .v-logo { height: 11%; min-height: 30px; display: flex; align-items: center; }
+    .voucher .v-logo img { max-height: 46px; max-width: 130px; object-fit: contain; }
+    .voucher .v-logo.size-small img  { max-height: 33px; max-width: 95px; }
+    .voucher .v-logo.size-medium img { max-height: 46px; max-width: 130px; }
+    .voucher .v-logo.size-large img  { max-height: 61px; max-width: 168px; }
+    .v-logo.left { justify-content: flex-start; }
+    .v-logo.right { justify-content: flex-end; }
+    .v-logo .placeholder {
+      font-size: 0.7rem; color: #9ca3af; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 10px 14px;
+    }
+    .v-project { text-align: center; margin-top: 6px; font-size: clamp(0.85rem, 2vw, 1.05rem); }
+    .v-project span { border-bottom: 1.5px solid #111; padding-bottom: 2px; }
+    .v-title {
+      text-align: center; font-weight: 800; letter-spacing: 0.5px; margin-top: 4%;
+      font-size: clamp(1.1rem, 3.4vw, 1.7rem); color: #111; word-break: break-word;
+    }
+    .v-subtitle {
+      text-align: center; color: #333; margin-top: 2%; font-size: clamp(0.7rem, 1.9vw, 0.95rem);
+      line-height: 1.35; white-space: pre-line;
+    }
+    .v-bottom { margin-top: auto; display: flex; align-items: flex-end; gap: 14px; }
+    .v-qr {
+      width: 22%; aspect-ratio: 1 / 1;
+      background:
+        linear-gradient(45deg, #111 25%, transparent 25%) 0 0 / 33.33% 33.33%,
+        linear-gradient(-45deg, #111 25%, transparent 25%) 0 0 / 33.33% 33.33%, #fff;
+      border: 1px solid #111; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 0.6rem; font-weight: 700; text-shadow: 0 0 2px #000;
+    }
+    .v-fields { flex: 1; font-size: clamp(0.6rem, 1.6vw, 0.85rem); color: #222; }
+    .v-fields .row { display: flex; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding: 3px 0; }
+    .v-fields .row .k { color: #555; }
+    .v-fields .row .v { font-weight: 600; }
+    .preview-note { color: var(--muted); font-size: 0.78rem; margin-top: 12px; text-align: center; }
+
+    /* ------------------ TOAST ------------------ */
+    #saveToast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #111827; color: #fff; padding: 12px 24px; border-radius: 999px;
+      font-size: 0.95rem; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; z-index: 9999;
+    }
+    #saveToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #saveToast.success { background: #16a34a; }
+    #saveToast.error { background: #dc2626; }
+
+    footer {
+      display: flex; justify-content: space-between; padding: 12px 18px;
+      background-color: var(--navy); border-top: 1px solid rgba(255,255,255,0.15);
+      color: #fff; font-size: 0.9rem; flex-wrap: wrap;
+    }
+
+    @media (max-width: 576px) {
+      header { flex-direction: column; gap: 8px; padding: 12px; }
+      .header-title { padding-left: 0; text-align: center; justify-content: center; }
+      .header-account-wrapper { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <div class="header-left">
+    <img src="/instance-static/ns1.png" alt="">
+  </div>
+
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ t.voucher_design_title or "Voucher Design" }}</span>
+  </div>
+
+  <div class="header-account-wrapper">
+    <form method="get" action="/voucher-design" class="lang-select">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang=='fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang=='ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+
+    <div class="account-dropdown">
+      <button class="account-btn" type="button" onclick="toggleAccountDropdown()">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
+        Account
+        <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
+      </button>
+      <div id="account-menu" class="account-menu hidden">
+        <div class="account-menu-item user-info">
+          <strong>Logged in as:</strong><br>{{ username }}
+        </div>
+        <div class="account-menu-divider"></div>
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrapper">
+
+  <a href="/admin-dashboard?lang={{ lang }}" class="page-back-btn">
+    <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+    {{ t.back_to_dashboard }}
+  </a>
+
+  <div class="program-row">
+    <label for="programSelector">{{ t.program or "Program" }}</label>
+    <select id="programSelector">
+      {% for p in programs %}
+        <option value="{{ p.id }}" {% if p.id == active_program_id %}selected{% endif %}>
+          {{ p.title }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <h1>{{ t.voucher_design_title or "Voucher Design" }}</h1>
+
+  <div class="design-grid">
+
+    <!-- EDITOR -->
+    <div class="card">
+      <h2>{{ t.voucher_design_settings or "Design settings" }}</h2>
+      <p class="card-hint">{{ t.voucher_design_settings_desc or "These replace the values printed on the voucher. Each program keeps its own design." }}</p>
+
+      <div class="field">
+        <label for="titleInput">{{ t.voucher_title_label or "Title" }}</label>
+        <input type="text" id="titleInput" maxlength="40" placeholder="e.g. CASH ON THE MOVE">
+      </div>
+
+      <div class="field">
+        <label for="subtitleInput">{{ t.voucher_subtitle_label or "Subtitle" }}</label>
+        <textarea id="subtitleInput" maxlength="160" placeholder="Short supporting line(s)"></textarea>
+        <div class="sub-hint">Press Enter for a second line.</div>
+      </div>
+
+      <div class="field">
+        <label>{{ t.voucher_logos_label or "Logos" }}</label>
+        <div class="logo-grid">
+          <div class="logo-uploader">
+            <div class="logo-caption">{{ t.voucher_left_logo or "Left logo" }}</div>
+            <div class="logo-preview" id="logo1Preview"><div class="empty">{{ t.voucher_no_logo or "No logo" }}</div></div>
+            <label class="logo-btn">
+              {{ t.voucher_logo_upload or "Upload" }}
+              <input type="file" id="logo1Input" accept="image/png, image/jpeg">
+            </label>
+            <button type="button" class="logo-clear" id="logo1Clear" style="display:none;">{{ t.voucher_logo_remove or "remove" }}</button>
+            <div class="logo-size" data-slot="1">
+              <span class="size-label">{{ t.voucher_logo_size or "Size" }}</span>
+              <div class="size-seg" id="logo1Size">
+                <button type="button" data-size="small"  title="{{ t.voucher_size_small or 'Small' }}" aria-label="{{ t.voucher_size_small or 'Small' }}">S</button>
+                <button type="button" data-size="medium" title="{{ t.voucher_size_medium or 'Medium' }}" aria-label="{{ t.voucher_size_medium or 'Medium' }}">M</button>
+                <button type="button" data-size="large"  title="{{ t.voucher_size_large or 'Large' }}" aria-label="{{ t.voucher_size_large or 'Large' }}">L</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="logo-uploader">
+            <div class="logo-caption">{{ t.voucher_right_logo or "Right logo" }}</div>
+            <div class="logo-preview" id="logo2Preview"><div class="empty">{{ t.voucher_no_logo or "No logo" }}</div></div>
+            <label class="logo-btn">
+              {{ t.voucher_logo_upload or "Upload" }}
+              <input type="file" id="logo2Input" accept="image/png, image/jpeg">
+            </label>
+            <button type="button" class="logo-clear" id="logo2Clear" style="display:none;">{{ t.voucher_logo_remove or "remove" }}</button>
+            <div class="logo-size" data-slot="2">
+              <span class="size-label">{{ t.voucher_logo_size or "Size" }}</span>
+              <div class="size-seg" id="logo2Size">
+                <button type="button" data-size="small"  title="{{ t.voucher_size_small or 'Small' }}" aria-label="{{ t.voucher_size_small or 'Small' }}">S</button>
+                <button type="button" data-size="medium" title="{{ t.voucher_size_medium or 'Medium' }}" aria-label="{{ t.voucher_size_medium or 'Medium' }}">M</button>
+                <button type="button" data-size="large"  title="{{ t.voucher_size_large or 'Large' }}" aria-label="{{ t.voucher_size_large or 'Large' }}">L</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sub-hint" style="margin-top:10px;">PNG or JPG. A PNG with a transparent background works best.</div>
+      </div>
+
+      <button type="button" class="save-btn" id="saveBtn">{{ t.voucher_save_design or "Save design" }}</button>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="card preview-card">
+      <h2>{{ t.voucher_live_preview or "Live preview" }}</h2>
+      <p class="card-hint">{{ t.voucher_preview_desc or "A5 landscape, matching the printed voucher layout." }}</p>
+
+      <div class="preview-stage">
+        <div class="voucher">
+          <div class="voucher-border">
+            <div class="v-logos">
+              <div class="v-logo left" id="vLogo1"><span class="placeholder">{{ t.voucher_left_logo or "Left logo" }}</span></div>
+              <div class="v-logo right" id="vLogo2"><span class="placeholder">{{ t.voucher_right_logo or "Right logo" }}</span></div>
+            </div>
+            <div class="v-project"><span>Project</span></div>
+            <div class="v-title" id="vTitle"></div>
+            <div class="v-subtitle" id="vSubtitle"></div>
+            <div class="v-bottom">
+              <div class="v-qr">QR</div>
+              <div class="v-fields">
+                <div class="row"><span class="k">Name</span><span class="v">—</span></div>
+                <div class="row"><span class="k">Reference ID</span><span class="v">—</span></div>
+                <div class="row"><span class="k">Amount</span><span class="v">—</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="preview-note">Sample beneficiary fields shown for layout only — they come from the CSV at generation time.</div>
+    </div>
+
+  </div>
+</div>
+
+<div id="saveToast"></div>
+
+<footer>
+  <div>{{ t.footer_dev }}</div>
+  <div>{{ t.footer_support }}</div>
+</footer>
+
+<script>
+/* ============================================================
+   ACCOUNT DROPDOWN
+   ============================================================ */
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  if (btn && !btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
+
+/* ============================================================
+   DATA  (saved designs from the server + defaults)
+   ============================================================ */
+const SERVER_DESIGNS = {{ designs | tojson }};
+const DEFAULTS = {
+  title: "CASH ON THE MOVE",
+  subtitle: "Supporting people on the move especially those\nin vulnerable situations"
+};
+
+// Per-program working state (includes unsaved edits + pending files)
+const state = {};
+function getState(pid) {
+  if (!state[pid]) {
+    const s = SERVER_DESIGNS[pid];
+    state[pid] = {
+      title:    s ? (s.title || "") : DEFAULTS.title,
+      subtitle: s ? (s.subtitle || "") : DEFAULTS.subtitle,
+      logo1Url: s ? s.logo1_url : null,
+      logo2Url: s ? s.logo2_url : null,
+      logo1File: null, logo2File: null,
+      logo1Data: null, logo2Data: null,   // dataURL preview of a pending file
+      logo1Cleared: false, logo2Cleared: false,
+      logo1Size: (s && s.logo1_size) ? s.logo1_size : "medium",
+      logo2Size: (s && s.logo2_size) ? s.logo2_size : "medium",
+    };
+  }
+  return state[pid];
+}
+
+let activeProgramId = "{{ active_program_id }}";
+
+/* ============================================================
+   ELEMENTS
+   ============================================================ */
+const programSelector = document.getElementById('programSelector');
+const titleInput = document.getElementById('titleInput');
+const subtitleInput = document.getElementById('subtitleInput');
+const logo1Input = document.getElementById('logo1Input');
+const logo2Input = document.getElementById('logo2Input');
+const logo1Clear = document.getElementById('logo1Clear');
+const logo2Clear = document.getElementById('logo2Clear');
+const vTitle = document.getElementById('vTitle');
+const vSubtitle = document.getElementById('vSubtitle');
+const vLogo1 = document.getElementById('vLogo1');
+const vLogo2 = document.getElementById('vLogo2');
+const logo1Preview = document.getElementById('logo1Preview');
+const logo2Preview = document.getElementById('logo2Preview');
+const logo1Size = document.getElementById('logo1Size');
+const logo2Size = document.getElementById('logo2Size');
+
+const PLACEHOLDER = {
+  1: "{{ t.voucher_left_logo or 'Left logo' }}",
+  2: "{{ t.voucher_right_logo or 'Right logo' }}",
+};
+const NO_LOGO = "{{ t.voucher_no_logo or 'No logo' }}";
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function effectiveLogo(s, n) {
+  if (s['logo' + n + 'Data']) return s['logo' + n + 'Data'];          // pending upload
+  if (s['logo' + n + 'Cleared']) return null;                          // marked for removal
+  return s['logo' + n + 'Url'] || null;                                // saved logo
+}
+
+function renderLogoSlot(n) {
+  const s = getState(activeProgramId);
+  const url = effectiveLogo(s, n);
+  const previewEl = (n === 1) ? logo1Preview : logo2Preview;
+  const voucherEl = (n === 1) ? vLogo1 : vLogo2;
+  const clearBtn  = (n === 1) ? logo1Clear : logo2Clear;
+  const sideClass = (n === 1) ? 'left' : 'right';
+  const size = s['logo' + n + 'Size'] || 'medium';
+
+  // keep the size buttons in sync
+  const segEl = (n === 1) ? logo1Size : logo2Size;
+  segEl.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', b.dataset.size === size);
+  });
+
+  voucherEl.className = 'v-logo ' + sideClass + ' size-' + size;
+
+  if (url) {
+    previewEl.innerHTML = '<img src="' + url + '" alt="">';
+    voucherEl.innerHTML = '<img src="' + url + '" alt="">';
+    clearBtn.style.display = 'inline-block';
+  } else {
+    previewEl.innerHTML = '<div class="empty">' + NO_LOGO + '</div>';
+    voucherEl.innerHTML = '<span class="placeholder">' + PLACEHOLDER[n] + '</span>';
+    clearBtn.style.display = 'none';
+  }
+}
+
+function renderPreview() {
+  const s = getState(activeProgramId);
+  vTitle.textContent = s.title || '';
+  vSubtitle.textContent = s.subtitle || '';
+  renderLogoSlot(1);
+  renderLogoSlot(2);
+}
+
+function loadProgramIntoForm() {
+  const s = getState(activeProgramId);
+  titleInput.value = s.title || '';
+  subtitleInput.value = s.subtitle || '';
+  renderPreview();
+}
+
+/* ============================================================
+   INPUT HANDLERS
+   ============================================================ */
+titleInput.addEventListener('input', () => {
+  getState(activeProgramId).title = titleInput.value;
+  vTitle.textContent = titleInput.value;
+});
+subtitleInput.addEventListener('input', () => {
+  getState(activeProgramId).subtitle = subtitleInput.value;
+  vSubtitle.textContent = subtitleInput.value;
+});
+
+function handleUpload(inputEl, n) {
+  inputEl.addEventListener('change', () => {
+    const file = inputEl.files[0];
+    if (!file) return;
+    const s = getState(activeProgramId);
+    const reader = new FileReader();
+    reader.onload = e => {
+      s['logo' + n + 'File'] = file;
+      s['logo' + n + 'Data'] = e.target.result;
+      s['logo' + n + 'Cleared'] = false;
+      renderLogoSlot(n);
+    };
+    reader.readAsDataURL(file);
+    inputEl.value = '';
+  });
+}
+handleUpload(logo1Input, 1);
+handleUpload(logo2Input, 2);
+
+function handleClear(n) {
+  const s = getState(activeProgramId);
+  s['logo' + n + 'File'] = null;
+  s['logo' + n + 'Data'] = null;
+  s['logo' + n + 'Cleared'] = true;
+  renderLogoSlot(n);
+}
+logo1Clear.addEventListener('click', () => handleClear(1));
+logo2Clear.addEventListener('click', () => handleClear(2));
+
+function wireSize(segEl, n) {
+  segEl.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      getState(activeProgramId)['logo' + n + 'Size'] = btn.dataset.size;
+      renderLogoSlot(n);
+    });
+  });
+}
+wireSize(logo1Size, 1);
+wireSize(logo2Size, 2);
+
+/* ============================================================
+   PROGRAM SWITCHING
+   ============================================================ */
+programSelector.addEventListener('change', e => {
+  activeProgramId = e.target.value;
+  loadProgramIntoForm();
+});
+
+/* ============================================================
+   SAVE  -> POST /voucher-design (multipart)
+   ============================================================ */
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  const s = getState(activeProgramId);
+  const fd = new FormData();
+  fd.append('programId', activeProgramId);
+  fd.append('title', s.title || '');
+  fd.append('subtitle', s.subtitle || '');
+  fd.append('logo1_size', s.logo1Size || 'medium');
+  fd.append('logo2_size', s.logo2Size || 'medium');
+
+  if (s.logo1File) fd.append('logo1', s.logo1File);
+  else if (s.logo1Cleared) fd.append('logo1_clear', '1');
+
+  if (s.logo2File) fd.append('logo2', s.logo2File);
+  else if (s.logo2Cleared) fd.append('logo2_clear', '1');
+
+  try {
+    const res = await fetch('/voucher-design', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'save failed');
+
+    // Sync state + the in-page maps with what the server stored
+    const d = data.design;
+    s.title = d.title;
+    s.subtitle = d.subtitle;
+    s.logo1Url = d.logo1_url;
+    s.logo2Url = d.logo2_url;
+    s.logo1Size = d.logo1_size || 'medium';
+    s.logo2Size = d.logo2_size || 'medium';
+    s.logo1File = s.logo2File = null;
+    s.logo1Data = s.logo2Data = null;
+    s.logo1Cleared = s.logo2Cleared = false;
+    SERVER_DESIGNS[activeProgramId] = d;
+
+    renderPreview();
+    showToast("{{ t.voucher_design_saved or 'Design saved' }}", 'success');
+  } catch (err) {
+    showToast("{{ t.voucher_design_save_failed or 'Could not save design' }}", 'error');
+  }
+});
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('saveToast');
+  toast.textContent = (type === 'success' ? '✓  ' : '✕  ') + message;
+  toast.className = 'show ' + type;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.className = ''; }, 2500);
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+if (programSelector.value) activeProgramId = programSelector.value;
+loadProgramIntoForm();
+</script>
+
+</body>
+</html>

@@ -3,6 +3,8 @@
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#002855">
   <title>{{ t.scan_title or "Scan QR" }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -42,7 +44,8 @@
       align-items: center;
       justify-content: space-between;
       color: white;
-      flex-wrap: wrap;
+      position: relative;
+      z-index: 3000;
     }
 
     .header-left {
@@ -160,13 +163,15 @@
       flex: 1;
       display: flex;
       justify-content: center;
-      padding: 20px;
+      padding: 20px 16px;
+      box-sizing: border-box;
+      width: 100%;
     }
 
-    /* container so back button and card are stacked, and only this is flex item */
     .scan-container {
       width: 100%;
       max-width: 560px;
+      box-sizing: border-box;
     }
 
     .scan-card {
@@ -174,10 +179,10 @@
       border-radius: var(--radius);
       box-shadow: var(--shadow-soft);
       width: 100%;
-      max-width: 560px;
       padding: 20px;
       border: 1px solid var(--line);
       text-align: center;
+      box-sizing: border-box;
     }
 
     .hint {
@@ -250,11 +255,56 @@
       flex-wrap: wrap;
     }
 
-    @media (max-width:576px) {
-      header { flex-direction: column; gap: 10px; }
-      .header-title { padding-left:0; justify-content:center; }
-      .header-account-wrapper { flex-direction: column; gap: 8px; }
-      footer { flex-direction: column; text-align:center; gap: 8px; }
+    @media (max-width: 576px) {
+      header {
+        padding: 8px 12px;
+        gap: 0;
+      }
+
+      .header-left img {
+        height: 26px;
+      }
+
+      .header-title {
+        padding-left: 8px;
+        font-size: 0.85rem;
+        gap: 4px;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      /* Hide national society + program title on small screens, keep just the brand */
+      .header-title .title-divider,
+      .header-title .title-program {
+        display: none;
+      }
+
+      .header-account-wrapper {
+        flex-shrink: 0;
+        gap: 8px;
+      }
+
+      .lang-select select {
+        font-size: 12px;
+        padding: 4px 6px;
+      }
+
+      .account-btn {
+        font-size: 12px;
+        padding: 4px 8px;
+        gap: 4px;
+      }
+
+      .account-icon-svg { width: 14px; height: 14px; }
+      .account-arrow-svg { width: 10px; height: 10px; }
+
+      footer {
+        flex-direction: column;
+        text-align: center;
+        gap: 4px;
+        padding: 14px;
+        font-size: 0.85rem;
+      }
     }
   </style>
 </head>
@@ -268,8 +318,10 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    <span class="title-divider">|</span>
-    <span class="title-program">{{ program_title }}</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
+    {% if program_title %}<span class="title-divider">|</span>
+    <span class="title-program">{{ program_title }}</span>{% endif %}
   </div>
 
   <div class="header-account-wrapper">
@@ -348,6 +400,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const video = document.getElementById('video');
     const startBtn = document.getElementById('startBtn');
     const lang = "{{ lang }}";
+    const PROGRAM_ID = "{{ program_id }}";
 
     const TXT = {
       requesting: "{{ t.requesting_camera or 'Requesting camera… If prompted, tap Allow.' }}",
@@ -427,6 +480,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function dbCheckAlreadyScanned(db, scannedId) {
+      const scopedId = PROGRAM_ID ? `${PROGRAM_ID}:${scannedId}` : null;
       return new Promise((resolve) => {
         const tx = db.transaction("payments", "readonly");
         const store = tx.objectStore("payments");
@@ -437,9 +491,12 @@ document.addEventListener("DOMContentLoaded", () => {
           for (const p of list) {
             if (
               p &&
-              p.uuid === scannedId &&
-              (p.status === "success" || p.status === "submitted")
+              (p.uuid === scannedId || (scopedId && p.uuid === scopedId)) &&
+              p.status === "success"
             ) {
+              // Only block if there's a PENDING payment (not yet submitted).
+              // "submitted" payments are from previous rounds and should
+              // not prevent scanning the same beneficiary for new payments.
               resolve(p);
               return;
             }
@@ -453,6 +510,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ---------- ROUTING ---------- */
 
+    async function dbGet(db, store, key) {
+      return new Promise((resolve) => {
+        const tx = db.transaction(store, "readonly");
+        const req = tx.objectStore(store).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    }
+
     async function checkAndRouteRecord(scannedId) {
       const dbReq = indexedDB.open("scandroid");
 
@@ -460,16 +526,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const db = dbReq.result;
         let rec = null;
 
-        // Direct lookup
-        rec = await new Promise((resolve) => {
-          const tx = db.transaction("records", "readonly");
-          const store = tx.objectStore("records");
-          const req = store.get(String(scannedId));
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(null);
-        });
+        // Build candidate keys: scoped first (programId:uuid), then raw
+        const scopedId = PROGRAM_ID ? `${PROGRAM_ID}:${scannedId}` : null;
+        const keysToTry = scopedId
+          ? [scopedId, String(scannedId)]
+          : [String(scannedId)];
 
-        // idIndex fallback
+        // Direct lookup — try scoped key first, then raw
+        for (const key of keysToTry) {
+          rec = await dbGet(db, "records", key);
+          if (rec) break;
+        }
+
+        // idIndex fallback — try both scoped and raw prefixes
         if (!rec) {
           const idx = await new Promise((resolve) => {
             const tx = db.transaction("meta", "readonly");
@@ -479,10 +548,11 @@ document.addEventListener("DOMContentLoaded", () => {
             req.onerror = () => resolve({});
           });
 
+          const prefix = scopedId || scannedId;
           const mapped =
-            idx['uuid:' + scannedId] ||
-            idx['reg:' + scannedId] ||
-            idx['kobo:' + scannedId];
+            idx['uuid:' + prefix] || idx['uuid:' + scannedId] ||
+            idx['reg:'  + prefix] || idx['reg:'  + scannedId] ||
+            idx['kobo:' + prefix] || idx['kobo:' + scannedId];
 
           if (mapped) {
             rec = await new Promise((resolve) => {
@@ -495,7 +565,8 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
 
-        // brute-force fallback
+        // brute-force fallback — try scoped then raw
+        if (!rec && scopedId) rec = await dbFindRecordByAnyId(db, scopedId);
         if (!rec) rec = await dbFindRecordByAnyId(db, scannedId);
 
         if (!rec) {
@@ -522,8 +593,12 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+        // rec.uuid is scoped (programId:uuid) — strip prefix before passing to beneficiary page
+        const rawUuid = PROGRAM_ID && rec.uuid.startsWith(PROGRAM_ID + ':')
+          ? rec.uuid.slice(PROGRAM_ID.length + 1)
+          : rec.uuid;
         window.location.href =
-          `/beneficiary-offline?uuid=${encodeURIComponent(rec.uuid)}&lang=${lang}`;
+          `/beneficiary-offline?uuid=${encodeURIComponent(rawUuid)}&lang=${lang}&program_id=${encodeURIComponent(PROGRAM_ID)}`;
       };
 
       dbReq.onerror = () => {

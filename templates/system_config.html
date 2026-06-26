@@ -326,6 +326,36 @@
     .save-btn:hover {
       background: #ece2ff;
     }
+
+    /* ---------- TOAST NOTIFICATION ---------- */
+    #toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #111827;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #toast.success { background: #16a34a; }
+    #toast.error   { background: #dc2626; }
   </style>
 
 </head>
@@ -340,7 +370,7 @@
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
     <span class="title-divider">|</span>
-    <span class="title-program">{{ program_title }}</span>
+    <span class="title-program">{{ t.config_system }}</span>
   </div>
 
   <div class="header-account-wrapper">
@@ -396,27 +426,9 @@
         </select>
 
         <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="text" id="KOBO_TOKEN" name="KOBO_TOKEN" value="{{ config['KOBO_TOKEN'] }}">
-
-        <label for="ASSET_ID">{{ t.asset_id }}</label>
-        <input type="text" id="ASSET_ID" name="ASSET_ID" value="{{ config['ASSET_ID'] }}">
-
-        <h3 style="margin:16px 0 6px 0; font-size:1rem; font-weight:600; color:#374151;">
-          {{ t.kobo_connection }}
-        </h3>
-
-        {% if kobo_form_name %}
-          <p style="margin:4px 0 14px 0; color:#4b5563; font-size:0.9rem;">
-            {{ t.connected_to }} <strong>{{ kobo_form_name }}</strong><br>
-            <span style="color:#6b7280; font-size:0.85rem;">
-              {{ t.form_owner }}: {{ kobo_form_owner }}
-            </span>
-          </p>
-        {% else %}
-          <p style="margin:4px 0 14px 0; color:#b91c1c; font-size:0.9rem;">
-            {{ t.no_form_connected }}
-          </p>
-        {% endif %}
+        <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN"
+              placeholder="{{ '••••••••••••••••••••••••••••••••••••' if config.get('KOBO_TOKEN') else 'Enter Kobo API Key' }}"
+              autocomplete="off" onpaste="return true;" oncopy="return false;" oncut="return false;">
       </div>
 
       <div class="card">
@@ -424,27 +436,114 @@
 
         <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}">
 
-        <label for="programId">{{ t.program_id }}</label>
-        <select id="programId" name="programId">
-          {% for p in program_options %}
-            <option value="{{ p.id }}"
-              {% if config.get('programId')|string == p.id|string %}selected{% endif %}>
-              {{ p.title }}
-            </option>
+        <div id="program-mappings">
+
+        {% if program_mappings %}
+          {% for m in program_mappings %}
+            <div class="program-row"
+                style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end;">
+              <div>
+                <label>{{ t.program_id }}</label>
+                <select name="PROGRAMS[][programId]" class="program-select">
+                  <option value="">— Select program —</option>
+                  {% for p in program_options %}
+                    <option value="{{ p.id }}"
+                      {% if p.id == m.programId %}selected{% endif %}>
+                      {{ p.title }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div>
+                <label>Kobo Asset ID</label>
+                <input type="text"
+                      name="PROGRAMS[][koboAssetId]"
+                      value="{{ m.koboAssetId }}">
+              </div>
+
+              <button type="button"
+                      class="remove-row"
+                      title="Remove"
+                      style="
+                        height:40px;
+                        width:40px;
+                        border-radius:10px;
+                        border:1px solid #e5e7eb;
+                        background:#fff;
+                        cursor:pointer;
+                        font-size:16px;
+                      ">
+                ✕
+              </button>
+
+              {% if m.koboFormName %}
+                <div class="kobo-status"
+                     style="
+                       grid-column: 1 / -1;
+                       margin: 6px 0 0 0;
+                       font-size: 0.85rem;
+                       color: #065f46;
+                     ">
+                  ✓ Connected to <strong>{{ m.koboFormName }}</strong>
+                </div>
+              {% endif %}
+            </div>
+
+
           {% endfor %}
-        </select>
+        {% else %}
+          <!-- fallback: one empty row -->
+          <div class="program-row"
+              style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end;">
+            <div>
+              <label>{{ t.program_id }}</label>
+              <select name="PROGRAMS[][programId]" class="program-select">
+                <option value="">— Select program —</option>
+                {% for p in program_options %}
+                  <option value="{{ p.id }}">{{ p.title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div>
+              <label>Kobo Asset ID</label>
+              <input type="text" name="PROGRAMS[][koboAssetId]">
+            </div>
+
+            <button type="button"
+                    class="remove-row"
+                    title="Remove"
+                    style="
+                      height:40px;
+                      width:40px;
+                      border-radius:10px;
+                      border:1px solid #e5e7eb;
+                      background:#fff;
+                      cursor:pointer;
+                      font-size:16px;
+                    ">
+              ✕
+            </button>
+          </div>
+
+        {% endif %}
+
+
+
+        </div>
+
+        <button type="button" id="add-program-row"
+          style="margin-top:8px;padding:6px 12px;border-radius:999px;border:2px dashed var(--violet);background:#fff;color:var(--violet);font-weight:600;cursor:pointer;">
+          ＋ Add program
+        </button>
+
 
         <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
         <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}">
-        <input type="hidden" id="username121" name="username121" value="{{ config['username121'] }}">
-        <input type="hidden" id="password121" name="password121" value="{{ config['password121'] }}">
       </div>
 
     </div>
-
-    <input type="hidden" name="ENCRYPTION_KEY" value="{{ config.get('ENCRYPTION_KEY', '') }}">
-    <input type="hidden" name="COLUMN_TO_MATCH" value="{{ config.get('COLUMN_TO_MATCH', '') }}">
-
     <button type="submit" class="save-btn">{{ t.save }}</button>
   </form>
 </div>
@@ -471,6 +570,133 @@ document.addEventListener('click', function(e) {
     menu.classList.add('hidden');
     btn.classList.remove('active');
   }
+});
+
+</script>
+<script>
+function updateAddButtonVisibility() {
+  const selects = document.querySelectorAll('.program-select');
+  const addBtn = document.getElementById('add-program-row');
+
+  if (!selects.length) {
+    addBtn.style.display = 'none';
+    return;
+  }
+
+  const selected = new Set(
+    Array.from(selects).map(s => s.value).filter(Boolean)
+  );
+
+  const allProgramIds = Array.from(selects[0].options)
+    .map(o => o.value)
+    .filter(Boolean);
+
+  const hasUnusedPrograms =
+    allProgramIds.some(id => !selected.has(id));
+
+  addBtn.style.display = hasUnusedPrograms
+    ? 'inline-block'
+    : 'none';
+}
+
+
+function refreshProgramOptions() {
+  const selects = document.querySelectorAll('.program-select');
+  const selected = Array.from(selects)
+    .map(s => s.value)
+    .filter(v => v);
+
+  selects.forEach(sel => {
+    Array.from(sel.options).forEach(opt => {
+      if (!opt.value) return;
+      opt.disabled = selected.includes(opt.value) && opt.value !== sel.value;
+    });
+  });
+
+  updateAddButtonVisibility();
+}
+
+document.getElementById('add-program-row').onclick = function () {
+  const container = document.getElementById('program-mappings');
+  const firstRow = container.querySelector('.program-row');
+  const clone = firstRow.cloneNode(true);
+
+  clone.querySelectorAll('input, select').forEach(el => {
+    el.value = '';
+  });
+  clone.querySelectorAll('.kobo-status').forEach(el => el.remove());
+
+  container.appendChild(clone);
+  refreshProgramOptions();
+  updateAddButtonVisibility();
+  clone.querySelector('.program-select').onchange = refreshProgramOptions;
+};
+
+document.querySelectorAll('.program-select').forEach(sel => {
+  sel.onchange = refreshProgramOptions;
+});
+</script>
+
+<script>
+refreshProgramOptions();
+updateAddButtonVisibility();
+</script>
+<script>
+document.getElementById('program-mappings').addEventListener('click', function (e) {
+  const btn = e.target.closest('.remove-row');
+  if (!btn) return;
+
+  const row = btn.closest('.program-row');
+  if (!row) return;
+
+  row.remove();
+  refreshProgramOptions();
+});
+</script>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<script>
+function showToast(message, type) {
+  const toast = document.getElementById('toast');
+  toast.textContent = (type === 'error' ? '\u2715  ' : '\u2713  ') + message;
+  toast.className = 'show ' + (type || 'success');
+  setTimeout(function() { toast.className = ''; }, 3500);
+}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      showToast({{ message | tojson }}, {{ "'error'" if category == 'error' else "'success'" }});
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+// Intercept form submit: show toast then submit
+document.querySelector('form[method="post"]').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const form = this;
+  const saveBtn = form.querySelector('.save-btn');
+  saveBtn.disabled = true;
+
+  fetch(window.location.pathname + window.location.search, {
+    method: 'POST',
+    body: new FormData(form)
+  })
+  .then(function(res) {
+    if (res.ok) {
+      showToast('{{ t.saved_successfully }}', 'success');
+    } else {
+      showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error');
+    }
+  })
+  .catch(function() {
+    showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error');
+  })
+  .finally(function() {
+    saveBtn.disabled = false;
+  });
 });
 </script>
 

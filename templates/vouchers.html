@@ -256,6 +256,73 @@
       height: 14px;
     }
 
+    /* ---------- PROGRAM SELECTOR ---------- */
+    .program-row {
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .program-row label { font-weight: 600; margin-right: 8px; color: var(--ink); }
+    .program-row select {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      font-size: 0.95rem;
+      cursor: pointer;
+      min-width: 260px;
+    }
+
+    /* ---------- DESIGN-INCOMPLETE PROMPT ---------- */
+    .design-incomplete {
+      background: var(--card);
+      border: 1px solid #fde68a;
+      border-left: 5px solid #f59e0b;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      padding: 30px 32px;
+      text-align: center;
+      animation: fadeIn 0.3s ease;
+    }
+    .design-incomplete .di-icon {
+      width: 54px;
+      height: 54px;
+      margin: 0 auto 14px auto;
+      border-radius: 50%;
+      background: #fef3c7;
+      color: #b45309;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+    }
+    .design-incomplete h3 {
+      margin: 0 0 8px 0;
+      font-size: 1.2rem;
+      color: var(--navy);
+    }
+    .design-incomplete p {
+      margin: 0 auto 22px auto;
+      max-width: 420px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+    .design-incomplete .di-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.98rem;
+      text-decoration: none;
+      background: #fff;
+      color: var(--violet, #7c3aed);
+      border: 2px solid var(--violet, #7c3aed);
+      transition: background 0.2s ease;
+    }
+    .design-incomplete .di-btn:hover { background: #f3e8ff; }
+
     .card {
       background: var(--card);
       padding: 34px 32px;
@@ -396,6 +463,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
     <span class="title-divider">|</span>
     <span class="title-program">{{ program_title }}</span>
   </div>
@@ -439,7 +508,28 @@
     {{ t.back_to_dashboard }}
   </a>
 
-  <div class="card">
+  <div class="program-row">
+    <label for="programSelector">{{ t.program or "Program" }}</label>
+    <select id="programSelector">
+      {% for p in programs %}
+        <option value="{{ p.id }}" {% if p.id == active_program_id %}selected{% endif %}>
+          {{ p.title }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Shown when the selected program has no saved voucher design -->
+  <div class="design-incomplete" id="designIncomplete" style="display:none;">
+    <div class="di-icon">🎨</div>
+    <h3>{{ t.voucher_design_incomplete_title or "Voucher design not completed" }}</h3>
+    <p>{{ t.voucher_design_incomplete_desc or "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers." }}</p>
+    <a href="#" id="designLink" class="di-btn">
+      🎨 {{ t.voucher_design_go or "Design this voucher" }}
+    </a>
+  </div>
+
+  <div class="card" id="voucherCard">
     <h2>{{ t.voucher_generator }}</h2>
     <p class="hint">{{ t.csv_hint }}</p>
 
@@ -501,6 +591,47 @@ const form = document.getElementById('uploadForm');
 const counter = document.getElementById('counter');
 const downloadBtn = document.getElementById('downloadBtn');
 
+/* --- program selection + design gating --- */
+const DESIGN_STATUS = {{ designs_status | tojson }};
+const LANG = "{{ lang }}";
+const programSelector = document.getElementById('programSelector');
+const voucherCard = document.getElementById('voucherCard');
+const designIncomplete = document.getElementById('designIncomplete');
+const designLink = document.getElementById('designLink');
+
+function currentProgramId() {
+  return programSelector ? programSelector.value : null;
+}
+
+function refreshProgramState() {
+  const pid = currentProgramId();
+  const hasDesign = !!DESIGN_STATUS[pid];
+
+  if (designLink) {
+    designLink.href = '/voucher-design?lang=' + encodeURIComponent(LANG) +
+                      (pid ? '&programId=' + encodeURIComponent(pid) : '');
+  }
+
+  if (hasDesign) {
+    voucherCard.style.display = '';
+    designIncomplete.style.display = 'none';
+  } else {
+    voucherCard.style.display = 'none';
+    designIncomplete.style.display = '';
+  }
+
+  // reset any previous upload state when switching programs
+  counter.style.display = 'none';
+  downloadBtn.disabled = true;
+  filename.textContent = '';
+  if (fileInput) fileInput.value = '';
+}
+
+if (programSelector) {
+  programSelector.addEventListener('change', refreshProgramState);
+  refreshProgramState();
+}
+
 const TXT = {
   chooseCSV: "{{ t.choose_csv_alert }}",
   uploadFailed: "{{ t.upload_failed }}",
@@ -522,6 +653,7 @@ form.addEventListener('submit', async e => {
 
   const fd = new FormData();
   fd.append('csv', fileInput.files[0]);
+  fd.append('program_id', currentProgramId() || '');
 
   const res = await fetch('/vouchers/upload', { method: 'POST', body: fd });
   const data = await res.json();

@@ -1,23 +1,31 @@
 {
-  "name": "Scandroid QR App",
-  "short_name": "Scandroid",
-  "start_url": "/scan",
+  "name": "121 Scan",
+  "short_name": "121 Scan",
+  "description": "Offline beneficiary QR scanning for Red Cross FSPs",
+  "start_url": "/fsp-login",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#c8102e",
-  "description": "Offline-first QR app for FSPs",
+  "background_color": "#002855",
+  "theme_color": "#002855",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "/static/scandroid.png",
+      "src": "/static/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/static/scandroid_banner.png",
+      "src": "/static/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ],
-  "scope": "/",
-  "id": "scandroid-v4"
+  ]
 }

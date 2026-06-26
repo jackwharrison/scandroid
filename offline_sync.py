@@ -1,3 +1,23 @@
+# --- Application Insights / Azure Monitor setup -----------------------------
+# This script is launched as a subprocess by app.py and inherits the
+# APPLICATIONINSIGHTS_CONNECTION_STRING env var. It reports telemetry as its
+# own process. Configure before the instrumented "requests" library is used.
+import os
+import sys
+import logging
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+    configure_azure_monitor()
+
+# Log to stdout with a bare "message only" format so the parent process
+# (app.py /sync-fsp) can keep scanning this script's stdout for its status
+# lines exactly as it did with print(). App Insights export is handled by the
+# separate handler that configure_azure_monitor() attaches to the root logger.
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
+logger = logging.getLogger(__name__)
+# ----------------------------------------------------------------------------
+
 import os
 import json
 import requests
@@ -17,13 +37,33 @@ config = load_config()
 API_BASE = config["url121"] + "/api"
 KOBO_TOKEN = config["KOBO_TOKEN"]
 KOBO_BASE = config.get("KOBO_SERVER")
-ASSET_ID = config["ASSET_ID"]
-PROGRAM_ID = config["programId"]
+
+program_id = os.environ.get("PROGRAM_ID")
+if not program_id:
+    raise RuntimeError("PROGRAM_ID not provided to offline_sync.py")
+
+program_id = str(program_id)
+
+programs = config.get("PROGRAMS", [])
+program = next(
+    (p for p in programs if str(p.get("programId")) == program_id),
+    None
+)
+
+if not program:
+    raise RuntimeError(f"Program not found for programId={program_id}")
+
+ASSET_ID = program["koboAssetId"]
+
+PROGRAM_ID = program_id
+
 ENCRYPTION_KEY = config["ENCRYPTION_KEY"]
 
 display_config = load_display_config()
-FIELD_KEYS = [field["key"] for field in display_config.get("fields", [])]
-PHOTO_FIELD_NAME = display_config.get("photo", {}).get("field_name", "photo")
+_prog_config = display_config.get("programs", {}).get(str(program_id), {})
+FIELD_KEYS = [field["key"] for field in _prog_config.get("fields", [])]
+PHOTO_FIELD_NAME = _prog_config.get("photo", {}).get("field_name", "photo")
+logger.info(f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {program_id}: {FIELD_KEYS}")
 
 fernet = Fernet(ENCRYPTION_KEY.encode())
 
@@ -111,12 +151,12 @@ def get_all_transactions(program_id):
             return data["transactions"]
         if "data" in data:
             return data["data"]
-        print("[ERROR] Unexpected transaction structure:", data.keys())
+        logger.error("[ERROR] Unexpected transaction structure: %s", data.keys())
         return []
     elif isinstance(data, list):
         return data
     else:
-        print("[ERROR] Unknown transaction data type")
+        logger.error("[ERROR] Unknown transaction data type")
         return []
 
 
@@ -143,7 +183,7 @@ def fetch_registrations_bulk(program_id, registration_ids):
             reg = get_registration(program_id, rid)
             return rid, reg
         except Exception as e:
-            print(f"[!] Failed to get registration {rid}: {e}")
+            logger.warning(f"[!] Failed to get registration {rid}: {e}")
             return rid, None
 
     max_workers = min(MAX_WORKERS, len(unique_ids)) or 1
@@ -196,7 +236,7 @@ def download_and_encrypt_photo(uuid, save_path):
     # --- 1) Fetch Kobo submission ---
     submission = get_kobo_submission(uuid)
     if not submission:
-        print(f"[!] No Kobo submission found for UUID {uuid}")
+        logger.warning(f"[!] No Kobo submission found for UUID {uuid}")
         return
 
     photo_field = PHOTO_FIELD_NAME  # e.g. "photo"
@@ -207,65 +247,81 @@ def download_and_encrypt_photo(uuid, save_path):
     photo_url = submission.get(photo_url_field)
 
     if photo_url:
-        print(f"[OK] Direct Kobo photo URL found for UUID {uuid}: {photo_url}")
+        logger.info(f"[OK] Direct Kobo photo URL found for UUID {uuid}: {photo_url}")
 
         # Use smaller 'medium' image instead of original
         photo_url = photo_url.replace("/original/", "/medium/")
 
         res = requests.get(photo_url, headers=HEADERS_KOBO)
         if res.status_code != 200:
-            print(f"[!] Direct photo download failed for UUID {uuid}: {res.status_code}")
+            logger.warning(f"[!] Direct photo download failed for UUID {uuid}: {res.status_code}")
             return
 
         encrypted_bytes = encrypt_photo(res.content)
         with open(save_path, "wb") as f:
             f.write(encrypted_bytes)
 
-        print(f"[OK] Photo downloaded & encrypted (direct URL) for UUID {uuid}")
+        logger.info(f"[OK] Photo downloaded & encrypted (direct URL) for UUID {uuid}")
         return
 
     # --- 3) Fallback: match against _attachments (older Kobo submissions) ---
     if not photo_filename:
-        print(f"[!] No '{photo_field}' value for UUID {uuid}")
+        logger.warning(f"[!] No '{photo_field}' value for UUID {uuid}")
         return
 
     attachments = submission.get("_attachments", [])
     if not attachments:
-        print(f"[!] No attachments in submission for UUID {uuid}")
+        logger.warning(f"[!] No attachments in submission for UUID {uuid}")
         return
 
-    photo_base = photo_filename.split(".")[0]
+    from urllib.parse import unquote
+
+    # Normalise filename for comparison: URL-decode, underscores=spaces, lowercase
+    def norm(s):
+        return unquote(str(s)).replace("_", " ").lower()
+
+    photo_base = photo_filename.rsplit(".", 1)[0]
 
     matching = [
         a for a in attachments
-        if photo_base in a.get("filename", "")
+        if norm(photo_base) in norm(a.get("filename", ""))
+        or norm(photo_filename) in norm(a.get("filename", ""))
     ]
 
     if not matching:
-        print(f"[!] No matching attachment for '{photo_filename}' (UUID {uuid})")
+        fnames = [a.get("filename", "") for a in attachments]
+        logger.warning(f"[!] No matching attachment for '{photo_filename}' (UUID {uuid})")
+        logger.debug(f"[DEBUG] Available filenames: {fnames}")
         return
 
     att = matching[0]
     attach_uid = att.get("uid")
-
-    if not attach_uid:
-        print(f"[!] Attachment UID missing for UUID {uuid}")
-        return
-
     submission_id = submission["_id"]
 
-    # --- 4) Correct IFRC Kobo attachment URL format, with medium view ---
-    file_url = (
-        f"{KOBO_BASE}/api/v2/assets/{ASSET_ID}/data/"
-        f"{submission_id}/attachments/{attach_uid}/?view=medium"
-    )
+    # --- 4) Try direct download_url first, then construct IFRC URL ---
+    direct_url = att.get("download_url") or att.get("download_medium_url")
 
-    print(f"[OK] Using IFRC Kobo attachment URL for UUID {uuid}: {file_url}")
+    if direct_url:
+        file_url = direct_url.replace("/original/", "/medium/")
+        logger.info(f"[OK] Using direct download_url for UUID {uuid}: {file_url[:80]}")
+    elif attach_uid:
+        file_url = (
+            f"{KOBO_BASE}/api/v2/assets/{ASSET_ID}/data/"
+            f"{submission_id}/attachments/{attach_uid}/?view=medium"
+        )
+        logger.info(f"[OK] Using constructed IFRC URL for UUID {uuid}: {file_url[:80]}")
+    else:
+        logger.warning(f"[!] No download URL or UID for attachment (UUID {uuid})")
+        return
 
-    # --- 5) Download ---
+    # --- 5) Download (retry without medium if it fails) ---
     res = requests.get(file_url, headers=HEADERS_KOBO)
     if res.status_code != 200:
-        print(f"[!] Failed to download from IFRC Kobo for UUID {uuid}: {res.status_code}")
+        fallback = file_url.replace("/medium/", "/original/").replace("?view=medium", "")
+        logger.warning(f"[!] Medium download failed ({res.status_code}), retrying: {fallback[:80]}")
+        res = requests.get(fallback, headers=HEADERS_KOBO)
+    if res.status_code != 200:
+        logger.warning(f"[!] Failed to download attachment for UUID {uuid}: {res.status_code}")
         return
 
     # --- 6) Encrypt & save ---
@@ -273,7 +329,7 @@ def download_and_encrypt_photo(uuid, save_path):
     with open(save_path, "wb") as f:
         f.write(encrypted_bytes)
 
-    print(f"[OK] Photo downloaded & encrypted for UUID {uuid}")
+    logger.info(f"[OK] Photo downloaded & encrypted for UUID {uuid}")
 
 
 def download_photos_bulk(records, photos_dir):
@@ -354,16 +410,17 @@ def download_cache(program_id, payment_id):
         uuid = t.get("registrationReferenceId")
 
         if not reg_id or not uuid:
-            print("[SKIP] Missing reg_id or uuid in transaction")
+            logger.info("[SKIP] Missing reg_id or uuid in transaction")
             continue
 
         reg = registrations_map.get(reg_id)
         if not reg:
-            print(f"[!] No registration data for {reg_id}")
+            logger.warning(f"[!] No registration data for {reg_id}")
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        match_key = config.get("COLUMN_TO_MATCH")
+        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
 
@@ -407,8 +464,8 @@ def download_cache(program_id, payment_id):
     with open(tx_path, "w", encoding="utf-8") as f:
         json.dump(transactions, f, indent=2)
 
-    print(f"\n[OK] Done. Batch saved to: {batch_dir}")
-    print(f"{len(cache_data)} beneficiaries ready for offline validation.")
+    logger.info(f"\n[OK] Done. Batch saved to: {batch_dir}")
+    logger.info(f"{len(cache_data)} beneficiaries ready for offline validation.")
     return len(cache_data)
 
 
@@ -435,7 +492,7 @@ def download_recent_payments_cache(program_id):
     photos_dir = os.path.join(batch_dir, "photos")
 
     all_transactions = get_all_transactions(program_id)
-    print(f"[INFO] Total transactions fetched: {len(all_transactions)}")
+    logger.info(f"[INFO] Total transactions fetched: {len(all_transactions)}")
 
     fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
     filtered = []
@@ -479,7 +536,7 @@ def download_recent_payments_cache(program_id):
                 created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ")
         except ValueError:
             counts["invalid_date"] += 1
-            print(f"[SKIP] Invalid date: {created}")
+            logger.info(f"[SKIP] Invalid date: {created}")
             continue
 
         if created_dt < fourteen_days_ago:
@@ -489,10 +546,10 @@ def download_recent_payments_cache(program_id):
         filtered.append(t)
         counts["valid"] += 1
 
-    print("\n[DEBUG] Filter counts:")
+    logger.debug("\n[DEBUG] Filter counts:")
     for k, v in counts.items():
-        print(f"  - {k}: {v}")
-    print(f"[INFO] Filtered transactions: {len(filtered)}")
+        logger.info(f"  - {k}: {v}")
+    logger.info(f"[INFO] Filtered transactions: {len(filtered)}")
 
     # 2) Keep only the latest transaction per UUID
     latest_by_uuid = {}
@@ -504,7 +561,7 @@ def download_recent_payments_cache(program_id):
         if not existing or t.get("created", "") > existing.get("created", ""):
             latest_by_uuid[uuid] = t
 
-    print(f"[INFO] Final unique transactions to cache: {len(latest_by_uuid)}")
+    logger.info(f"[INFO] Final unique transactions to cache: {len(latest_by_uuid)}")
 
     # 3) Fetch registrations in bulk (parallel)
     reg_ids = [
@@ -522,7 +579,7 @@ def download_recent_payments_cache(program_id):
         uuid = t.get("registrationReferenceId")
 
         if not reg_id or not uuid:
-            print("[SKIP] Missing reg_id or uuid")
+            logger.info("[SKIP] Missing reg_id or uuid")
             continue
 
         status = (t.get("status") or t.get("transactionStatus") or "").lower()
@@ -539,11 +596,12 @@ def download_recent_payments_cache(program_id):
 
         reg = registrations_map.get(reg_id)
         if not reg:
-            print(f"[!] Failed registration fetch for {reg_id}")
+            logger.warning(f"[!] Failed registration fetch for {reg_id}")
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        match_key = config.get("COLUMN_TO_MATCH")
+        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
@@ -587,8 +645,8 @@ def download_recent_payments_cache(program_id):
     with open(tx_path, "w", encoding="utf-8") as f:
         json.dump(list(latest_by_uuid.values()), f, indent=2)
 
-    print(f"\n[OK] Batch saved to: {batch_dir}")
-    print(f"{len(cache_data)} beneficiaries ready.")
+    logger.info(f"\n[OK] Batch saved to: {batch_dir}")
+    logger.info(f"{len(cache_data)} beneficiaries ready.")
 
     batch_info = {
         "batchType": "payment-recent",

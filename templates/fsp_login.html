@@ -3,6 +3,8 @@
 <head>
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8" />
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#002855">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ t.fsp_login }}</title>
 
@@ -236,8 +238,8 @@
 
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
-    <span class="title-divider">|</span>
-    <span class="title-program"> FSP Log-in</span>
+    {% if national_society %}<span class="title-divider">|</span>
+    <span class="title-program">{{ national_society }}</span>{% endif %}
   </div>
 
   <div class="lang-select">

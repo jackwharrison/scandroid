@@ -31,6 +31,12 @@ app.secret_key = 'your_secret_key'
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
 Session(app)
+
+@app.context_processor
+def inject_national_society():
+    config = load_config()
+    return {"national_society": config.get("nationalSociety", "")}
+
 def _make_qr_image(data, box_cm=3.0):
     """Return a Pillow image for the QR sized to box_cm × box_cm at 300dpi."""
     qr = qrcode.QRCode(
@@ -46,7 +52,40 @@ def _make_qr_image(data, box_cm=3.0):
     img = img.resize((target_px, target_px))
     return img
 
-def _draw_voucher(c, item, static_folder):
+
+# ---------------------------------------------------------------------------
+# Instance-static helpers (used by the voucher designer + voucher rendering)
+#
+# Per-program voucher logos are stored in the same instance static folder that
+# /instance-static/<filename> serves from. On Azure that is the per-context
+# config folder; locally it falls back to the app's static/ folder.
+# ---------------------------------------------------------------------------
+def _instance_static_dir():
+    env = os.getenv("SCANDROID_ENV", "local")
+    context = os.getenv("SCANDROID_CONTEXT", "local")
+    if env == "azure":
+        path = f"/home/site/configs/{context}/static"
+    else:
+        path = os.path.join(app.root_path, "static")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _resolve_logo_path(filename, static_folder=None):
+    """Return the on-disk path for a stored logo filename, or None."""
+    if not filename:
+        return None
+    bases = [_instance_static_dir()]
+    if static_folder:
+        bases.append(static_folder)
+    for base in bases:
+        candidate = os.path.join(base, filename)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _draw_voucher(c, item, static_folder, design=None):
     """
     Draw one voucher on an A5 LANDSCAPE page matching the provided layout.
     Supports dynamic CSV fields.
@@ -60,12 +99,23 @@ def _draw_voucher(c, item, static_folder):
     # ---- BORDER -------------------------------------------------------------
     c.setLineWidth(0.8)
     c.rect(margin, margin, inner_w, inner_h)
-    logo_height = 2.5 * cm       # height of left logo
     logo_top_y = height - margin - 1.0*cm   # move logos DOWN slightly (was -0.0)
 
-    # LEFT LOGO (ns1)
+    # Per-program design (title / subtitle / logos / sizes), with hardcoded fallbacks
+    design = design or {}
+    logo_height = LEFT_LOGO_HEIGHT_CM.get(_clean_size(design.get("logo1_size")), 2.5) * cm
+    left_logo_path = (
+        _resolve_logo_path(design.get("logo1"), static_folder)
+        or os.path.join(static_folder, "ns1.png")
+    )
+    right_logo_path = (
+        _resolve_logo_path(design.get("logo2"), static_folder)
+        or os.path.join(static_folder, "ns2.png")
+    )
+
+    # LEFT LOGO
     try:
-        logo1 = ImageReader(os.path.join(static_folder, "ns1.png"))
+        logo1 = ImageReader(left_logo_path)
         c.drawImage(
             logo1,
             margin,                          # <--- as far left as possible
@@ -79,10 +129,10 @@ def _draw_voucher(c, item, static_folder):
     except:
         left_logo_top = height - margin - 0.5*cm
 
-    # RIGHT LOGO (ns2) – wide logo, scale by width
+    # RIGHT LOGO – wide logo, scale by width
     try:
-        logo2 = ImageReader(os.path.join(static_folder, "ns2.png"))
-        max_width = 5.0 * cm
+        logo2 = ImageReader(right_logo_path)
+        max_width = RIGHT_LOGO_WIDTH_CM.get(_clean_size(design.get("logo2_size")), 5.0) * cm
 
         img_w, img_h = logo2.getSize()
         scale = max_width / img_w
@@ -117,16 +167,26 @@ def _draw_voucher(c, item, static_folder):
     )
 
     # --- MAIN TITLE just below "Project" ---
+    title_text = design.get("title") or "CASH ON THE MOVE"
     title_y = project_y - 1.4*cm
     c.setFont("DejaVu", 22)
-    c.drawCentredString(width/2, title_y, "CASH ON THE MOVE")
+    c.drawCentredString(width/2, title_y, title_text)
 
-    # Subtitle lines
+    # Subtitle lines (newline-separated; falls back to the original copy)
+    subtitle_raw = design.get("subtitle")
+    if subtitle_raw:
+        subtitle_lines = [ln.strip() for ln in str(subtitle_raw).splitlines() if ln.strip()]
+    else:
+        subtitle_lines = [
+            "Supporting people on the move especially those",
+            "in vulnerable situations",
+        ]
+
     c.setFont("DejaVu", 11)
-    c.drawCentredString(width/2, title_y - 1.0*cm,
-                        "Supporting people on the move especially those")
-    c.drawCentredString(width/2, title_y - 1.6*cm,
-                        "in vulnerable situations")
+    sub_y = title_y - 1.0*cm
+    for line in subtitle_lines:
+        c.drawCentredString(width/2, sub_y, line)
+        sub_y -= 0.6*cm
     # ---- QR CODE ------------------------------------------------------------
     qr_box_size = 5.0 * cm
     qr_x = margin + 0.6*cm
@@ -188,9 +248,10 @@ def _draw_voucher(c, item, static_folder):
         )
 
 
-def generate_vouchers_pdf(rows, static_folder):
+def generate_vouchers_pdf(rows, static_folder, design=None):
     """
     rows: list of dicts with keys: referenceId, name
+    design: optional per-program voucher design (title/subtitle/logos)
     returns BytesIO of PDF
     """
     from io import BytesIO
@@ -200,12 +261,160 @@ def generate_vouchers_pdf(rows, static_folder):
     c = canvas.Canvas(pdf_io, pagesize=landscape(A5))
 
     for r in rows:
-        _draw_voucher(c, r, static_folder)
+        _draw_voucher(c, r, static_folder, design=design)
         c.showPage()
 
     c.save()
     pdf_io.seek(0)
     return pdf_io
+
+
+# ---------------------------------------------------------------------------
+# Program list + voucher design storage helpers
+# ---------------------------------------------------------------------------
+def resolve_programs(system_config=None):
+    """Return (programs, lookup).
+
+    programs: list of {"id": str, "title": str} for the program dropdowns.
+    lookup:   {program_id: raw program object}.
+
+    Tries to resolve human-readable titles from 121 (same approach as the
+    field-config page); falls back to the program id if that fails.
+    """
+    if system_config is None:
+        try:
+            system_config = load_config()
+        except Exception:
+            system_config = {}
+
+    programs_raw = system_config.get("PROGRAMS", [])
+    programs, lookup = [], {}
+    url121 = system_config.get("url121")
+
+    if url121 and programs_raw:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", ""),
+                },
+                timeout=10,
+            )
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+                for p in programs_raw:
+                    pid = p.get("programId")
+                    title = str(pid)
+                    try:
+                        r = requests.get(
+                            f"{url121}/api/programs/{pid}",
+                            cookies=cookies,
+                            timeout=10,
+                        )
+                        if r.status_code == 200:
+                            titles = r.json().get("titlePortal", {}) or {}
+                            title = titles.get("en") or next(iter(titles.values()), title)
+                    except Exception:
+                        pass
+                    programs.append({"id": str(pid), "title": title})
+                    lookup[str(pid)] = p
+        except Exception as e:
+            print("Program title lookup failed:", e)
+
+    # Fallback: ids only
+    if not programs:
+        for p in programs_raw:
+            pid = str(p.get("programId"))
+            programs.append({"id": pid, "title": pid})
+            lookup[pid] = p
+
+    return programs, lookup
+
+
+# Note: SVG is intentionally excluded — ReportLab's ImageReader cannot render
+# SVG into the voucher PDF, so only raster formats are accepted.
+ALLOWED_LOGO_EXT = {"png", "jpg", "jpeg"}
+
+# Per-logo prominence. Values stored in the design; mapped to real dimensions
+# at render time (left logo is sized by height, right logo by width).
+LOGO_SIZES = {"small", "medium", "large"}
+LEFT_LOGO_HEIGHT_CM = {"small": 1.8, "medium": 2.5, "large": 3.3}
+RIGHT_LOGO_WIDTH_CM = {"small": 4.0, "medium": 5.0, "large": 6.2}
+
+
+def _clean_size(value):
+    value = (value or "").strip().lower()
+    return value if value in LOGO_SIZES else "medium"
+
+
+def load_voucher_designs():
+    """All per-program voucher designs stored in display_config.json."""
+    try:
+        cfg = load_display_config()
+    except Exception:
+        cfg = {}
+    return (cfg or {}).get("voucher_designs", {}) or {}
+
+
+def get_voucher_design(program_id):
+    if program_id is None:
+        return None
+    return load_voucher_designs().get(str(program_id))
+
+
+def save_voucher_design(program_id, design):
+    cfg = load_display_config() or {}
+    cfg.setdefault("voucher_designs", {})
+    cfg["voucher_designs"][str(program_id)] = design
+    save_display_config(cfg)
+
+
+def _save_logo_file(file_storage, program_id, slot):
+    """Persist an uploaded logo to the instance static folder; return filename.
+
+    Raises ValueError if the file isn't an accepted raster format.
+    """
+    original = (file_storage.filename or "").lower()
+    ext = original.rsplit(".", 1)[-1] if "." in original else ""
+    if ext not in ALLOWED_LOGO_EXT:
+        raise ValueError("Unsupported logo format. Please use a PNG or JPG image.")
+    filename = f"voucher_logo_{program_id}_{slot}.{ext}"
+    file_storage.save(os.path.join(_instance_static_dir(), filename))
+    return filename
+
+
+def _logo_url(filename):
+    """Served URL for a stored logo, cache-busted by file mtime.
+
+    Logo filenames are stable per program/slot and get overwritten on re-upload,
+    so without a version param browsers would keep showing the old image.
+    """
+    if not filename:
+        return None
+    url = f"/instance-static/{filename}"
+    path = _resolve_logo_path(filename)
+    if path:
+        try:
+            url += f"?v={int(os.path.getmtime(path))}"
+        except OSError:
+            pass
+    return url
+
+
+def _design_for_client(design):
+    """Shape a stored design for the browser (logo filenames -> served URLs)."""
+    design = design or {}
+    return {
+        "title": design.get("title", ""),
+        "subtitle": design.get("subtitle", ""),
+        "logo1_url": _logo_url(design.get("logo1")),
+        "logo2_url": _logo_url(design.get("logo2")),
+        "logo1_size": _clean_size(design.get("logo1_size")),
+        "logo2_size": _clean_size(design.get("logo2_size")),
+    }
+
 
 translations = {
 "en": {
@@ -240,6 +449,9 @@ translations = {
     "config_system": "System Configuration",
     "config_display": "Configure Fields to Display",
     "fsp_login": "Login for FSP Admins",
+    "program_select_title": "Select a Program",
+    "back_to_programs": "Back to Programs",
+    "program_select_subtitle": "Choose the program you want to work with",
     "fsp_sync_title": "Prepare to Scan",
     "sync_latest": "Sync Latest Records",
     "syncing": "Syncing...",
@@ -344,6 +556,33 @@ translations = {
     "form_owner": "Owner",
     "no_form_connected": "Unable to load form details",
     "kobo_connection": "Kobo Connection",
+    "payment_amount": "Payment Amount",
+    "voucher_design": "Voucher Design",
+    "voucher_design_desc": "Customise the title, subtitle and logos printed on each program's vouchers.",
+    "voucher_design_title": "Voucher Design",
+    "voucher_design_settings": "Design settings",
+    "voucher_design_settings_desc": "These replace the values printed on the voucher. Each program keeps its own design.",
+    "voucher_title_label": "Title",
+    "voucher_subtitle_label": "Subtitle",
+    "voucher_logos_label": "Logos",
+    "voucher_left_logo": "Left logo",
+    "voucher_right_logo": "Right logo",
+    "voucher_logo_upload": "Upload",
+    "voucher_logo_remove": "remove",
+    "voucher_no_logo": "No logo",
+    "voucher_live_preview": "Live preview",
+    "voucher_preview_desc": "A5 landscape, matching the printed voucher layout.",
+    "voucher_save_design": "Save design",
+    "voucher_design_saved": "Design saved",
+    "voucher_design_save_failed": "Could not save design",
+    "voucher_design_incomplete_title": "Voucher design not completed",
+    "voucher_design_incomplete_desc": "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers.",
+    "voucher_design_go": "Design this voucher",
+    "voucher_logo_size": "Size",
+    "voucher_size_small": "Small",
+    "voucher_size_medium": "Medium",
+    "voucher_size_large": "Large",
+    "program": "Program",
 }
 ,
 "fr": {
@@ -378,6 +617,9 @@ translations = {
     "config_system": "Configurer le système ",
     "config_display": "Congifuration des champs de vérification",
     "fsp_login": "Connexion pour les FSP",
+    "program_select_title": "Sélectionner un programme",
+    "back_to_programs": "Retour aux programmes",
+    "program_select_subtitle": "Choisissez le programme avec lequel vous souhaitez travailler",
     "fsp_sync_title": "Synchroniser les enregistrements hors ligne",
     "sync_latest": "Synchroniser les derniers enregistrements",
     "syncing": "Synchronisation...",
@@ -481,7 +723,8 @@ translations = {
     "connected_to": "Connecté au formulaire :",
     "form_owner": "Propriétaire",
     "no_form_connected": "Impossible de charger les détails du formulaire",
-    "kobo_connection": "Connexion Kobo"
+    "kobo_connection": "Connexion Kobo",
+    "payment_amount": "Montant du paiement",
 }
 ,
 "ar": {
@@ -516,6 +759,9 @@ translations = {
     "config_system": "إعدادات النظام",
     "config_display": "تكوين الحقول المعروضة",
     "fsp_login": "تسجيل الدخول لمزودي الخدمات المالية",
+    "program_select_title": "اختر برنامجاً",
+    "back_to_programs": "العودة إلى البرامج",
+    "program_select_subtitle": "اختر البرنامج الذي تريد العمل معه",
     "fsp_sync_title": "📥 مزوّد الخدمة: مزامنة السجلات غير المتصلة",
     "sync_latest": "مزامنة أحدث السجلات",
     "syncing": "جارٍ المزامنة...",
@@ -619,7 +865,8 @@ translations = {
     "connected_to": "متصل بالنموذج:",
     "form_owner": "المالك",
     "no_form_connected": "تعذّر تحميل تفاصيل النموذج",
-    "kobo_connection": "اتصال كوبا" 
+    "kobo_connection": "اتصال كوبا",
+    "payment_amount": "مبلغ الدفع",
     }
 }
 
@@ -712,13 +959,9 @@ def admin_dashboard():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
-    # Load title from system_config.json
-    config = load_config()
-    program_title = config.get("programTitle", "")
 
     return render_template(
         "admin_dashboard.html",
-        program_title=program_title,
         lang=lang,
         t=t,
         username=session.get("admin_username")
@@ -743,65 +986,92 @@ def system_config():
 
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
+    config = load_config()
 
-    # -------------------- POST: Save Config --------------------
+    # ============================================================
+    # POST: SAVE CONFIG
+    # ============================================================
     if request.method == "POST":
-        updated_config = load_config()
+        updated = config.copy()
 
-        editable_keys = [
-            "KOBO_SERVER", "KOBO_TOKEN", "ASSET_ID",
-            "url121", "username121", "password121",
-            "programId", "programTitle",
-            "ENCRYPTION_KEY", "programCurrency"
-        ]
+        # ---- Global fields ----
+        # Always save these from the form
+        for key in ["KOBO_SERVER", "url121"]:
+            updated[key] = request.form.get(key, "").strip()
 
-        for key in editable_keys:
-            updated_config[key] = request.form.get(key, updated_config.get(key, ""))
+        # Only overwrite if a new value was submitted
+        for key in ["KOBO_TOKEN", "username121", "password121", "ENCRYPTION_KEY"]:
+            submitted = request.form.get(key, "").strip()
+            if submitted:
+                updated[key] = submitted
+            # else: keep existing value from config.copy()
 
-        save_config(updated_config)
+        # ---- Program mappings ----
+        programs = []
+        program_ids = request.form.getlist("PROGRAMS[][programId]")
+        asset_ids = request.form.getlist("PROGRAMS[][koboAssetId]")
+
+        kobo_server = updated.get("KOBO_SERVER")
+        kobo_token = updated.get("KOBO_TOKEN")
+
+        for pid, asset_id in zip(program_ids, asset_ids):
+            if not pid or not asset_id:
+                continue
+
+            entry = {
+                "programId": int(pid),
+                "koboAssetId": asset_id.strip()
+            }
+
+            # ---- Validate Kobo asset ----
+            try:
+                r = requests.get(
+                    f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                    headers={"Authorization": f"Token {kobo_token}"},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    j = r.json()
+                    entry["koboFormName"] = j.get("name")
+                    entry["koboFormOwner"] = j.get("owner__username")
+            except Exception as e:
+                print("Kobo validation error:", e)
+
+            programs.append(entry)
+
+        updated["PROGRAMS"] = programs
+
+        save_config(updated)
         flash(t["saved_successfully"])
         return redirect(url_for("system_config", lang=lang))
 
-    # -------------------- GET: Load Config --------------------
-    config = load_config()
-
-    def safe_get(k):
-        v = config.get(k)
-        return v if v not in ("", None) else None
-
-    url121 = safe_get("url121")
-    username121 = safe_get("username121")
-    password121 = safe_get("password121")
-    selected_program_id = safe_get("programId")
+    # ============================================================
+    # GET: LOAD DATA FOR UI
+    # ============================================================
+    url121 = config.get("url121")
+    username121 = config.get("username121")
+    password121 = config.get("password121")
 
     token = None
-    program_title = config.get("programTitle")
-    program_currency = config.get("programCurrency")
-    column_to_match_121 = None
+    program_ids = []
     program_options = []
 
-    # ============================================================
-    #                     1. Login to 121 API
-    # ============================================================
-    program_ids = []
+    # ---- Login to 121 ----
     if url121 and username121 and password121:
         try:
-            login_payload = {"username": username121, "password": password121}
-            resp = requests.post(f"{url121}/api/users/login", json=login_payload)
-
-            if resp.status_code == 201:
-                resp_json = resp.json()
-                token = resp_json.get("access_token_general")
-                permissions = resp_json.get("permissions", {})
-                program_ids = [int(pid) for pid in permissions.keys()]
-
+            r = requests.post(
+                f"{url121}/api/users/login",
+                json={"username": username121, "password": password121}
+            )
+            if r.status_code == 201:
+                j = r.json()
+                token = j.get("access_token_general")
+                program_ids = [int(pid) for pid in j.get("permissions", {}).keys()]
         except Exception as e:
-            print("Error logging into 121 API:", e)
+            print("121 login failed:", e)
 
-    # ============================================================
-    #            2. Load all program titles for dropdown
-    # ============================================================
-    if token and program_ids:
+    # ---- Load program titles ----
+    if token:
         for pid in program_ids:
             try:
                 r = requests.get(
@@ -810,109 +1080,108 @@ def system_config():
                 )
                 if r.status_code == 200:
                     pdata = r.json()
-                    title_dict = pdata.get("titlePortal", {})
-
-                    title = (
-                        title_dict.get(lang)
-                        or next(iter(title_dict.values()), f"Program {pid}")
-                    )
+                    titles = pdata.get("titlePortal", {})
+                    title = titles.get(lang) or next(iter(titles.values()), f"Program {pid}")
                     program_options.append({"id": pid, "title": title})
-
             except Exception as e:
-                print(f"Error loading program {pid}:", e)
+                print(f"Program load failed ({pid}):", e)
 
-    # ============================================================
-    #            3. Load selected program details
-    # ============================================================
-    if token and selected_program_id:
-        try:
-            resp = requests.get(
-                f"{url121}/api/programs/{selected_program_id}",
-                cookies={"access_token_general": token}
-            )
+    # Existing mappings for UI
+    program_mappings = config.get("PROGRAMS", [])
 
-            if resp.status_code == 200:
-                data = resp.json()
-                title_dict = data.get("titlePortal", {})
-
-                program_title = (
-                    title_dict.get(lang)
-                    or next(iter(title_dict.values()), None)
-                )
-                program_currency = data.get("currency", program_currency)
-
-                config["programTitle"] = program_title
-                config["programCurrency"] = program_currency
-                save_config(config)
-
-        except Exception as e:
-            print("Error fetching program info:", e)
-
-    # ============================================================
-    #               4. Load COLUMN_TO_MATCH from 121
-    # ============================================================
-    if token and selected_program_id:
-        try:
-            resp = requests.get(
-                f"{url121}/api/programs/{selected_program_id}/fsp-configurations",
-                cookies={"access_token_general": token}
-            )
-
-            if resp.status_code == 200:
-                for fsp in resp.json():
-                    for prop in fsp.get("properties", []):
-                        if prop.get("name") == "columnToMatch":
-                            column_to_match_121 = prop.get("value")
-
-            if column_to_match_121:
-                config["COLUMN_TO_MATCH"] = column_to_match_121
-                save_config(config)
-
-        except Exception as e:
-            print("Error fetching columnToMatch:", e)
-
-    # ============================================================
-    #              5. Fetch KOBO FORM METADATA (NEW)
-    # ============================================================
-    kobo_form_name = None
-    kobo_form_owner = None
-
-    try:
-        kobo_server = config.get("KOBO_SERVER", "https://kobo.ifrc.org")
-        kobo_token = config.get("KOBO_TOKEN")
-        asset_id = config.get("ASSET_ID")
-
-        if kobo_token and asset_id:
-            resp = requests.get(
-                f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
-                headers={"Authorization": f"Token {kobo_token}"},
-                timeout=10
-            )
-
-            if resp.status_code == 200:
-                j = resp.json()
-                kobo_form_name = j.get("name")
-                kobo_form_owner = j.get("owner__username")
-
-    except Exception as e:
-        print("Error loading Kobo form metadata:", e)
-
-    # ============================================================
-    #                     Render Template
-    # ============================================================
     return render_template(
         "system_config.html",
         config=config,
-        program_title=program_title,
-        program_currency=program_currency,
-        column_to_match_121=column_to_match_121 or config.get("COLUMN_TO_MATCH"),
         program_options=program_options,
+        program_mappings=program_mappings,
         username=session.get("admin_username"),
         lang=lang,
-        t=t,
-        kobo_form_name=kobo_form_name,
-        kobo_form_owner=kobo_form_owner
+        t=t
     )
+
+
+
+@app.route("/api/program-attributes/<int:program_id>")
+def api_program_attributes(program_id):
+    if not session.get("admin_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    system_config = load_config()
+    url121 = system_config.get("url121")
+
+    if not url121:
+        return jsonify({"attributes": [], "kobo_image_fields": []})
+
+    attributes = []
+    kobo_image_fields = []
+
+    try:
+        login_resp = requests.post(
+            f"{url121}/api/users/login",
+            json={
+                "username": system_config.get("username121", ""),
+                "password": system_config.get("password121", "")
+            },
+            timeout=10
+        )
+
+        if login_resp.status_code == 201:
+            token = login_resp.json().get("access_token_general")
+            cookies = {"access_token_general": token}
+
+            # Registration attributes
+            r = requests.get(
+                f"{url121}/api/programs/{program_id}",
+                cookies=cookies,
+                timeout=10
+            )
+            if r.status_code == 200:
+                for attr in r.json().get("programRegistrationAttributes", []):
+                    name = attr.get("name")
+                    if not name:
+                        continue
+                    labels = attr.get("label") or {}
+                    label = labels.get("en") or next(iter(labels.values()), name)
+                    attributes.append({"name": name, "label": label})
+
+    except Exception as e:
+        print(f"[api_program_attributes] Error: {e}")
+
+    # Kobo image fields for this program
+    try:
+        programs = system_config.get("PROGRAMS", [])
+        program = next((p for p in programs if str(p.get("programId")) == str(program_id)), None)
+        if program:
+            asset_id = program.get("koboAssetId")
+            kobo_token = system_config.get("KOBO_TOKEN")
+            kobo_server = system_config.get("KOBO_SERVER", "https://kobo.ifrc.org")
+
+            if asset_id and kobo_token:
+                r = requests.get(
+                    f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                    headers={"Authorization": f"Token {kobo_token}"},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    survey = r.json().get("content", {}).get("survey", [])
+                    for item in survey:
+                        if not isinstance(item, dict) or item.get("type") != "image":
+                            continue
+                        raw_label = item.get("label")
+                        if isinstance(raw_label, list) and raw_label:
+                            label = raw_label[0] if isinstance(raw_label[0], str) else next(iter(raw_label[0].values()), "")
+                        elif isinstance(raw_label, dict):
+                            label = raw_label.get("en") or next(iter(raw_label.values()), "")
+                        else:
+                            label = str(raw_label or "")
+                        xpath = item.get("$xpath", "").replace("/data/", "").replace("data/", "").strip("/")
+                        name = xpath or item.get("name", "")
+                        if name:
+                            kobo_image_fields.append({"name": name, "label": label})
+    except Exception as e:
+        print(f"[api_program_attributes] Kobo error: {e}")
+
+    return jsonify({"attributes": attributes, "kobo_image_fields": kobo_image_fields})
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
@@ -922,40 +1191,36 @@ def config_page():
     lang = request.args.get("lang", "en")
     username = session.get("admin_username", "Admin")
 
-    # -------------------- POST (SAVE) --------------------
+    # ------------------------------------------------------
+    # POST (SAVE DISPLAY CONFIG – PER PROGRAM)
+    # ------------------------------------------------------
     if request.method == "POST":
         config_data = request.get_json()
 
-        # Prevent saving COLUMN_TO_MATCH here
+        program_id = str(config_data.pop("programId"))
         config_data.pop("COLUMN_TO_MATCH", None)
 
         try:
-            save_display_config(config_data)
+            full_config = load_display_config()
+            if "programs" not in full_config:
+                full_config["programs"] = {}
+
+            full_config["programs"][program_id] = config_data
+            save_display_config(full_config)
+
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
 
-    # -------------------- GET (LOAD PAGE) --------------------
+    # ------------------------------------------------------
+    # GET (LOAD PAGE)
+    # ------------------------------------------------------
 
-    # Load existing display config
+    # Load display config
     try:
         config_data = load_display_config()
-        if isinstance(config_data, list):
-            config_data = {
-                "fields": config_data,
-                "photo": {
-                    "enabled": True,
-                    "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
-                }
-            }
     except Exception:
-        config_data = {
-            "fields": [],
-            "photo": {
-                "enabled": True,
-                "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
-            }
-        }
+        config_data = {}
 
     # Load system config
     try:
@@ -963,174 +1228,282 @@ def config_page():
     except Exception:
         system_config = {}
 
-    program_title = system_config.get("programTitle", "")
-    column_to_match_121 = None
-    allowed_attributes = []
-    kobo_image_fields = []
+    programs_raw = system_config.get("PROGRAMS", [])
+    programs = []          # UI list (id + title)
+    program_lookup = {}    # Logic lookup (full object)
 
     url121 = system_config.get("url121")
-    program_id = system_config.get("programId")
 
     # ------------------------------------------------------
-    #                 121 PROGRAM ATTRIBUTES
+    # Resolve program titles from 121
     # ------------------------------------------------------
-    if url121 and program_id:
+    if url121 and programs_raw:
         try:
-            # Login to 121
-            login_payload = {
-                "username": system_config.get("username121", ""),
-                "password": system_config.get("password121", "")
-            }
-
-            login_resp = requests.post(f"{url121}/api/users/login", json=login_payload)
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                }
+            )
 
             if login_resp.status_code == 201:
                 token = login_resp.json().get("access_token_general")
                 cookies = {"access_token_general": token}
 
-                # 1️⃣ COLUMN TO MATCH
+                for p in programs_raw:
+                    pid = p.get("programId")
+                    title = str(pid)
+
+                    try:
+                        r = requests.get(
+                            f"{url121}/api/programs/{pid}",
+                            cookies=cookies,
+                            timeout=10
+                        )
+                        if r.status_code == 200:
+                            titles = r.json().get("titlePortal", {})
+                            title = titles.get("en") or next(iter(titles.values()), title)
+                    except Exception:
+                        pass
+
+                    programs.append({
+                        "id": str(pid),
+                        "title": title
+                    })
+                    program_lookup[str(pid)] = p
+
+        except Exception as e:
+            print("Program title lookup failed:", e)
+
+    # Safety fallback
+    if not programs:
+        for p in programs_raw:
+            pid = str(p.get("programId"))
+            programs.append({"id": pid, "title": pid})
+            program_lookup[pid] = p
+
+    # ------------------------------------------------------
+    # Active program selection
+    # ------------------------------------------------------
+    active_program_id = request.args.get("programId")
+    if not active_program_id and programs:
+        active_program_id = programs[0]["id"]
+    active_program_id = str(active_program_id) if active_program_id else None
+
+    # ------------------------------------------------------
+    # Backward compatibility (single → multi)
+    # ------------------------------------------------------
+    if "programs" not in config_data:
+        default_program_id = active_program_id or "default"
+        config_data = {
+            "programs": {
+                default_program_id: {
+                    "fields": config_data.get("fields", []),
+                    "photo": config_data.get(
+                        "photo",
+                        {
+                            "enabled": True,
+                            "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
+                        }
+                    )
+                }
+            }
+        }
+
+    # ------------------------------------------------------
+    # Resolve active program Kobo + 121 config
+    # ------------------------------------------------------
+    program_id = None
+    asset_id = None
+
+    for prog in system_config.get("PROGRAMS", []):
+        if str(prog.get("programId")) == str(active_program_id):
+            program_id = prog.get("programId")
+            asset_id = prog.get("koboAssetId")
+            break
+
+    program_title = system_config.get("programTitle", "")
+    column_to_match_121 = None
+    allowed_attributes = []
+    kobo_image_fields = []
+
+    # ------------------------------------------------------
+    # 121 PROGRAM ATTRIBUTES
+    # ------------------------------------------------------
+    if url121 and program_id:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                }
+            )
+
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+
+                # Column to match
                 try:
-                    resp_fsp = requests.get(
+                    r = requests.get(
                         f"{url121}/api/programs/{program_id}/fsp-configurations",
                         cookies=cookies,
                         timeout=10
                     )
-                    if resp_fsp.status_code == 200:
-                        for fsp in resp_fsp.json():
+                    if r.status_code == 200:
+                        for fsp in r.json():
                             for prop in fsp.get("properties", []):
                                 if prop.get("name") == "columnToMatch":
                                     column_to_match_121 = prop.get("value")
                                     break
-                except Exception as e:
-                    print("Error retrieving fsp-configurations:", e)
+                except Exception:
+                    pass
 
-                # 2️⃣ PROGRAM REGISTRATION ATTRIBUTES
+                # Registration attributes
                 try:
-                    resp_prog = requests.get(
+                    r = requests.get(
                         f"{url121}/api/programs/{program_id}",
                         cookies=cookies,
                         timeout=10
                     )
-                    if resp_prog.status_code == 200:
-                        attrs = resp_prog.json().get("programRegistrationAttributes", [])
-
-                        for attr in attrs:
+                    if r.status_code == 200:
+                        for attr in r.json().get("programRegistrationAttributes", []):
                             name = attr.get("name")
                             if not name:
                                 continue
 
-                            label_obj = attr.get("label") or {}
-
-                            display_label = (
-                                label_obj.get("en")
-                                or next(iter(label_obj.values()), None)
-                                or name
-                            )
+                            labels = attr.get("label") or {}
+                            label = labels.get("en") or next(iter(labels.values()), name)
 
                             allowed_attributes.append({
                                 "name": name,
-                                "label": display_label
+                                "label": label
                             })
-
-                except Exception as e:
-                    print("Error retrieving program attributes:", e)
+                except Exception:
+                    pass
 
         except Exception as e:
-            print("Error retrieving config from 121:", e)
+            print("121 lookup failed:", e)
 
-    # STRICT MODE – Drop invalid fields
-    if allowed_attributes:
+    # ------------------------------------------------------
+    # Strict mode – drop invalid fields per program
+    # ------------------------------------------------------
+    if allowed_attributes and active_program_id:
         allowed_names = {a["name"] for a in allowed_attributes}
-        config_data["fields"] = [
-            f for f in config_data.get("fields", [])
-            if f.get("key") in allowed_names
-        ]
-
+        pdata = config_data.get("programs", {}).get(active_program_id)
+        if pdata:
+            pdata["fields"] = [
+                f for f in pdata.get("fields", [])
+                if f.get("key") in allowed_names
+            ]
     # ------------------------------------------------------
-    #              KOBO IMAGE FIELD EXTRACTION (FIXED)
+    # Kobo image fields
     # ------------------------------------------------------
-
     def get_full_kobo_path(item):
-        """Return correct Kobo path: using $xpath if available, else parent chain."""
+        if not isinstance(item, dict):
+            return None
+
         if "$xpath" in item:
             return item["$xpath"].replace("/data/", "").replace("data/", "").strip("/")
 
-        # Manual fallback
         parts = []
         current = item
-        while current:
+        while isinstance(current, dict):
             if current.get("name"):
                 parts.append(current["name"])
             current = current.get("parent")
 
-        return "/".join(reversed(parts))
+        return "/".join(reversed(parts)) if parts else None
 
     try:
         token = system_config.get("KOBO_TOKEN")
-        asset_id = system_config.get("ASSET_ID")
         kobo_server = system_config.get("KOBO_SERVER", "https://kobo.ifrc.org")
 
         if token and asset_id:
-            url = f"{kobo_server}/api/v2/assets/{asset_id}/?format=json"
-            resp = requests.get(url, headers={"Authorization": f"Token {token}"}, timeout=10)
+            r = requests.get(
+                f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
+                headers={"Authorization": f"Token {token}"},
+                timeout=10
+            )
 
-            if resp.status_code == 200:
-                content = resp.json()
-
-                survey = content.get("content", {}).get("survey", [])
-
+            if r.status_code == 200:
+                survey = r.json().get("content", {}).get("survey", [])
                 for item in survey:
+                    if not isinstance(item, dict):
+                        continue
+
                     if item.get("type") == "image":
-                        full_path = get_full_kobo_path(item)
+                        raw_label = item.get("label")
 
-                        # Extract label
-                        labels = item.get("label") or {}
-                        if isinstance(labels, list):
-                            label = labels[0] if labels else full_path
+                        if isinstance(raw_label, dict):
+                            label = (
+                                raw_label.get("English")
+                                or raw_label.get("en")
+                                or next(iter(raw_label.values()), get_full_kobo_path(item))
+                            )
+
+                        elif isinstance(raw_label, list) and raw_label:
+                            first = raw_label[0]
+                            if isinstance(first, dict):
+                                label = (
+                                    first.get("English")
+                                    or first.get("en")
+                                    or next(iter(first.values()), get_full_kobo_path(item))
+                                )
+                            else:
+                                label = str(first)
+
                         else:
-                            label = labels.get("English") or labels.get("en") or next(iter(labels.values()), full_path)
+                            label = get_full_kobo_path(item)
 
-                        kobo_image_fields.append({
-                            "name": full_path,
-                            "label": label
-                        })
-
+                        path = get_full_kobo_path(item)
+                        if path:
+                            kobo_image_fields.append({
+                                "name": path,
+                                "label": label
+                            })
     except Exception as e:
-        print("Error loading Kobo image fields:", e)
+        print("Kobo lookup failed:", e)
 
-    # STRICT MODE for image field
+    # ------------------------------------------------------
+    # Strict mode – image field per program
+    # ------------------------------------------------------
     if kobo_image_fields:
-        valid_paths = {i["name"] for i in kobo_image_fields}
-        if config_data.get("photo", {}).get("field_name") not in valid_paths:
-            config_data["photo"]["field_name"] = ""
+        valid = {i["name"] for i in kobo_image_fields}
+        for pdata in config_data.get("programs", {}).values():
+            if pdata.get("photo", {}).get("field_name") not in valid:
+                pdata.setdefault("photo", {})["field_name"] = ""
 
     # ------------------------------------------------------
-    # SAVE COLUMN_TO_MATCH IF FOUND
+    # Persist COLUMN_TO_MATCH
     # ------------------------------------------------------
-    if column_to_match_121:
-        system_config["COLUMN_TO_MATCH"] = column_to_match_121
+    if column_to_match_121 and active_program_id:
+        per_program = system_config.setdefault("COLUMN_TO_MATCH_PER_PROGRAM", {})
+        per_program[str(active_program_id)] = column_to_match_121
         try:
-            with open("system_config.json", "w", encoding="utf-8") as f:
-                json.dump(system_config, f, ensure_ascii=False, indent=2)
-        except:
+            save_config(system_config)
+        except Exception:
             pass
 
     # ------------------------------------------------------
-    # RENDER PAGE
+    # RENDER
     # ------------------------------------------------------
     return render_template(
         "config.html",
-        config=config_data,
+        full_config=config_data,
+        programs=programs,
+        active_program_id=active_program_id,
         system_config=system_config,
-        column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
         allowed_attributes=allowed_attributes,
         kobo_image_fields=kobo_image_fields,
+        column_to_match_121=column_to_match_121 or system_config.get("COLUMN_TO_MATCH"),
         lang=lang,
         username=username,
         program_title=program_title,
-        t=translations.get(lang, translations["en"])
+        t=translations.get(lang, translations["en"]),
     )
-
 
 
 @app.route("/logout")
@@ -1167,7 +1540,7 @@ def fsp_login():
             if res.status_code == 201:
                 session["fsp_logged_in"] = True
                 session["fsp_username"] = username
-                return redirect(url_for("fsp_admin", lang=lang))
+                return redirect(url_for("fsp_program_selector"))
 
             elif res.status_code in (400, 401):
                 error = t["login_error"]
@@ -1180,27 +1553,181 @@ def fsp_login():
 
     return render_template("fsp_login.html", lang=lang, t=t, error=error)
 
-
-@app.route("/fsp-admin")
-def fsp_admin():
+@app.route("/fsp-programs")
+def fsp_program_selector():
+    # ------------------------------------------------------
+    # Auth guard
+    # ------------------------------------------------------
     if not session.get("fsp_logged_in"):
         return redirect(url_for("fsp_login"))
 
+    # ------------------------------------------------------
+    # Language + translations (MISSING BEFORE)
+    # ------------------------------------------------------
+    lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+    username = session.get("fsp_username")
+
+    # ------------------------------------------------------
+    # Always initialise programs (CRITICAL FIX)
+    # ------------------------------------------------------
+    programs = []
+
+    # ------------------------------------------------------
+    # Load system config
+    # ------------------------------------------------------
+    try:
+        system_config = load_config()
+    except Exception:
+        system_config = {}
+
+    programs_raw = system_config.get("PROGRAMS", [])
+    url121 = system_config.get("url121")
+
+    # ------------------------------------------------------
+    # Resolve program titles from 121
+    # ------------------------------------------------------
+    if url121 and programs_raw:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                },
+                timeout=10
+            )
+
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                cookies = {"access_token_general": token}
+
+                for p in programs_raw:
+                    pid = p.get("programId")
+                    title = str(pid)
+
+                    try:
+                        r = requests.get(
+                            f"{url121}/api/programs/{pid}",
+                            cookies=cookies,
+                            timeout=10
+                        )
+                        if r.status_code == 200:
+                            titles = r.json().get("titlePortal", {})
+                            title = titles.get("en") or next(iter(titles.values()), title)
+                    except Exception:
+                        pass
+
+                    programs.append({
+                        "id": str(pid),
+                        "title": title
+                    })
+
+        except Exception as e:
+            print("Program lookup failed:", e)
+
+    # ------------------------------------------------------
+    # Fallback: titles = program IDs
+    # ------------------------------------------------------
+    if not programs:
+        programs = [
+            {
+                "id": str(p.get("programId")),
+                "title": str(p.get("programId"))
+            }
+            for p in programs_raw
+        ]
+
+    # ------------------------------------------------------
+    # Render selector page
+    # ------------------------------------------------------
+    return render_template(
+        "fsp_programs.html",
+        programs=programs,
+        lang=lang,
+        t=t,
+        username=username,
+        program_title="Program Selector"
+    )
+@app.route("/select-program/<program_id>")
+def select_program(program_id):
+    if not session.get("fsp_logged_in"):
+        return redirect(url_for("fsp_login"))
+
+    # keep language if present
+    lang = request.args.get("lang", "en")
+
+    # store selection in session
+    session["fsp_program_id"] = str(program_id)
+
+    # redirect into the admin page WITH query param
+    return redirect(url_for("fsp_admin", program_id=str(program_id), lang=lang))
+
+@app.route("/fsp-admin")
+def fsp_admin():
+    # --- auth ---
+    if not session.get("fsp_logged_in"):
+        return redirect(url_for("fsp_login"))
+
+    # --- language ---
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
-    # Load system config
+    # --- program resolution (URL first, then session) ---
+    program_id = request.args.get("program_id") or session.get("fsp_program_id")
+    if not program_id:
+        return redirect(url_for("fsp_program_selector", lang=lang))
+
+    program_id = str(program_id)
+
+    # --- load configs ---
     system_config = load_config()
+    _full_display = load_display_config()
+    # Pass full display config to template so it can be stored in IndexedDB
+    display_config = _full_display
 
-    # Load display fields config
-    display_config = load_display_config()
+    column_to_match = get_column_to_match(program_id) or system_config.get("COLUMN_TO_MATCH")
+    programs = system_config.get("PROGRAMS", [])
 
-    # COLUMN_TO_MATCH now lives ONLY in system_config.json
-    column_to_match = system_config.get("COLUMN_TO_MATCH")
+    # --- resolve program ---
+    program = next(
+        (p for p in programs if str(p.get("programId")) == program_id),
+        None
+    )
 
-    # Program title and currently-logged FSP username
-    program_title = system_config.get("programTitle", "")
+    if not program:
+        return redirect(url_for("fsp_program_selector", lang=lang))
+
+    # --- fetch 121 program title ---
+    program_title = f"Program {program_id}"
+    url121 = system_config.get("url121")
+    if url121:
+        try:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                },
+                timeout=8
+            )
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
+                r = requests.get(
+                    f"{url121}/api/programs/{program_id}",
+                    cookies={"access_token_general": token},
+                    timeout=8
+                )
+                if r.status_code == 200:
+                    titles = r.json().get("titlePortal", {})
+                    program_title = titles.get(lang) or next(iter(titles.values()), program_title)
+        except Exception as e:
+            print(f"[fsp_admin] Failed to fetch 121 program title: {e}")
+
     username = session.get("fsp_username")
+
+    # --- IMPORTANT: persist program for later routes ---
+    session["fsp_program_id"] = program_id
 
     return render_template(
         "fsp_admin.html",
@@ -1210,49 +1737,64 @@ def fsp_admin():
         t=t,
         config=system_config,
         program_title=program_title,
+        program_id=program_id,   # ✅ this feeds ACTIVE_PROGRAM_ID in JS
         username=username
     )
-
 
 
 @app.route("/sync-fsp")
 def sync_fsp():
     import subprocess
+    import os
+
+    # 🔴 get selected program from session
+    program_id = session.get("fsp_program_id")
+    if not program_id:
+        return jsonify({
+            "success": False,
+            "message": "❌ No program selected"
+        })
+
+    env = os.environ.copy()
+    env["PROGRAM_ID"] = str(program_id)   # 🔑 THIS IS THE FIX
 
     try:
         result = subprocess.run(
             ["python", "offline_sync.py"],
             capture_output=True,
             text=True,
-            encoding='utf-8',
-            errors="replace"
+            encoding="utf-8",
+            errors="replace",
+            env=env                      # 🔑 PASS ENV
         )
-        output = result.stdout.strip()
-        error_output = result.stderr.strip()
 
-        print("\n[DEBUG] STDOUT:\n", output)
-        print("\n[DEBUG] STDERR:\n", error_output)
+        print("\n[DEBUG] STDOUT:\n", result.stdout)
+        print("\n[DEBUG] STDERR:\n", result.stderr)
 
         if result.returncode != 0:
             return jsonify({
                 "success": False,
-                "message": f"❌ Script failed with error:\n{error_output or output}"
+                "message": f"❌ Script failed:\n{result.stderr or result.stdout}"
             })
 
-        for line in output.splitlines():
+        for line in result.stdout.splitlines():
             if "beneficiaries" in line.lower():
-                return jsonify({"success": True, "message": f"✅ {line.strip()}"})
+                return jsonify({
+                    "success": True,
+                    "message": f"✅ {line.strip()}"
+                })
 
         return jsonify({
             "success": True,
-            "message": "✅ Sync completed, but no beneficiaries were found."
+            "message": "✅ Sync completed"
         })
 
     except Exception as e:
         return jsonify({
             "success": False,
-            "message": f"❌ Error running sync: {str(e)}"
+            "message": f"❌ Error running sync: {e}"
         })
+
 @app.route("/fsp-logout")
 def fsp_logout():
     session.pop("fsp_logged_in", None)
@@ -1267,16 +1809,44 @@ def scan():
     if not session.get("fsp_logged_in"):
         return redirect(url_for("fsp_login", lang=lang))
 
-    # Pull username and program title from the session
     username = session.get("fsp_username", "User")
-    program_title = session.get("program_title", "")
+    program_id = session.get("fsp_program_id")
+
+    # Fetch 121 program title
+    program_title = ""
+    if program_id:
+        system_config = load_config()
+        url121 = system_config.get("url121")
+        if url121:
+            try:
+                login_resp = requests.post(
+                    f"{url121}/api/users/login",
+                    json={
+                        "username": system_config.get("username121", ""),
+                        "password": system_config.get("password121", "")
+                    },
+                    timeout=8
+                )
+                if login_resp.status_code == 201:
+                    token = login_resp.json().get("access_token_general")
+                    r = requests.get(
+                        f"{url121}/api/programs/{program_id}",
+                        cookies={"access_token_general": token},
+                        timeout=8
+                    )
+                    if r.status_code == 200:
+                        titles = r.json().get("titlePortal", {})
+                        program_title = titles.get(lang) or next(iter(titles.values()), "")
+            except Exception as e:
+                print(f"[scan] Failed to fetch 121 program title: {e}")
 
     return render_template(
         "scan.html",
         lang=lang,
         t=translations.get(lang, translations["en"]),
         username=username,
-        program_title=program_title
+        program_title=program_title,
+        program_id=program_id or ""
     )
 
 
@@ -1298,14 +1868,29 @@ def api_offline_latest_zip():
     if not os.path.isdir(base_dir):
         return jsonify({"error": "No offline cache found"}), 404
 
-    # Find latest batch directory by modified time
-    batch_dirs = [
-        os.path.join(base_dir, d)
-        for d in os.listdir(base_dir)
-        if os.path.isdir(os.path.join(base_dir, d))
-    ]
+    # Filter by programId if provided
+    program_id_filter = request.args.get("programId")
+
+    batch_dirs = []
+    for d in os.listdir(base_dir):
+        full_path = os.path.join(base_dir, d)
+        if not os.path.isdir(full_path):
+            continue
+        # Check batch_info.json for programId match
+        if program_id_filter:
+            batch_info_path = os.path.join(full_path, "batch_info.json")
+            if os.path.exists(batch_info_path):
+                try:
+                    with open(batch_info_path) as f:
+                        batch_info = json.load(f)
+                    if str(batch_info.get("programId")) != str(program_id_filter):
+                        continue
+                except Exception:
+                    pass
+        batch_dirs.append(full_path)
+
     if not batch_dirs:
-        return jsonify({"error": "No batches found"}), 404
+        return jsonify({"error": "No batches found for this program"}), 404
 
     latest = max(batch_dirs, key=os.path.getmtime)
 
@@ -1333,7 +1918,7 @@ def ping():
 
 @app.route("/beneficiary-offline")
 def beneficiary_offline():
-    # expected: /beneficiary-offline?uuid=<registrationReferenceId>&lang=en
+    # expected: /beneficiary-offline?uuid=<registrationReferenceId>&lang=en&program_id=<id>
     uuid = request.args.get("uuid")
     lang = request.args.get("lang", session.get("lang", "en"))
     session["lang"] = lang
@@ -1341,22 +1926,25 @@ def beneficiary_offline():
     if not uuid:
         uuid = ""
 
-    # load display config (same file you already use)
+    # Prefer URL param, fall back to session (handles SW precache and fresh tabs)
+    program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
+
+    # load display config scoped to the active program
     try:
         full_config = load_display_config()
-        display_fields = full_config.get("fields", [])
-        photo_config = full_config.get("photo", {})
+        programs_map = full_config.get("programs", {}) or {}
+        # Empty dict fallback (NOT the root config) — the root has no 'photo' key
+        # so falling back to it would silently disable the photo section.
+        program_config = programs_map.get(str(program_id), {}) if program_id else {}
+        display_fields = program_config.get("fields", [])
+        photo_config = program_config.get("photo", {})
     except Exception:
         display_fields = []
         photo_config = {}
 
-    # pass Fernet key for client-side decrypt when we add it
     config = load_config()
     enc_key = config.get("ENCRYPTION_KEY", "")
-    column_to_match = config.get("COLUMN_TO_MATCH")
-    if not column_to_match:
-        raise ValueError("❌ COLUMN_TO_MATCH missing in system_config.json")
-
+    column_to_match = get_column_to_match(program_id) or config.get("COLUMN_TO_MATCH", "")
 
     return render_template(
         "beneficiary_offline.html",
@@ -1366,14 +1954,17 @@ def beneficiary_offline():
         display_fields=display_fields,
         photo_config=photo_config,
         fernet_key=enc_key,
-        column_to_match=column_to_match
+        column_to_match=column_to_match,
+        program_id=program_id,
+        program_currency=config.get("programCurrency", ""),
     )
 
 @app.route("/success-offline")
 def success_offline():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
-    return render_template("success_offline.html", lang=lang, t=t)
+    program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
+    return render_template("success_offline.html", lang=lang, t=t, program_id=program_id)
 
 @app.route("/system-config.json")
 def system_config_json():
@@ -1384,6 +1975,49 @@ def system_config_json():
 
     return jsonify({"COLUMN_TO_MATCH": column})
 
+
+@app.route("/api/column-to-match/<program_id>")
+def api_column_to_match(program_id):
+    """
+    Returns the columnToMatch for a specific program, fetched fresh from the 121
+    API (with system_config fallback). The FSP admin page calls this during
+    sync so the offline beneficiary page can use the correct value at decision
+    time, even when its HTML shell was precached without session context.
+    """
+    config = load_config()
+    column = get_column_to_match(program_id) or config.get("COLUMN_TO_MATCH")
+    if not column:
+        return jsonify({"error": "columnToMatch could not be resolved"}), 404
+    return jsonify({"programId": str(program_id), "columnToMatch": column})
+
+
+
+def get_column_to_match(program_id):
+    """Fetch columnToMatch for a program from the 121 API.
+    Falls back to system_config COLUMN_TO_MATCH if API unavailable."""
+    config = load_config()
+    url121 = config.get("url121")
+
+    if url121 and program_id:
+        try:
+            token = get_121_token()
+            if token:
+                r = requests.get(
+                    f"{url121}/api/programs/{program_id}/fsp-configurations",
+                    cookies={"access_token_general": token},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    for fsp in r.json():
+                        for prop in fsp.get("properties", []):
+                            if prop.get("name") == "columnToMatch":
+                                return prop.get("value")
+        except Exception as e:
+            print(f"[get_column_to_match] API error: {e}")
+
+    # Fallback to per-program stored value, then legacy global value
+    per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
 
 
 def get_121_token():
@@ -1429,170 +2063,231 @@ def submit_payments():
     import io
     import os
     import json
+    import traceback
     from datetime import datetime
     from cryptography.fernet import Fernet
 
-    # Load config
-    config = load_config()
-    program_id = config.get("programId")
-    column_to_match = config.get("COLUMN_TO_MATCH")
-    fernet_key = config.get("ENCRYPTION_KEY")
-
-    if not program_id:
-        return "❌ Missing programId in system_config.json", 400
-
-    if not column_to_match:
-        return "❌ Missing COLUMN_TO_MATCH in display_config.json", 400
-
-    if not fernet_key:
-        return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
-
-    # Fernet decryptor
     try:
-        fernet = Fernet(fernet_key.encode())
-    except Exception as e:
-        return f"❌ Invalid Fernet key: {e}", 400
+        # Load config
+        config = load_config()
+        # Use active program from session (multi-program support)
+        program_id = session.get("fsp_program_id") or config.get("programId")
+        fernet_key = config.get("ENCRYPTION_KEY")
 
-    # Get uploaded CSV file
-    if 'csv' not in request.files:
-        return "❌ No CSV file provided", 400
+        if not program_id:
+            return "❌ No active program selected. Please go back and select a program.", 400
 
-    file = request.files['csv']
-    if file.filename == '':
-        return "❌ Empty filename", 400
+        # Fetch column_to_match from 121 API for this specific program
+        column_to_match = get_column_to_match(program_id)
 
-    try:
-        csv_content = file.stream.read().decode("utf-8")
-    except Exception as e:
-        return f"❌ Failed to read CSV: {e}", 400
+        if not column_to_match:
+            return f"❌ Could not determine columnToMatch for program {program_id}. Check 121 FSP configuration.", 400
 
-    reader = csv.DictReader(io.StringIO(csv_content))
-    rows = list(reader)
+        if not fernet_key:
+            return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
 
-    if not rows:
-        return "❌ CSV is empty", 400
+        # Fernet decryptor
+        try:
+            fernet = Fernet(fernet_key.encode())
+        except Exception as e:
+            return f"❌ Invalid Fernet key: {e}", 400
 
-    # -------------------------------
-    # LOAD OFFLINE CACHE FOR PAYMENT MAPPING
-    # -------------------------------
-    cache_base = "offline-cache"
+        # Get uploaded CSV file
+        if 'csv' not in request.files:
+            return "❌ No CSV file provided", 400
 
-    import re
-    def extract_batch_number(name):
-        match = re.search(r"payment-recent-batch-(\d+)", name)
-        return int(match.group(1)) if match else -1
+        file = request.files['csv']
+        if file.filename == '':
+            return "❌ Empty filename", 400
 
-    batch_dirs = sorted(
-        [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")],
-        key=extract_batch_number
-    )
+        try:
+            csv_content = file.stream.read().decode("utf-8")
+        except Exception as e:
+            return f"❌ Failed to read CSV: {e}", 400
 
-    if not batch_dirs:
-        return "❌ No recent payment batches found — run sync first.", 400
+        reader = csv.DictReader(io.StringIO(csv_content))
+        rows = list(reader)
 
-    latest_batch = batch_dirs[-1]
-    print(f"[DEBUG] Using batch folder: {latest_batch}")
+        if not rows:
+            return "❌ CSV is empty", 400
 
-    reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
-    if not os.path.exists(reg_cache_path):
-        return "❌ registrations_cache.json missing — run sync again.", 400
+        # -------------------------------
+        # LOAD OFFLINE CACHE FOR PAYMENT MAPPING
+        # -------------------------------
+        cache_base = "offline-cache"
 
-    try:
-        with open(reg_cache_path, "r", encoding="utf-8") as f:
-            reg_data = json.load(f)
-    except Exception as e:
-        return f"❌ Failed to load registrations_cache.json — {e}", 500
+        import re
+        def extract_batch_number(name):
+            match = re.search(r"payment-recent-batch-(\d+)", name)
+            return int(match.group(1)) if match else -1
 
-    # -------------------------------
-    # BUILD MAP: plaintext match column → paymentId
-    # -------------------------------
-    match_to_pid = {}
+        # Defensive: cache_base may not exist on a fresh deployment
+        if not os.path.isdir(cache_base):
+            return (
+                f"❌ Offline cache directory '{cache_base}' not found on the server. "
+                "Run sync first to create it.",
+                400,
+            )
 
-    for record in reg_data:
-        uuid = record.get("uuid")
-        payment_id = record.get("paymentId")
+        # Filter batch dirs to only those belonging to the active program
+        all_dirs = [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")]
+        program_dirs = []
+        for d in all_dirs:
+            batch_info_path = os.path.join(cache_base, d, "batch_info.json")
+            if os.path.exists(batch_info_path):
+                try:
+                    with open(batch_info_path) as f:
+                        bi = json.load(f)
+                    if str(bi.get("programId")) == str(program_id):
+                        program_dirs.append(d)
+                except Exception:
+                    pass
+            else:
+                program_dirs.append(d)  # include legacy batches without batch_info
 
-        encrypted_value = record.get("data", {}).get(column_to_match, "")
+        batch_dirs = sorted(program_dirs, key=extract_batch_number)
 
-        if encrypted_value and payment_id:
-            try:
-                decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
-                match_to_pid[decrypted_value] = payment_id
-            except Exception as e:
-                print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+        if not batch_dirs:
+            return "❌ No recent payment batches found for this program — run sync first.", 400
 
-    # -------------------------------
-    # GROUP CSV ROWS BY paymentId
-    # -------------------------------
-    grouped = {}
+        latest_batch = batch_dirs[-1]
+        print(f"[DEBUG] Using batch folder: {latest_batch}")
 
-    for row in rows:
-        raw_value = row.get(column_to_match, "").strip()
-        status = row.get("status", "").strip()
+        reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
+        if not os.path.exists(reg_cache_path):
+            return "❌ registrations_cache.json missing — run sync again.", 400
 
-        # If incoming value is still encrypted (rare)
-        if raw_value.startswith("gAAAA"):
-            try:
-                raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
-            except Exception as e:
-                print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+        try:
+            with open(reg_cache_path, "r", encoding="utf-8") as f:
+                reg_data = json.load(f)
+        except Exception as e:
+            return f"❌ Failed to load registrations_cache.json — {e}", 500
+
+        # -------------------------------
+        # BUILD MAP: plaintext match column → paymentId
+        # -------------------------------
+        match_to_pid = {}
+
+        for record in reg_data:
+            uuid = record.get("uuid")
+            payment_id = record.get("paymentId")
+
+            encrypted_value = record.get("data", {}).get(column_to_match, "")
+
+            if encrypted_value and payment_id:
+                try:
+                    decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
+                    match_to_pid[decrypted_value] = payment_id
+                except Exception as e:
+                    print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+
+        # -------------------------------
+        # GROUP CSV ROWS BY paymentId
+        # -------------------------------
+        grouped = {}
+
+        for row in rows:
+            raw_value = row.get(column_to_match, "").strip()
+            status = row.get("status", "").strip()
+
+            # If incoming value is still encrypted (rare)
+            if raw_value.startswith("gAAAA"):
+                try:
+                    raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
+                except Exception as e:
+                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+                    continue
+
+            payment_id = match_to_pid.get(raw_value)
+
+            if not payment_id:
+                print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
-        payment_id = match_to_pid.get(raw_value)
-
-        if not payment_id:
-            print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
-            continue
-
-        grouped.setdefault(payment_id, []).append({
-            column_to_match: raw_value,
-            "status": status
-        })
-
-    if not grouped:
-        return "❌ No valid rows to submit — check your CSV and sync data.", 400
-
-    # -------------------------------
-    # SUBMIT TO 121 /paymentId/excel-reconciliation
-    # -------------------------------
-    token = get_121_token()
-    if not token:
-        return "❌ Login to 121 failed", 401
-
-    success_count = 0
-    fail_count = 0
-
-    for pid, items in grouped.items():
-        output_buffer = io.StringIO()
-        writer = csv.DictWriter(output_buffer, fieldnames=[column_to_match, "status"])
-        writer.writeheader()
-
-        for item in items:
-            writer.writerow({
-                column_to_match: item[column_to_match],
-                "status": item["status"]
+            grouped.setdefault(payment_id, []).append({
+                column_to_match: raw_value,
+                "status": status
             })
 
-        upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
+        if not grouped:
+            return (
+                f"❌ No valid rows to submit. Either the CSV's '{column_to_match}' values "
+                "don't match any cached registration, or the column name in the CSV differs "
+                "from the configured matching field. Re-sync and try again.",
+                400,
+            )
 
-        files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+        # -------------------------------
+        # SUBMIT TO 121 /paymentId/excel-reconciliation
+        # -------------------------------
+        token = get_121_token()
+        if not token:
+            return "❌ Login to 121 failed", 401
 
-        upload_resp = requests.post(upload_url, files=files, cookies={"access_token_general": token})
+        success_count = 0
+        fail_count = 0
+        failure_details = []
 
-        if upload_resp.status_code == 201:
-            success_count += 1
-            print(f"[OK] Submitted to paymentId {pid}")
+        for pid, items in grouped.items():
+            output_buffer = io.StringIO()
+            writer = csv.DictWriter(output_buffer, fieldnames=[column_to_match, "status"])
+            writer.writeheader()
+
+            for item in items:
+                writer.writerow({
+                    column_to_match: item[column_to_match],
+                    "status": item["status"]
+                })
+
+            upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
+
+            files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+
+            try:
+                upload_resp = requests.post(
+                    upload_url,
+                    files=files,
+                    cookies={"access_token_general": token},
+                    timeout=30,
+                )
+            except requests.RequestException as e:
+                fail_count += 1
+                failure_details.append(f"paymentId {pid}: network error — {e}")
+                print(f"[ERROR] Network error submitting paymentId {pid}: {e}")
+                continue
+
+            if upload_resp.status_code == 201:
+                success_count += 1
+                print(f"[OK] Submitted to paymentId {pid}")
+            else:
+                fail_count += 1
+                snippet = (upload_resp.text or "")[:300]
+                failure_details.append(
+                    f"paymentId {pid}: HTTP {upload_resp.status_code} — {snippet}"
+                )
+                print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+
+        # -------------------------------
+        # FINAL RESPONSE
+        # -------------------------------
+        if success_count > 0:
+            msg = f"✅ Submitted to {success_count} paymentId(s)."
+            if fail_count:
+                msg += f" ❌ {fail_count} failed: " + " | ".join(failure_details)
+            return msg, 200
         else:
-            fail_count += 1
-            print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+            detail = " | ".join(failure_details) if failure_details else "no details available"
+            return f"❌ All submissions failed. {detail}", 502
 
-    # -------------------------------
-    # FINAL RESPONSE
-    # -------------------------------
-    if success_count > 0:
-        return f"✅ Submitted to {success_count} paymentId(s). ❌ {fail_count} failed.", 200
-    else:
-        return "❌ All submissions failed.", 500
+    except Exception as e:
+        # Last-resort handler: surface a readable message to the frontend
+        # AND log the full traceback for server-side debugging.
+        tb = traceback.format_exc()
+        print(f"[FATAL] /submit-payments crashed: {e}\n{tb}")
+        return (
+            f"❌ Server error in /submit-payments: {type(e).__name__}: {e}",
+            500,
+        )
 
 
 @app.route("/invalid-qr")
@@ -1601,11 +2296,96 @@ def invalid_qr():
     lang = request.args.get("lang", "en")
     reason = request.args.get("reason", "")
 
+    program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
     return render_template(
         "invalid-qr.html",
         reason=reason,
         lang=lang,
-        t=translations.get(lang, translations["en"])
+        t=translations.get(lang, translations["en"]),
+        program_id=program_id
+    )
+
+
+@app.route("/voucher-design", methods=["GET", "POST"])
+def voucher_design():
+    if not session.get("admin_logged_in"):
+        return redirect(url_for("admin_login", lang=request.args.get("lang", "en")))
+
+    lang = request.args.get("lang", "en")
+    t = translations.get(lang, translations["en"])
+    username = session.get("admin_username", "Admin")
+
+    # ------------------------------------------------------
+    # POST (SAVE A PROGRAM'S VOUCHER DESIGN) – multipart form
+    # ------------------------------------------------------
+    if request.method == "POST":
+        program_id = request.form.get("programId")
+        if not program_id:
+            return jsonify({"success": False, "error": "Missing programId"}), 400
+
+        existing = get_voucher_design(program_id) or {}
+        design = {
+            "title": (request.form.get("title") or "").strip(),
+            "subtitle": (request.form.get("subtitle") or "").strip(),
+            "logo1": existing.get("logo1"),
+            "logo2": existing.get("logo2"),
+            "logo1_size": _clean_size(request.form.get("logo1_size") or existing.get("logo1_size")),
+            "logo2_size": _clean_size(request.form.get("logo2_size") or existing.get("logo2_size")),
+        }
+
+        # Explicit clears
+        if request.form.get("logo1_clear") == "1":
+            design["logo1"] = None
+        if request.form.get("logo2_clear") == "1":
+            design["logo2"] = None
+
+        # New uploads (overwrite)
+        try:
+            f1 = request.files.get("logo1")
+            if f1 and f1.filename:
+                design["logo1"] = _save_logo_file(f1, program_id, "left")
+            f2 = request.files.get("logo2")
+            if f2 and f2.filename:
+                design["logo2"] = _save_logo_file(f2, program_id, "right")
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)}), 400
+
+        try:
+            save_voucher_design(program_id, design)
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+        return jsonify({"success": True, "design": _design_for_client(design)})
+
+    # ------------------------------------------------------
+    # GET (LOAD PAGE)
+    # ------------------------------------------------------
+    try:
+        system_config = load_config()
+    except Exception:
+        system_config = {}
+
+    programs, _ = resolve_programs(system_config)
+    designs = load_voucher_designs()
+
+    active_program_id = request.args.get("programId")
+    if not active_program_id and programs:
+        active_program_id = programs[0]["id"]
+    active_program_id = str(active_program_id) if active_program_id else None
+
+    designs_client = {str(pid): _design_for_client(d) for pid, d in designs.items()}
+
+    program_title = system_config.get("programTitle", "")
+
+    return render_template(
+        "voucher_design.html",
+        programs=programs,
+        active_program_id=active_program_id,
+        designs=designs_client,
+        program_title=program_title,
+        lang=lang,
+        username=username,
+        t=t,
     )
 
 
@@ -1632,12 +2412,25 @@ def vouchers_page():
     # Program title from session OR fallback to system_config
     program_title = session.get("program_title") or system_config.get("programTitle", "")
 
+    # Program dropdown + which programs already have a saved voucher design
+    programs, _ = resolve_programs(system_config)
+    designs = load_voucher_designs()
+    designs_status = {str(p["id"]): (str(p["id"]) in designs) for p in programs}
+
+    active_program_id = request.args.get("programId")
+    if not active_program_id and programs:
+        active_program_id = programs[0]["id"]
+    active_program_id = str(active_program_id) if active_program_id else None
+
     return render_template(
         "vouchers.html",
         lang=lang,
         t=t,
         program_title=program_title,
-        username=username
+        username=username,
+        programs=programs,
+        designs_status=designs_status,
+        active_program_id=active_program_id,
     )
 
 
@@ -1765,6 +2558,7 @@ def vouchers_upload():
         # Save metadata
         session["voucher_file_path"] = upload_path
         session["voucher_count"] = len(rows)
+        session["voucher_program_id"] = request.form.get("program_id") or None
 
         return jsonify({"success": True, "count": len(rows)})
 
@@ -1903,11 +2697,15 @@ def vouchers_download():
         return redirect(url_for("vouchers_page"))
 
     # -----------------------------
-    # Generate PDF
+    # Generate PDF (using the selected program's design, if any)
     # -----------------------------
+    program_id = session.get("voucher_program_id")
+    design = get_voucher_design(program_id) if program_id else None
+
     pdf_io = generate_vouchers_pdf(
         rows,
-        static_folder=os.path.join(app.root_path, "static")
+        static_folder=os.path.join(app.root_path, "static"),
+        design=design,
     )
 
     return send_file(
