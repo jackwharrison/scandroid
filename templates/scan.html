@@ -409,8 +409,8 @@
       </select>
     </form>
 
-    <div style="position:relative;">
-      <button class="account-btn" onclick="toggleAccountDropdown()">
+    <div class="account-dropdown">
+      <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
         <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
         Account
         <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
@@ -421,10 +421,8 @@
           <strong>Logged in as:</strong><br>
           {{ username }}
         </div>
-
         <div class="account-menu-divider"></div>
-
-        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
+        <a href="/fsp-logout?lang={{ lang }}" class="account-menu-item">{{ t.logout }}</a>
       </div>
     </div>
   </div>
