@@ -220,8 +220,13 @@
     .video-wrap {
       margin-top: 20px;
       width: 100%;
+<<<<<<< HEAD
+      max-width: 420px;
+      aspect-ratio: 1 / 1;
+=======
       max-width: 420px;          /* nice square size */
       aspect-ratio: 1 / 1;       /* enforce square */
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
       background: black;
       border-radius: 14px;
       overflow: hidden;
@@ -233,8 +238,13 @@
     video {
       width: 100%;
       height: 100%;
+<<<<<<< HEAD
+      object-fit: cover;
+      object-position: center;
+=======
       object-fit: cover;         /* fill the square, allow cropping */
       object-position: center;   /* ensure cropping is symmetrical */
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
     }
 
     #status {
@@ -244,6 +254,86 @@
       min-height: 20px;
     }
 
+<<<<<<< HEAD
+    /* ---------- MANUAL ENTRY ---------- */
+    .manual-toggle-btn {
+      background: transparent;
+      border: 2px solid var(--navy);
+      color: var(--navy);
+      padding: 10px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: 0.2s ease;
+    }
+    .manual-toggle-btn:hover {
+      background: #e3e8ef;
+    }
+
+    .manual-entry-box {
+      margin-top: 16px;
+      background: #f8f9fb;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: left;
+      display: none;
+    }
+    .manual-entry-box.open {
+      display: block;
+    }
+    .manual-entry-box label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .manual-entry-row {
+      display: flex;
+      gap: 8px;
+    }
+    .manual-entry-input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 2px solid var(--line);
+      border-radius: 10px;
+      font-size: 15px;
+      color: var(--ink);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .manual-entry-input:focus {
+      border-color: var(--violet);
+    }
+    .manual-submit-btn {
+      background: var(--violet);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .manual-submit-btn:hover { background: #6d28d9; }
+    .manual-submit-btn:disabled {
+      background: #c4b5fd;
+      cursor: not-allowed;
+    }
+
+=======
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
     /* ---------- FOOTER ---------- */
     footer {
       background-color: var(--navy);
@@ -273,7 +363,10 @@
         overflow: hidden;
       }
 
+<<<<<<< HEAD
+=======
       /* Hide national society + program title on small screens, keep just the brand */
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
       .header-title .title-divider,
       .header-title .title-program {
         display: none;
@@ -376,6 +469,38 @@
       </div>
 
       <div id="status">{{ t.waiting_to_start or "Waiting to start…" }}</div>
+<<<<<<< HEAD
+
+      <!-- Manual code entry fallback -->
+      <button class="manual-toggle-btn" id="manualToggleBtn" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/>
+        </svg>
+        {{ t.no_qr_btn or "Can't scan QR?" }}
+      </button>
+
+      <div class="manual-entry-box" id="manualEntryBox">
+        <label for="manualCodeInput">{{ t.manual_code_label or "Enter code manually" }}</label>
+        <div class="manual-entry-row">
+          <input
+            type="text"
+            id="manualCodeInput"
+            class="manual-entry-input"
+            placeholder="{{ t.manual_code_placeholder or 'Type or paste the code…' }}"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+          >
+          <button class="manual-submit-btn" id="manualSubmitBtn" type="button" disabled>
+            {{ t.manual_submit or "Go" }}
+          </button>
+        </div>
+      </div>
+
+=======
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
     </div>
   </div>
 </main>
@@ -388,9 +513,12 @@
 <!-- Lightweight QR library -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
+<<<<<<< HEAD
+=======
 <!-- ========================================================= -->
 <!--     FULL ORIGINAL JAVASCRIPT FROM YOUR UPLOADED FILE      -->
 <!-- ========================================================= -->
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -494,9 +622,12 @@ document.addEventListener("DOMContentLoaded", () => {
               (p.uuid === scannedId || (scopedId && p.uuid === scopedId)) &&
               p.status === "success"
             ) {
+<<<<<<< HEAD
+=======
               // Only block if there's a PENDING payment (not yet submitted).
               // "submitted" payments are from previous rounds and should
               // not prevent scanning the same beneficiary for new payments.
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
               resolve(p);
               return;
             }
@@ -526,19 +657,28 @@ document.addEventListener("DOMContentLoaded", () => {
         const db = dbReq.result;
         let rec = null;
 
+<<<<<<< HEAD
+=======
         // Build candidate keys: scoped first (programId:uuid), then raw
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
         const scopedId = PROGRAM_ID ? `${PROGRAM_ID}:${scannedId}` : null;
         const keysToTry = scopedId
           ? [scopedId, String(scannedId)]
           : [String(scannedId)];
 
+<<<<<<< HEAD
+=======
         // Direct lookup — try scoped key first, then raw
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
         for (const key of keysToTry) {
           rec = await dbGet(db, "records", key);
           if (rec) break;
         }
 
+<<<<<<< HEAD
+=======
         // idIndex fallback — try both scoped and raw prefixes
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
         if (!rec) {
           const idx = await new Promise((resolve) => {
             const tx = db.transaction("meta", "readonly");
@@ -565,7 +705,10 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
 
+<<<<<<< HEAD
+=======
         // brute-force fallback — try scoped then raw
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
         if (!rec && scopedId) rec = await dbFindRecordByAnyId(db, scopedId);
         if (!rec) rec = await dbFindRecordByAnyId(db, scannedId);
 
@@ -593,7 +736,10 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+<<<<<<< HEAD
+=======
         // rec.uuid is scoped (programId:uuid) — strip prefix before passing to beneficiary page
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
         const rawUuid = PROGRAM_ID && rec.uuid.startsWith(PROGRAM_ID + ':')
           ? rec.uuid.slice(PROGRAM_ID.length + 1)
           : rec.uuid;
@@ -691,6 +837,43 @@ document.addEventListener("DOMContentLoaded", () => {
     startBtn.addEventListener('click', startCamera);
     window.addEventListener('beforeunload', cleanup);
 
+<<<<<<< HEAD
+    /* ---------- MANUAL ENTRY ---------- */
+    const manualToggleBtn  = document.getElementById('manualToggleBtn');
+    const manualEntryBox   = document.getElementById('manualEntryBox');
+    const manualCodeInput  = document.getElementById('manualCodeInput');
+    const manualSubmitBtn  = document.getElementById('manualSubmitBtn');
+
+    manualToggleBtn.addEventListener('click', () => {
+      const open = manualEntryBox.classList.toggle('open');
+      if (open) {
+        manualCodeInput.focus();
+      }
+    });
+
+    manualCodeInput.addEventListener('input', () => {
+      manualSubmitBtn.disabled = manualCodeInput.value.trim() === '';
+    });
+
+    manualCodeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && manualCodeInput.value.trim()) {
+        submitManualCode();
+      }
+    });
+
+    manualSubmitBtn.addEventListener('click', submitManualCode);
+
+    function submitManualCode() {
+      const code = manualCodeInput.value.trim();
+      if (!code) return;
+      manualSubmitBtn.disabled = true;
+      manualSubmitBtn.textContent = '…';
+      cleanup(); // stop camera if running
+      routeAfterScan(code);
+    }
+
+=======
+>>>>>>> de8c0bc8db47e12ea4fa7265b317a23e5fc29ff0
   })();
 
 });
