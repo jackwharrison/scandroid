@@ -401,6 +401,8 @@
   </div>
 
   <div class="header-account-wrapper">
+    <span id="netStatus" class="status-pill offline">{{ t.offline or "Offline" }}</span>
+
     <form method="get" action="/scan" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
@@ -438,10 +440,6 @@
     <div class="scan-card">
       <h1>{{ t.scan_title or "Scan QR" }}</h1>
       <div class="hint">{{ t.scan_hint or "Point the camera at the QR code." }}</div>
-
-      <span id="netStatus" class="status-pill offline">
-        {{ t.offline or "Offline" }}
-      </span>
 
       <button id="startBtn" class="btn-primary">{{ t.start_camera or "Start camera" }}</button>
 
