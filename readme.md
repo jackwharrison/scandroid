@@ -53,8 +53,9 @@ Built by [510](https://www.510.global/) @ The Netherlands Red Cross, 121 Scan le
 - **Service Worker** — caching strategy and offline availability of the app shell and key routes
 
 **Configuration**
-- **JSON config files** — `system_config.json` (API credentials, programme mappings, encryption key) and `display_config.json` (per-programme field and photo display settings)
-- **Environment variables** — `SCANDROID_ENV` (`local` vs `azure`) and `SCANDROID_CONTEXT` select which config folder is loaded, allowing multiple deployment contexts on one instance
+- **Environment variables (primary)** — secrets and deployment-specific values are read from the environment, not from JSON: `URL_121`, `USERNAME_121`, `PASSWORD_121`, `ENCRYPTION_KEY`, `PROGRAM_CURRENCY`, `PROGRAM_TITLE`, `COLUMN_TO_MATCH`, and `NATIONAL_SOCIETY`. An env value always wins over any value in the JSON file, and these fields are stripped before any save, so they are never written back to `system_config.json`. Locally these can be set in a `.env` file (loaded automatically if `python-dotenv` is installed); on Azure they come from App Settings.
+- **JSON config files** — `system_config.json` holds only the fields editable from the admin UI or written at runtime: `KOBO_SERVER`, `KOBO_TOKEN`, `PROGRAMS`, and `COLUMN_TO_MATCH_PER_PROGRAM`. `display_config.json` holds per-programme field and photo display settings.
+- **Context selection** — `SCANDROID_ENV` (`local` vs `azure`) and `SCANDROID_CONTEXT` select which config folder is loaded (`configs/{context}/` locally, `/home/site/configs/{context}/` on Azure), allowing multiple deployment contexts on one instance.
 
 ---
 
@@ -64,10 +65,13 @@ Built by [510](https://www.510.global/) @ The Netherlands Red Cross, 121 Scan le
 .
 ├── app.py                  # Flask application — all routes, translations, voucher + payment logic
 ├── offline_sync.py         # Subprocess script: syncs + encrypts beneficiary data from 121 + Kobo
-├── config_loader.py        # Loads system_config.json and display_config.json for the active context
+├── config_loader.py        # Loads config for the active context: merges env-managed fields over system_config.json + display_config.json
 ├── service-worker.js       # PWA service worker (caching + offline)
-├── system_config.json      # Runtime config (API URLs, keys, programme IDs)
-├── display_config.json     # Per-programme field + photo display config
+│
+├── configs/                # Per-context config (selected by SCANDROID_CONTEXT)
+│   └── {context}/
+│       ├── system_config.json   # JSON-resident config (Kobo server/token, programme mappings)
+│       └── display_config.json  # Per-programme field + photo display config
 │
 ├── templates/
 │   ├── home.html                 # Landing page (role selector)
@@ -143,7 +147,7 @@ The cache is served to the FSP's browser as a ZIP, which is unpacked and stored 
 
 ## Encryption & offline operation
 
-All personal data in IndexedDB is protected with Fernet symmetric encryption; the key lives in `system_config.json` on the server. When a QR code is scanned:
+All personal data in IndexedDB is protected with Fernet symmetric encryption; the key is supplied via the `ENCRYPTION_KEY` environment variable. When a QR code is scanned:
 
 1. The browser looks up the scanned UUID in IndexedDB.
 2. On a match, the stored data is decrypted client-side using the key bundled with the offline data at sync time.
@@ -176,7 +180,37 @@ When an FSP taps **Send**:
 
 ## Configuration
 
+Configuration is split between **environment variables** (secrets and deployment-specific values) and **JSON files** (UI-editable / runtime settings). The two are merged at load time by `config_loader.py`: any field present in the environment overrides the JSON, and env-managed fields are always stripped before a save, so they are never written into `system_config.json`.
+
+### Environment-managed fields
+
+These are read from the environment (a `.env` file locally, App Settings on Azure). The internal config key on the left maps to the environment variable on the right:
+
+| Config key | Environment variable |
+|------------|----------------------|
+| `url121` | `URL_121` |
+| `username121` | `USERNAME_121` |
+| `password121` | `PASSWORD_121` |
+| `ENCRYPTION_KEY` | `ENCRYPTION_KEY` |
+| `programCurrency` | `PROGRAM_CURRENCY` |
+| `programTitle` | `PROGRAM_TITLE` |
+| `COLUMN_TO_MATCH` | `COLUMN_TO_MATCH` |
+| `nationalSociety` | `NATIONAL_SOCIETY` |
+
+A fresh instance needs at least `URL_121`, `USERNAME_121`, `PASSWORD_121`, and `ENCRYPTION_KEY` set in the environment. The set of env-managed fields is defined in `ENV_MANAGED_FIELDS` in `config_loader.py`; to move a field in or out of env management, edit that dict.
+
+Generate a Fernet key with:
+
+```python
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+```
+
+Locally, a `.env` file in the project root is loaded automatically when `python-dotenv` is installed (it is optional — if it isn't installed the loader silently skips it and relies on real environment variables).
+
 ### `system_config.json`
+
+Holds only the fields that are edited from the admin **System Configuration** page or written at runtime — Kobo connection details, programme mappings, and the per-programme match column:
 
 ```json
 {
@@ -196,16 +230,7 @@ When an FSP taps **Send**:
 }
 ```
 
-At minimum, a fresh instance needs `url121`, `username121`, and `password121` present in this file for the app to start. The remaining fields (Kobo server/token, encryption key, FSP password, programme mappings) can be filled in afterwards via the admin **System Configuration** screen.
-
-Generate a Fernet key with:
-
-```python
-from cryptography.fernet import Fernet
-print(Fernet.generate_key().decode())
-```
-
-### `display_config.json`
+These can all be filled in after first start via the admin **System Configuration** screen; `koboFormName` and `koboFormOwner` are populated automatically when a Kobo Asset ID is validated. The file lives at `configs/{SCANDROID_CONTEXT}/system_config.json` locally and `/home/site/configs/{SCANDROID_CONTEXT}/system_config.json` on Azure, and is created automatically if absent.
 
 Controls which Kobo/121 fields are shown to FSPs per programme, with per-language labels, and whether to show the beneficiary photo:
 
@@ -227,7 +252,7 @@ Controls which Kobo/121 fields are shown to FSPs per programme, with per-languag
 ## External integrations
 
 **121 platform**
-- Authenticates against the 121 REST API with the credentials in `system_config.json`, receiving a session token (`access_token_general`).
+- Authenticates against the 121 REST API with the credentials supplied via the `URL_121` / `USERNAME_121` / `PASSWORD_121` environment variables, receiving a session token (`access_token_general`).
 - During sync, calls the transactions API, filters to `waiting` transactions from the last 14 days, deduplicates per individual, and fetches full registration records in parallel.
 - On payment submission, POSTs a CSV of scanned outcomes to `/submit-payments`, which updates the corresponding transaction statuses in 121.
 
@@ -263,12 +288,19 @@ git clone <repo-url>
 cd scandroid
 
 pip install -r requirements.txt
+# Optional, for .env support during local dev:
+pip install python-dotenv
 
-# Configure the app for local use
-cp system_config.json.example system_config.json
-# Edit system_config.json with your 121 and Kobo credentials
+# Provide credentials via the environment (e.g. a .env file in the project root)
+cat > .env <<'EOF'
+URL_121=https://your-121-instance
+USERNAME_121=your-121-username
+PASSWORD_121=your-121-password
+ENCRYPTION_KEY=your-generated-fernet-key
+EOF
 
 export SCANDROID_ENV=local
+# export SCANDROID_CONTEXT=local   # optional; defaults to "local"
 flask run
 ```
 
@@ -295,9 +327,10 @@ PROGRAM_ID=10 python offline_sync.py
    - `URL_121`
    - `USERNAME_121`
    - `ENCRYPTION_KEY`
+   - `PROGRAM_CURRENCY`, `PROGRAM_TITLE`, `COLUMN_TO_MATCH`, `NATIONAL_SOCIETY` (the remaining env-managed fields, as needed for this context)
    - If application insights are set up `APPLICATIONINSIGHTS_CONNECTION_STRING`
 5. **Create the folders** — via SSH, create `/home/site/configs`, then `/home/site/configs/{SCANDROID_CONTEXT}`, then `/home/site/configs/{SCANDROID_CONTEXT}/static`.
-6. **Add the system config file** — place `system_config.json` at `/home/site/configs/{SCANDROID_CONTEXT}/system_config.json` (via the App Service File Manager under *Development Tools*, or a deployment pipeline). It must include at least `url121`, `username121`, and `password121`.
+6. **Add the system config file** — place `system_config.json` at `/home/site/configs/{SCANDROID_CONTEXT}/system_config.json` (via the App Service File Manager under *Development Tools*, or a deployment pipeline). It holds only the JSON-resident fields (`KOBO_SERVER`, `KOBO_TOKEN`, `PROGRAMS`, `COLUMN_TO_MATCH_PER_PROGRAM`); the 121 credentials and encryption key come from the App Settings above. The file is created automatically if absent, so these can also be left for the admin to complete in the UI after first start.
 7. **Add National Society logos** — upload to `/home/site/configs/{SCANDROID_CONTEXT}/static/`, named exactly `ns1.png` (left, local NS) and `ns2.png` (right, partner org). Both PNG; a missing file leaves that logo position blank.
 8. **Finish in the admin panel** — once running, complete the remaining settings (Kobo asset IDs, display fields, FSP password, etc.) through the 121 Scan admin interface.
 
