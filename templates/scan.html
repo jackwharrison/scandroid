@@ -401,8 +401,6 @@
   </div>
 
   <div class="header-account-wrapper">
-    <span id="netStatus" class="status-pill offline">{{ t.offline or "Offline" }}</span>
-
     <form method="get" action="/scan" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
@@ -410,6 +408,8 @@
         <option value="ar" {% if lang=='ar' %}selected{% endif %}>العربية</option>
       </select>
     </form>
+
+    <span id="netStatus" class="status-pill offline">{{ t.offline or "Offline" }}</span>
 
     <div class="account-dropdown">
       <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
