@@ -464,14 +464,16 @@ translations = {
     "online": "Online",
     "offline": "Offline",
     "scan_title": "Scan QR",
+    "code_entry_title": "Enter code",
     "back_to_dashboard": "Back",
     "scan_hint": "Point the camera at the QR code.",
-    "start_camera": "Start camera",
-    "waiting_to_start": "Waiting to start…",
+    "code_entry_hint": "Enter the beneficiary's unique code below.",
     "no_qr_btn": "Can't scan QR?",
     "manual_code_label": "Enter code manually",
     "manual_code_placeholder": "Type or paste the code…",
     "manual_submit": "Go",
+    "start_camera": "Start camera",
+    "waiting_to_start": "Waiting to start…",
     "requesting_camera": "Requesting camera… If prompted, tap Allow.",
     "camera_denied": "Camera permission denied or not available.",
     "scanning": "Scanning…",
@@ -497,6 +499,9 @@ translations = {
     "use_for_matching": "Use for Matching Payments",
     "photo_config_title": "Photo Field Configuration",
     "enable_photo_field": "Enable photo field display",
+    "scan_config_title": "Scan Method",
+    "enable_qr_scan": "Enable QR code scanning",
+    "enable_qr_scan_hint": "When off, this program uses manual code entry only (no QR camera).",
     "home_question": "Who are you?",
     "home_admin": "Red Cross Staff",
     "home_fsp": "Financial Service Provider",
@@ -636,14 +641,16 @@ translations = {
     "online": "En ligne",
     "offline": "Hors ligne",
     "scan_title": "Scanner un QR",
+    "code_entry_title": "Saisir le code",
     "back_to_dashboard": "Retour au tableau de bord",
     "scan_hint": "Pointez la caméra vers le code QR.",
-    "start_camera": "Démarrer la caméra",
-    "waiting_to_start": "En attente de démarrage…",
-    "no_qr_btn": "QR illisible ?",
+    "code_entry_hint": "Saisissez ci-dessous le code unique du bénéficiaire.",
+    "no_qr_btn": "Impossible de scanner le QR ?",
     "manual_code_label": "Saisir le code manuellement",
     "manual_code_placeholder": "Tapez ou collez le code…",
     "manual_submit": "Valider",
+    "start_camera": "Démarrer la caméra",
+    "waiting_to_start": "En attente de démarrage…",
     "requesting_camera": "Demande d’accès à la caméra… Si demandé, touchez Autoriser.",
     "camera_denied": "Accès à la caméra refusé ou non disponible.",
     "scanning": "Analyse…",
@@ -669,6 +676,9 @@ translations = {
     "use_for_matching": "Utiliser pour le rapprochement des paiements",
     "photo_config_title": "Configuration du champ photo",
     "enable_photo_field": "Activer l'affichage du champ photo",
+    "scan_config_title": "Méthode de scan",
+    "enable_qr_scan": "Activer le scan de code QR",
+    "enable_qr_scan_hint": "Désactivé, ce programme utilise uniquement la saisie manuelle du code (pas de caméra QR).",
     "home_question": "Qui es-tu?",
     "home_admin": "Personnel de la Croix-Rouge",
     "home_fsp": "Prestataire de services financiers",
@@ -782,14 +792,16 @@ translations = {
     "online": "متصل",
     "offline": "غير متصل",
     "scan_title": "مسح رمز QR",
+    "code_entry_title": "إدخال الرمز",
     "back_to_dashboard": "العودة إلى لوحة التحكم",
     "scan_hint": "وجّه الكاميرا نحو رمز QR.",
-    "start_camera": "بدء تشغيل الكاميرا",
-    "waiting_to_start": "بانتظار البدء…",
-    "no_qr_btn": "لا يمكن مسح رمز QR؟",
-    "manual_code_label": "أدخل الرمز يدوياً",
+    "code_entry_hint": "أدخل الرمز الفريد للمستفيد أدناه.",
+    "no_qr_btn": "تعذّر مسح رمز QR؟",
+    "manual_code_label": "أدخل الرمز يدويًا",
     "manual_code_placeholder": "اكتب أو الصق الرمز…",
     "manual_submit": "تأكيد",
+    "start_camera": "بدء تشغيل الكاميرا",
+    "waiting_to_start": "بانتظار البدء…",
     "requesting_camera": "جارٍ طلب تشغيل الكاميرا… إذا طُلِب منك ذلك، اضغط سماح.",
     "camera_denied": "تم رفض إذن الكاميرا أو أنها غير متاحة.",
     "scanning": "جارٍ المسح…",
@@ -814,6 +826,9 @@ translations = {
     "use_for_matching": "استخدم لمطابقة المدفوعات",
     "photo_config_title": "إعدادات حقل الصورة",
     "enable_photo_field": "تفعيل عرض حقل الصورة",
+    "scan_config_title": "طريقة المسح",
+    "enable_qr_scan": "تفعيل مسح رمز QR",
+    "enable_qr_scan_hint": "عند الإيقاف، يستخدم هذا البرنامج إدخال الرمز يدويًا فقط (بدون كاميرا QR).",
     "home_question": "من أنت؟",
     "home_admin": "موظفو الصليب الأحمر",
     "home_fsp": "مزود خدمات مالية",
@@ -1370,8 +1385,15 @@ def config_page():
                                 if prop.get("name") == "columnToMatch":
                                     column_to_match_121 = prop.get("value")
                                     break
-                except Exception:
-                    pass
+                        if not column_to_match_121:
+                            print(f"[system_config] 121 fsp-configurations for program "
+                                  f"{program_id} had no 'columnToMatch' property")
+                    else:
+                        print(f"[system_config] fsp-configurations returned "
+                              f"{r.status_code} for program {program_id}")
+                except Exception as e:
+                    print(f"[system_config] columnToMatch fetch error for program "
+                          f"{program_id}: {e}")
 
                 # Registration attributes
                 try:
@@ -1489,15 +1511,22 @@ def config_page():
                 pdata.setdefault("photo", {})["field_name"] = ""
 
     # ------------------------------------------------------
-    # Persist COLUMN_TO_MATCH
+    # Persist COLUMN_TO_MATCH (per-program, last-known-good)
     # ------------------------------------------------------
     if column_to_match_121 and active_program_id:
         per_program = system_config.setdefault("COLUMN_TO_MATCH_PER_PROGRAM", {})
         per_program[str(active_program_id)] = column_to_match_121
         try:
             save_config(system_config)
-        except Exception:
-            pass
+        except Exception as e:
+            # Surface write failures instead of hiding them — a silent failure
+            # here is exactly what made the value appear to "not save".
+            print(f"[system_config] FAILED to persist COLUMN_TO_MATCH_PER_PROGRAM "
+                  f"for program {active_program_id}: {e}")
+    elif active_program_id and not column_to_match_121:
+        print(f"[system_config] no columnToMatch returned from 121 API for "
+              f"program {active_program_id}; nothing persisted this load "
+              f"(existing cached value, if any, is retained)")
 
     # ------------------------------------------------------
     # RENDER
@@ -1715,16 +1744,8 @@ def fsp_admin():
     url121 = system_config.get("url121")
     if url121:
         try:
-            login_resp = requests.post(
-                f"{url121}/api/users/login",
-                json={
-                    "username": system_config.get("username121", ""),
-                    "password": system_config.get("password121", "")
-                },
-                timeout=8
-            )
-            if login_resp.status_code == 201:
-                token = login_resp.json().get("access_token_general")
+            token = get_121_token()
+            if token:
                 r = requests.get(
                     f"{url121}/api/programs/{program_id}",
                     cookies={"access_token_general": token},
@@ -1758,6 +1779,7 @@ def fsp_admin():
 def sync_fsp():
     import subprocess
     import os
+    import sys
 
     # 🔴 get selected program from session
     program_id = session.get("fsp_program_id")
@@ -1772,7 +1794,11 @@ def sync_fsp():
 
     try:
         result = subprocess.run(
-            ["python", "offline_sync.py"],
+            # Use the SAME interpreter Flask is running under (the venv's
+            # python), not a bare "python" from PATH. Otherwise the subprocess
+            # runs against a different Python that lacks the installed packages
+            # (e.g. azure-monitor-opentelemetry), producing ModuleNotFoundError.
+            [sys.executable, "offline_sync.py"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1824,6 +1850,19 @@ def scan():
     username = session.get("fsp_username", "User")
     program_id = session.get("fsp_program_id")
 
+    # Per-program scan method: QR enabled by default unless explicitly disabled
+    qr_enabled = True
+    try:
+        full_display = load_display_config() or {}
+        programs_map = full_display.get("programs", {}) or {}
+        program_config = programs_map.get(str(program_id), {}) if program_id else {}
+        qr_cfg = program_config.get("qr", {})
+        # Default ON: only False when explicitly set to disabled
+        qr_enabled = qr_cfg.get("enabled", True) if isinstance(qr_cfg, dict) else True
+    except Exception as e:
+        print(f"[scan] Failed to load qr config: {e}")
+        qr_enabled = True
+
     # Fetch 121 program title
     program_title = ""
     if program_id:
@@ -1831,16 +1870,8 @@ def scan():
         url121 = system_config.get("url121")
         if url121:
             try:
-                login_resp = requests.post(
-                    f"{url121}/api/users/login",
-                    json={
-                        "username": system_config.get("username121", ""),
-                        "password": system_config.get("password121", "")
-                    },
-                    timeout=8
-                )
-                if login_resp.status_code == 201:
-                    token = login_resp.json().get("access_token_general")
+                token = get_121_token()
+                if token:
                     r = requests.get(
                         f"{url121}/api/programs/{program_id}",
                         cookies={"access_token_general": token},
@@ -1858,7 +1889,8 @@ def scan():
         t=translations.get(lang, translations["en"]),
         username=username,
         program_title=program_title,
-        program_id=program_id or ""
+        program_id=program_id or "",
+        qr_enabled=qr_enabled
     )
 
 
@@ -2006,7 +2038,12 @@ def api_column_to_match(program_id):
 
 def get_column_to_match(program_id):
     """Fetch columnToMatch for a program from the 121 API.
-    Falls back to system_config COLUMN_TO_MATCH if API unavailable."""
+
+    On a successful fetch the value is written through to
+    COLUMN_TO_MATCH_PER_PROGRAM in system_config so it survives later API
+    outages. Falls back to that stored value (then the legacy global) when the
+    API is unavailable.
+    """
     config = load_config()
     url121 = config.get("url121")
 
@@ -2023,17 +2060,46 @@ def get_column_to_match(program_id):
                     for fsp in r.json():
                         for prop in fsp.get("properties", []):
                             if prop.get("name") == "columnToMatch":
-                                return prop.get("value")
+                                value = prop.get("value")
+                                if value:
+                                    # Write-through: cache last-known-good so
+                                    # the offline sync and beneficiary render
+                                    # still resolve the column when the API is
+                                    # later unreachable.
+                                    try:
+                                        per_program = config.setdefault("COLUMN_TO_MATCH_PER_PROGRAM", {})
+                                        if per_program.get(str(program_id)) != value:
+                                            per_program[str(program_id)] = value
+                                            save_config(config)
+                                    except Exception as e:
+                                        print(f"[get_column_to_match] failed to persist columnToMatch for program {program_id}: {e}")
+                                    return value
+                else:
+                    print(f"[get_column_to_match] fsp-configurations returned {r.status_code} for program {program_id}")
         except Exception as e:
-            print(f"[get_column_to_match] API error: {e}")
+            print(f"[get_column_to_match] API error for program {program_id}: {e}")
 
     # Fallback to per-program stored value, then legacy global value
     per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
+    resolved = per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
+    if not resolved:
+        print(f"[get_column_to_match] no columnToMatch resolved for program {program_id} (API + cache both empty)")
+    return resolved
 
+
+_token_cache = {"token": None, "expires_at": 0}
 
 def get_121_token():
     import requests
+    import time
+
+    # Reuse a recently fetched token instead of logging in on every call.
+    # get_column_to_match (and other helpers) are hit on render paths, and a
+    # fresh remote login per request is the main cause of slow page loads.
+    now = time.time()
+    if _token_cache["token"] and now < _token_cache["expires_at"]:
+        return _token_cache["token"]
+
     config = load_config()
     username = config.get("username121")
     password = config.get("password121")
@@ -2062,6 +2128,11 @@ def get_121_token():
             print("❌ Login succeeded but no token returned")
             return None
 
+        # Cache for a conservative 10 minutes (121 tokens live longer, but a
+        # short TTL keeps us well clear of expiry while killing per-request
+        # logins).
+        _token_cache["token"] = token
+        _token_cache["expires_at"] = now + 600
         return token
 
     except Exception as e:
@@ -2196,7 +2267,16 @@ def submit_payments():
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
         # -------------------------------
+        # Preferred path: the device-built CSV now carries an explicit
+        # "paymentId" column, because one beneficiary may have several
+        # concurrent payments (tranches) in the same program and the phone
+        # number alone cannot say which tranche a row settles. When the column
+        # is present we trust it. For backward compatibility with older CSVs
+        # that lack the column, we fall back to inferring the paymentId from the
+        # offline cache via match_to_pid (which only works when a beneficiary
+        # has a single payment).
         grouped = {}
+        csv_has_payment_id = bool(rows) and ("paymentId" in rows[0])
 
         for row in rows:
             raw_value = row.get(column_to_match, "").strip()
@@ -2210,7 +2290,17 @@ def submit_payments():
                     print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
                     continue
 
-            payment_id = match_to_pid.get(raw_value)
+            if csv_has_payment_id:
+                pid_raw = (row.get("paymentId") or "").strip()
+                if not pid_raw:
+                    print(f"[!] Row missing paymentId for {column_to_match}: {raw_value}")
+                    continue
+                try:
+                    payment_id = int(pid_raw)
+                except (TypeError, ValueError):
+                    payment_id = pid_raw
+            else:
+                payment_id = match_to_pid.get(raw_value)
 
             if not payment_id:
                 print(f"[!] No paymentId found for {column_to_match}: {raw_value}")

@@ -40,7 +40,7 @@
           }
         },
         {
-          "key": "Autre_pays",
+          "key": "fullName",
           "labels": {
             "en": "Autre pays",
             "fr": "Autre pays",
@@ -56,9 +56,12 @@
           }
         }
       ],
+      "qr": {
+        "enabled": false
+      },
       "photo": {
         "enabled": true,
-        "field_name": "photo",
+        "field_name": "",
         "labels": {
           "en": "Photo",
           "fr": "Photo",
@@ -142,6 +145,38 @@
           "en": "Photo",
           "fr": "Photo",
           "ar": "صورة"
+        }
+      }
+    },
+    "4": {
+      "fields": [
+        {
+          "key": "age",
+          "labels": {
+            "en": "Year of Birth",
+            "fr": "Year of Birth",
+            "ar": "Year of Birth"
+          }
+        },
+        {
+          "key": "gender",
+          "labels": {
+            "en": "Gender",
+            "fr": "Gender",
+            "ar": "Gender"
+          }
+        }
+      ],
+      "qr": {
+        "enabled": true
+      },
+      "photo": {
+        "enabled": false,
+        "field_name": "",
+        "labels": {
+          "en": "",
+          "fr": "",
+          "ar": ""
         }
       }
     }

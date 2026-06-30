@@ -5,10 +5,16 @@
 import os
 import sys
 import logging
-from azure.monitor.opentelemetry import configure_azure_monitor
 
+# Only configure Azure Monitor when a connection string is present (i.e. in the
+# deployed environment). The import is optional so local/dev machines without
+# the azure-monitor-opentelemetry package can still run the sync.
 if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-    configure_azure_monitor()
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor
+        configure_azure_monitor()
+    except ModuleNotFoundError:
+        pass
 
 # Log to stdout with a bare "message only" format so the parent process
 # (app.py /sync-fsp) can keep scanning this script's stdout for its status
@@ -551,30 +557,28 @@ def download_recent_payments_cache(program_id):
         logger.info(f"  - {k}: {v}")
     logger.info(f"[INFO] Filtered transactions: {len(filtered)}")
 
-    # 2) Keep only the latest transaction per UUID
-    latest_by_uuid = {}
-    for t in filtered:
-        uuid = t.get("registrationReferenceId")
-        if not uuid:
-            continue
-        existing = latest_by_uuid.get(uuid)
-        if not existing or t.get("created", "") > existing.get("created", ""):
-            latest_by_uuid[uuid] = t
+    # 2) Keep ALL waiting transactions. A beneficiary (uuid) may have more than
+    #    one concurrent payment in the same program (e.g. a "food" tranche and a
+    #    "health" tranche), each identified by its own paymentId. We must NOT
+    #    collapse to one transaction per uuid or the second tranche disappears.
+    #    Registrations are still fetched once per uuid (deduped below) to avoid
+    #    refetching the same beneficiary for every tranche they hold.
+    all_transactions_to_cache = list(filtered)
+    logger.info(f"[INFO] Transactions to cache (all tranches): {len(all_transactions_to_cache)}")
 
-    logger.info(f"[INFO] Final unique transactions to cache: {len(latest_by_uuid)}")
-
-    # 3) Fetch registrations in bulk (parallel)
+    # 3) Fetch registrations in bulk (parallel) — dedup reg_ids so each
+    #    beneficiary is fetched only once even if they hold several tranches.
     reg_ids = [
         t.get("registrationId")
-        for t in latest_by_uuid.values()
+        for t in all_transactions_to_cache
         if t.get("registrationId")
     ]
     registrations_map = fetch_registrations_bulk(program_id, reg_ids)
 
     cache_data = []
 
-    # 4) Build records
-    for t in latest_by_uuid.values():
+    # 4) Build records — one record per (uuid, paymentId) transaction
+    for t in all_transactions_to_cache:
         reg_id = t.get("registrationId")
         uuid = t.get("registrationReferenceId")
 
@@ -624,7 +628,11 @@ def download_recent_payments_cache(program_id):
             "registrationId": reg_id,
             "photo_filename": photo_filename,
             "paymentId": t.get("paymentId"),
-            "amount": t.get("amount", 0),
+            # 121 transactions expose the value as "transferValue"; fall back to
+            # "amount" for older payloads. This is the per-tranche amount.
+            "amount": t.get("transferValue", t.get("amount", 0)),
+            "created": created,
+            "status": status,
             "data": encrypted_data,
             "valid": is_valid,
             "reason": reason,
@@ -632,18 +640,28 @@ def download_recent_payments_cache(program_id):
 
         cache_data.append(record)
 
-    # 5) Download & encrypt photos in parallel
-    download_photos_bulk(cache_data, photos_dir)
+    # 5) Download & encrypt photos in parallel.
+    #    A beneficiary with multiple tranches produces multiple records sharing
+    #    one uuid and one photo file, so dedup by photo_filename to avoid
+    #    downloading the same photo several times.
+    seen_photos = set()
+    photo_records = []
+    for r in cache_data:
+        if r["photo_filename"] in seen_photos:
+            continue
+        seen_photos.add(r["photo_filename"])
+        photo_records.append(r)
+    download_photos_bulk(photo_records, photos_dir)
 
     # 6) Save encrypted registration data
     json_path = os.path.join(batch_dir, "registrations_cache.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(cache_data, f, indent=2)
 
-    # Save filtered latest transactions
+    # Save all cached transactions (every tranche, not just latest per uuid)
     tx_path = os.path.join(batch_dir, "transactions.json")
     with open(tx_path, "w", encoding="utf-8") as f:
-        json.dump(list(latest_by_uuid.values()), f, indent=2)
+        json.dump(all_transactions_to_cache, f, indent=2)
 
     logger.info(f"\n[OK] Batch saved to: {batch_dir}")
     logger.info(f"{len(cache_data)} beneficiaries ready.")

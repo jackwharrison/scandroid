@@ -503,7 +503,7 @@
       </select>
     </form>
 
-    <span id="netStatus" class="status-pill offline">{{ t.offline or "Offline" }}</span>
+    
 
     <div class="account-dropdown">
       <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
@@ -745,12 +745,14 @@ document.addEventListener('click', function(e) {
     });
   }
 
-  // Online detection -> update status pill
+  // Online detection -> gate Sync/Send buttons (status pill removed)
   const pill = document.getElementById('netStatus');
   function setOnlineState(isOnline) {
-      pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
-      pill.classList.toggle('online', isOnline);
-      pill.classList.toggle('offline', !isOnline);
+      if (pill) {
+        pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
+        pill.classList.toggle('online', isOnline);
+        pill.classList.toggle('offline', !isOnline);
+      }
 
       // Disable/enable buttons based on connectivity
       updateOnlineButtonState(isOnline);
@@ -806,15 +808,32 @@ function scopedUUID(uuid) {
 }
 
   // ---------- IndexedDB ----------
+  // v14: a beneficiary (uuid) can hold multiple concurrent payments (tranches)
+  // in one program, so the "transaction" and "payments" stores are keyed by the
+  // compound [uuid, paymentId] instead of uuid alone. records/photos/meta/
+  // decisions are unchanged, so beneficiary identity and cached photos survive
+  // the upgrade; only the cheap-to-resync transaction/payments data is rebuilt.
   async function openScandroidDB() {
-    return await idb.openDB('scandroid', 13, {
-      upgrade(db) {
+    return await idb.openDB('scandroid', 14, {
+      upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('records')) db.createObjectStore('records', { keyPath: 'uuid' });
         if (!db.objectStoreNames.contains('photos'))  db.createObjectStore('photos',  { keyPath: 'uuid' });
         if (!db.objectStoreNames.contains('meta'))    db.createObjectStore('meta',    { keyPath: 'key' });
         if (!db.objectStoreNames.contains('decisions')) db.createObjectStore('decisions', { keyPath: 'uuid' });
-        if (!db.objectStoreNames.contains('transaction')) db.createObjectStore('transaction', { keyPath: 'uuid' });
-        if (!db.objectStoreNames.contains('payments')) db.createObjectStore('payments', { keyPath: 'uuid' });
+        // Drop and recreate the two stores whose key shape changed.
+        if (db.objectStoreNames.contains('transaction')) db.deleteObjectStore('transaction');
+        if (db.objectStoreNames.contains('payments'))    db.deleteObjectStore('payments');
+        db.createObjectStore('transaction', { keyPath: ['uuid', 'paymentId'] });
+        db.createObjectStore('payments',    { keyPath: ['uuid', 'paymentId'] });
+      },
+      blocked() {
+        console.warn('scandroid DB upgrade blocked by another open tab.');
+        alert('Please close other Scandroid tabs/windows and reload — a database update is waiting on them.');
+      },
+      blocking() {
+        // This tab is holding an old version open and blocking another tab's
+        // upgrade; close our connection so the upgrade can proceed.
+        console.warn('This tab is blocking a scandroid DB upgrade; closing connection.');
       }
     });
   }
@@ -888,7 +907,9 @@ function scopedUUID(uuid) {
         photosWritten += items.filter(Boolean).length;
       }
 
-      // ---- NEW: import transactions.json ----
+      // ---- import transactions.json (one row per tranche) ----
+      // A beneficiary may appear several times here, once per paymentId. The
+      // compound [uuid, paymentId] key keeps each tranche as its own row.
       const txEntry = Object.values(zip.files).find(f => /transactions\.json$/i.test(f.name));
       if (txEntry) {
         const txText = await txEntry.async("string");
@@ -896,12 +917,14 @@ function scopedUUID(uuid) {
 
         for (const t of txList) {
           const uuid = t.registrationReferenceId || t.uuid;
-          if (!uuid) continue;
+          if (!uuid || t.paymentId == null) continue;
 
           await db.put("transaction", {
             uuid: scopedUUID(uuid),
-            amount: t.amount || 0,
-            paymentId: t.paymentId
+            paymentId: t.paymentId,
+            amount: t.transferValue ?? t.amount ?? 0,
+            created: t.created || null,
+            status: (t.status || "").toLowerCase()
           });
         }
       }
@@ -1001,13 +1024,13 @@ function scopedUUID(uuid) {
     const encKeyObj = await metaStore.get('encryptionKey');
     const encKey = encKeyObj?.value || '';
 
-    const csvRows = [['phoneNumber', 'status']];
+    const csvRows = [['phoneNumber', 'status', 'paymentId']];
     for (const p of payments) {
       let phone = p.match_value;
       if (encKey && phone && phone.startsWith('gAAAA')) {
         phone = await decrypt(phone, encKey);
       }
-      csvRows.push([phone, p.status]);
+      csvRows.push([phone, p.status, p.paymentId]);
     }
 
     const csvContent = csvRows.map(row => row.join(',')).join('\n');
@@ -1126,17 +1149,17 @@ async function loadTotalAmount() {
       p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
     );
 
-    const scannedSet = new Set(pending.map(x => x.uuid));
+    const scannedSet = new Set(pending.map(x => x.uuid + '|' + x.paymentId));
 
     // 2. Load all transactions
     const tx = db.transaction("transaction", "readonly");
     const store = tx.objectStore("transaction");
     const transactions = await store.getAll();
 
-    // 3. Sum ONLY amounts of beneficiaries that are still pending
+    // 3. Sum amounts of the specific tranches that are still pending
     let total = 0;
     for (const t of transactions) {
-      if (scannedSet.has(t.uuid)) {
+      if (scannedSet.has(t.uuid + '|' + t.paymentId)) {
         total += t.amount || 0;
       }
     }
@@ -1214,8 +1237,10 @@ async function buildCsvFromPayments(payments) {
   const encKeyObj = await metaStore.get("encryptionKey");
   const encKey = encKeyObj?.value || "";
 
-  // 🔥 Use the correct match column name from config
-  const rows = [[COLUMN_TO_MATCH, "status"]];
+  // 🔥 Use the correct match column name from config.
+  // Include paymentId so the server can attribute each row to the right
+  // tranche when a beneficiary has more than one concurrent payment.
+  const rows = [[COLUMN_TO_MATCH, "status", "paymentId"]];
 
   for (const p of payments) {
     let matchValue = p.match_value;
@@ -1224,7 +1249,7 @@ async function buildCsvFromPayments(payments) {
       matchValue = await decrypt(matchValue, encKey);
     }
 
-    rows.push([matchValue, p.status]);
+    rows.push([matchValue, p.status, p.paymentId]);
   }
 
   return rows.map(r => r.join(",")).join("\n");
@@ -1283,7 +1308,8 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     for (const p of payments) {
       if (p.status === "success") {
         p.status = "submitted";
-        p.uuid = scopedUUID(p.uuid);
+        // p already carries the scoped uuid and paymentId that form its
+        // compound key; do not re-scope (that would create a new row).
         await store.put(p);
       }
     }

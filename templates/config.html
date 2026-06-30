@@ -610,6 +610,22 @@
       </table>
     </div>
 
+    <div class="card" id="scanCard">
+      <h2>{{ t.scan_config_title or "Scan Method" }}</h2>
+
+      <label class="toggle-row">
+        <span>{{ t.enable_qr_scan or "Enable QR code scanning" }}</span>
+        <div class="toggle">
+          <input type="checkbox" id="qrEnabled">
+          <span class="toggle-slider"></span>
+        </div>
+      </label>
+
+      <p style="margin:0;color:var(--muted);font-size:0.88rem;">
+        {{ t.enable_qr_scan_hint or "When off, this program uses manual code entry only (no QR camera)." }}
+      </p>
+    </div>
+
     <div id="formError" class="inline-error hidden" style="text-align:center;">
       Please select a field or delete the highlighted row(s) before saving.
     </div>
@@ -871,6 +887,10 @@ function loadConfig() {
   document.getElementById('photoLabelAr').value =
     programConfig.photo?.labels?.ar || '';
 
+  // QR scanning: default ON unless explicitly disabled
+  document.getElementById('qrEnabled').checked =
+    programConfig.qr?.enabled !== false;
+
   togglePhotoFields();
   makeSelectSearchable(document.getElementById('photoKey'));
 }
@@ -884,10 +904,23 @@ document.getElementById('configForm').addEventListener('submit', async e => {
 
   const rows = [...fieldTableBody.querySelectorAll('tr')];
   const fields = [];
+  const formError = document.getElementById('formError');
+  let hasInvalid = false;
+
+  // Clear previous error state
+  formError.classList.add('hidden');
+  rows.forEach(row => {
+    const k = row.querySelector('[name="key"]');
+    if (k) k.classList.remove('field-error');
+  });
 
   for (const row of rows) {
     const keyEl = row.querySelector('[name="key"]');
-    if (!keyEl || !keyEl.value) return;
+    if (!keyEl || !keyEl.value) {
+      if (keyEl) keyEl.classList.add('field-error');
+      hasInvalid = true;
+      continue;
+    }
 
     fields.push({
       key: keyEl.value,
@@ -899,9 +932,18 @@ document.getElementById('configForm').addEventListener('submit', async e => {
     });
   }
 
+  if (hasInvalid) {
+    formError.classList.remove('hidden');
+    formError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
   const result = {
     programId: activeProgramId,
     fields,
+    qr: {
+      enabled: document.getElementById('qrEnabled').checked
+    },
     photo: {
       enabled: document.getElementById('photoEnabled').checked,
       field_name: document.getElementById('photoKey').value,
@@ -913,20 +955,26 @@ document.getElementById('configForm').addEventListener('submit', async e => {
     }
   };
 
-  const res = await fetch('/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(result)
-  });
+  try {
+    const res = await fetch('/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(result)
+    });
 
-  if (res.ok) {
-    if (!FULL_CONFIG.programs) FULL_CONFIG.programs = {};
-    FULL_CONFIG.programs[activeProgramId] = {
-      fields: result.fields,
-      photo: result.photo
-    };
-    showToast('{{ t.saved_successfully }}', 'success');
-  } else {
+    if (res.ok) {
+      if (!FULL_CONFIG.programs) FULL_CONFIG.programs = {};
+      FULL_CONFIG.programs[activeProgramId] = {
+        fields: result.fields,
+        qr: result.qr,
+        photo: result.photo
+      };
+      showToast('{{ t.saved_successfully }}', 'success');
+    } else {
+      showToast('{{ t.failed_to_save }}', 'error');
+    }
+  } catch (err) {
+    console.error('Config save failed:', err);
     showToast('{{ t.failed_to_save }}', 'error');
   }
 });

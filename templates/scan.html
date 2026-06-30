@@ -92,26 +92,33 @@
       border-radius: 18px;
       cursor: pointer;
       font-size: 14px;
+      font-weight: 500;
       display: flex;
       align-items: center;
       gap: 6px;
       color: white;
+      transition: border 0.2s ease;
     }
+    .account-btn:hover { border: 1px solid rgba(255,255,255,0.9); }
     .account-icon-svg    { width: 16px; height: 16px; filter: invert(100%); }
-    .account-arrow-svg   { width: 12px; height: 12px; filter: invert(100%); transition: .15s; }
+    .account-arrow-svg   { width: 12px; height: 12px; filter: invert(100%); margin-left: 4px; transition: transform 0.15s ease; }
     .account-btn.active .account-arrow-svg { transform: rotate(180deg); }
+
+    .account-dropdown { position: relative; }
 
     .account-menu {
       position: absolute;
       background: #ffffff;
       top: 48px;
       right: 0;
-      min-width: 200px;
-      border-radius: 12px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.15);
+      min-width: 220px;
+      border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,.15);
       padding: 10px 0;
-      z-index: 2000;
+      z-index: 3001;
     }
+
+    .user-info { font-size: 13px; }
 
     .hidden { display:none; }
 
@@ -190,19 +197,6 @@
       font-size: 0.95rem;
       margin-top: 4px;
     }
-
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-      margin-top: 10px;
-    }
-    .online  { background:#e7f9ef; color:#0f5132; }
-    .offline { background:#fdecec; color:#842029; }
 
     .btn-primary {
       background: var(--violet);
@@ -409,8 +403,6 @@
       </select>
     </form>
 
-    <span id="netStatus" class="status-pill offline">{{ t.offline or "Offline" }}</span>
-
     <div class="account-dropdown">
       <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
         <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
@@ -438,6 +430,7 @@
     </a>
 
     <div class="scan-card">
+    {% if qr_enabled %}
       <h1>{{ t.scan_title or "Scan QR" }}</h1>
       <div class="hint">{{ t.scan_hint or "Point the camera at the QR code." }}</div>
 
@@ -457,8 +450,12 @@
         </svg>
         {{ t.no_qr_btn or "Can't scan QR?" }}
       </button>
+    {% else %}
+      <h1>{{ t.code_entry_title or "Enter code" }}</h1>
+      <div class="hint">{{ t.code_entry_hint or "Enter the beneficiary's unique code below." }}</div>
+    {% endif %}
 
-      <div class="manual-entry-box" id="manualEntryBox">
+      <div class="manual-entry-box{% if not qr_enabled %} open{% endif %}" id="manualEntryBox">
         <label for="manualCodeInput">{{ t.manual_code_label or "Enter code manually" }}</label>
         <div class="manual-entry-row">
           <input
@@ -482,8 +479,8 @@
 </main>
 
 <footer>
-  <div>{{ t.footer_dev }}</div>
-  <div>{{ t.footer_support }}</div>
+  <div class="footer-left">{{ t.footer_dev }}</div>
+  <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
 
 <!-- Lightweight QR library -->
@@ -494,7 +491,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   (function () {
     const statusEl = document.getElementById('status');
-    const netPill  = document.getElementById('netStatus');
     const video = document.getElementById('video');
     const startBtn = document.getElementById('startBtn');
     const lang = "{{ lang }}";
@@ -507,47 +503,12 @@ document.addEventListener("DOMContentLoaded", () => {
       starting: "{{ t.starting_camera or 'Starting camera…' }}"
     };
 
-    const ONLINE_TEXT  = "{{ t.online or 'Online' }}";
-    const OFFLINE_TEXT = "{{ t.offline or 'Offline' }}";
-
     let stream = null;
     let rafId = null;
 
     const setStatus = (m) => {
       if (statusEl) statusEl.textContent = m;
     };
-
-    function setOnlineState(isOnline) {
-      if (!netPill) return;
-      netPill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
-      netPill.classList.toggle('online', isOnline);
-      netPill.classList.toggle('offline', !isOnline);
-    }
-
-    /* ---------- OFFLINE / ONLINE CHECK ---------- */
-
-    async function pingWithTimeout(timeoutMs = 2000) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const res = await fetch('/ping', { cache: 'no-store', signal: controller.signal });
-        clearTimeout(timer);
-        return res.ok;
-      } catch {
-        clearTimeout(timer);
-        return false;
-      }
-    }
-
-    async function checkOnline() {
-      const ok = await pingWithTimeout();
-      setOnlineState(ok);
-    }
-
-    checkOnline();
-    setInterval(checkOnline, 5000);
-    window.addEventListener('online',  () => setOnlineState(true));
-    window.addEventListener('offline', () => setOnlineState(false));
 
     /* ---------- DB HELPERS ---------- */
 
@@ -579,28 +540,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function dbCheckAlreadyScanned(db, scannedId) {
       const scopedId = PROGRAM_ID ? `${PROGRAM_ID}:${scannedId}` : null;
-      return new Promise((resolve) => {
-        const tx = db.transaction("payments", "readonly");
-        const store = tx.objectStore("payments");
-        const req = store.getAll();
+      const matches = (u) => u === scannedId || (scopedId && u === scopedId);
 
-        req.onsuccess = () => {
-          const list = req.result || [];
-          for (const p of list) {
-            if (
-              p &&
-              (p.uuid === scannedId || (scopedId && p.uuid === scopedId)) &&
-              p.status === "success"
-            ) {
-              resolve(p);
-              return;
-            }
-          }
-          resolve(null);
-        };
-
-        req.onerror = () => resolve(null);
+      // A beneficiary may hold several concurrent payments (tranches). We only
+      // block re-scan when EVERY tranche has already been collected. If any
+      // tranche is still open, route through so the FSP can select it.
+      const getAllFrom = (storeName) => new Promise((resolve) => {
+        if (!db.objectStoreNames.contains(storeName)) { resolve([]); return; }
+        const req = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
+        req.onsuccess = () => resolve((req.result || []).filter(x => x && matches(x.uuid)));
+        req.onerror = () => resolve([]);
       });
+
+      const [tranches, paid] = await Promise.all([
+        getAllFrom("transaction"),
+        getAllFrom("payments"),
+      ]);
+
+      const collectedIds = new Set(
+        paid.filter(p => p.status === "success" || p.status === "submitted")
+            .map(p => String(p.paymentId))
+      );
+
+      // No transaction rows cached (pre-v14 / single-payment fallback): keep the
+      // old behaviour — any success row means already collected.
+      if (!tranches.length) {
+        const any = paid.find(p => p.status === "success" || p.status === "submitted");
+        return any || null;
+      }
+
+      const openExists = tranches.some(t => {
+        const s = String(t.status || "").toLowerCase();
+        if (s === "success" || s === "submitted") return false;
+        return !collectedIds.has(String(t.paymentId));
+      });
+
+      // openExists → still something to distribute → not "already scanned".
+      return openExists ? null : (paid[0] || tranches[0] || { uuid: scopedId || scannedId });
     }
 
     /* ---------- ROUTING ---------- */
@@ -778,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try { stream && stream.getTracks().forEach(t => t.stop()); } catch {}
     }
 
-    startBtn.addEventListener('click', startCamera);
+    if (startBtn) startBtn.addEventListener('click', startCamera);
     window.addEventListener('beforeunload', cleanup);
 
     /* ---------- MANUAL ENTRY ---------- */
@@ -787,12 +763,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const manualCodeInput  = document.getElementById('manualCodeInput');
     const manualSubmitBtn  = document.getElementById('manualSubmitBtn');
 
-    manualToggleBtn.addEventListener('click', () => {
-      const open = manualEntryBox.classList.toggle('open');
-      if (open) {
-        manualCodeInput.focus();
-      }
-    });
+    if (manualToggleBtn) {
+      manualToggleBtn.addEventListener('click', () => {
+        const open = manualEntryBox.classList.toggle('open');
+        if (open) {
+          manualCodeInput.focus();
+        }
+      });
+    }
 
     manualCodeInput.addEventListener('input', () => {
       manualSubmitBtn.disabled = manualCodeInput.value.trim() === '';

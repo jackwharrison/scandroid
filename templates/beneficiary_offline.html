@@ -45,6 +45,22 @@
     .amount-label { color:var(--muted); font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px; }
     .amount-value { font-size:22px; font-weight:800; color:var(--navy); }
     .amount-block.hidden { display:none; }
+    .payment-select.hidden { display:none; }
+    .multi-note { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 14px; font-size:13px; line-height:1.4; margin-bottom:14px; }
+    .payment-list { display:grid; gap:10px; }
+    .pay-option { display:flex; align-items:center; gap:12px; border:1px solid var(--line); border-radius:12px; padding:12px 14px; cursor:pointer; transition:border-color .15s, background .15s; }
+    .pay-option:hover { border-color:#c7d2fe; }
+    .pay-option.selected { border-color:#7c3aed; background:#faf5ff; }
+    .pay-radio { width:20px; height:20px; border-radius:50%; border:2px solid #cbd5e1; flex-shrink:0; display:grid; place-items:center; }
+    .pay-option.selected .pay-radio { border-color:#7c3aed; }
+    .pay-option.selected .pay-radio::after { content:""; width:10px; height:10px; border-radius:50%; background:#7c3aed; }
+    .pay-main { flex:1; min-width:0; }
+    .pay-title { font-weight:700; font-size:15px; }
+    .pay-meta { font-size:12px; color:var(--muted); margin-top:2px; }
+    .pay-amount { font-weight:800; color:var(--navy); font-size:16px; white-space:nowrap; }
+    .selected-line { text-align:center; font-size:14px; color:var(--ink); margin-bottom:12px; }
+    .selected-line.hidden { display:none; }
+    .btn:disabled { opacity:0.45; cursor:not-allowed; }
     .photo-section.hidden { display:none; }
     footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
     @media (max-width:600px) {
@@ -99,7 +115,13 @@
       <div class="amount-label">{{ t.payment_amount or "Payment Amount" }}</div>
       <div class="amount-value" id="amountValue">—</div>
     </div>
+    <div class="section payment-select hidden" id="paymentSelect">
+      <div class="multi-note" id="multiNote">{{ t.multiple_payments or "This beneficiary has more than one payment on record. Select the one you are distributing." }}</div>
+      <div class="section-title">{{ t.select_payment or "Select a payment" }}</div>
+      <div class="payment-list" id="paymentList"></div>
+    </div>
     <div class="section">
+      <div class="selected-line hidden" id="selectedLine"></div>
       <div class="actions">
         <button class="btn btn-approve" id="approveBtn">{{ t.payment_approved or "Payment Approved" }}</button>
         <button class="btn btn-reject"  id="rejectBtn">{{ t.payment_rejected or "Payment Rejected" }}</button>
@@ -148,9 +170,9 @@
       return new Blob([await fernetDecryptToBytes(b64u.fromBytes(encBytes),keyB64)],{type:'image/jpeg'});
     }
 
-    const DB_NAME='scandroid',DB_VER=13;
+    const DB_NAME='scandroid',DB_VER=14;
     function scopedUUID(uuid){ return ACTIVE_PROGRAM_ID?`${ACTIVE_PROGRAM_ID}:${uuid}`:String(uuid); }
-    function openDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open(DB_NAME,DB_VER); r.onupgradeneeded=()=>{ const d=r.result; ['records','photos','meta','decisions','transaction','payments'].forEach(s=>{ if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:s==='meta'?'key':'uuid'}); }); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+    function openDB(){ return new Promise((res,rej)=>{ const r=indexedDB.open(DB_NAME,DB_VER); r.onupgradeneeded=()=>{ const d=r.result; ['records','photos','decisions'].forEach(s=>{ if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'uuid'}); }); if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta',{keyPath:'key'}); if(d.objectStoreNames.contains('transaction'))d.deleteObjectStore('transaction'); if(d.objectStoreNames.contains('payments'))d.deleteObjectStore('payments'); d.createObjectStore('transaction',{keyPath:['uuid','paymentId']}); d.createObjectStore('payments',{keyPath:['uuid','paymentId']}); }; r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('DB upgrade blocked by another open tab. Close other Scandroid tabs and reload.')); }); }
     function dbGet(db,store,key){ return new Promise((res,rej)=>{ const r=db.transaction(store,'readonly').objectStore(store).get(key); r.onsuccess=()=>res(r.result||null); r.onerror=()=>rej(r.error); }); }
     function dbPut(db,store,value){ return new Promise((res,rej)=>{ const r=db.transaction(store,'readwrite').objectStore(store).put(value); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); }
     function dbFindRecordByAnyId(db,needle){ return new Promise((res,rej)=>{ const req=db.transaction('records','readonly').objectStore('records').openCursor(); let found=null; const sn=scopedUUID(String(needle)); req.onsuccess=(e)=>{ const c=e.target.result; if(!c)return res(found); const r=c.value,d=r.data||{}; if(r.uuid===sn||scopedUUID(String(r.registrationId||''))===sn||scopedUUID(d._id||'')===sn||scopedUUID(d._uuid||'')===sn){found=r;return res(found);} c.continue(); }; req.onerror=()=>rej(req.error); }); }
@@ -191,7 +213,7 @@
       const keyB64=SERVER_FERNET_KEY||"";
       if(keyB64)keyBadge.style.display='inline-block';
       if(!SCANNED_ID){fieldsEl.innerHTML='<div class="note">No ID provided.</div>';return;}
-      let db; try{db=await openDB();}catch{fieldsEl.innerHTML='<div class="note">IndexedDB unavailable.</div>';return;}
+      let db; try{db=await openDB();}catch(e){fieldsEl.innerHTML='<div class="note">'+((e&&e.message)?e.message:'IndexedDB unavailable.')+'</div>';return;}
       try{
         const sc=await dbGet(db,'meta','displayConfig');
         if(sc&&sc.value){const cfg=sc.value,pc=cfg.programs?(cfg.programs[ACTIVE_PROGRAM_ID]||cfg):cfg; if(Array.isArray(pc.fields)&&pc.fields.length)fieldsConfig=pc.fields; if(pc.photo!==undefined)photoEnabled=!!pc.photo.enabled;}
@@ -202,23 +224,10 @@
       if(!rec){fieldsEl.innerHTML='<div class="note">No offline record found for this beneficiary.</div>';if(photoMsg)photoMsg.textContent='No photo found in cache.';return;}
       if(rec.valid===false){window.location.href=`/invalid-qr?reason=${encodeURIComponent(rec.reason||"Invalid QR")}&lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;return;}
       renderFields(fieldsEl,rec.data||{},keyB64);
-      // Show payment amount: prefer transaction store, fall back to rec.amount
-      try{
-        let amount=null;
-        try{
-          const txRec=await dbGet(db,'transaction',rec.uuid);
-          if(txRec&&txRec.amount!=null&&txRec.amount!=='') amount=txRec.amount;
-        }catch(e){console.warn('Transaction store lookup failed:',e);}
-        if(amount==null&&rec.amount!=null&&rec.amount!=='') amount=rec.amount;
-        if(amount!=null){
-          const amountBlock=document.getElementById('amountBlock');
-          const amountValue=document.getElementById('amountValue');
-          const num=Number(amount);
-          const formatted=Number.isFinite(num)?num.toLocaleString(undefined,{maximumFractionDigits:2}):String(amount);
-          amountValue.textContent=PROGRAM_CURRENCY?`${formatted} ${PROGRAM_CURRENCY}`:formatted;
-          amountBlock.classList.remove('hidden');
-        }
-      }catch(e){console.warn('Could not load payment amount:',e);}
+      // Load all tranches (payments) for this beneficiary and let the FSP pick
+      // which one they are distributing. A person may have several concurrent
+      // payments in the same program; tranches already collected are hidden.
+      await loadPayments(db, rec);
       // Reveal photo section if photos are enabled (config may come from server OR meta.displayConfig)
       const photoSection=document.getElementById('photoSection');
       if(photoEnabled&&photoSection)photoSection.classList.remove('hidden');
@@ -237,32 +246,142 @@
       }
     }
 
+    // ---- Multi-payment (tranche) selection state ----
+    let SELECTED_PAYMENT_ID = null;
+    let MATCH_COL = null;
+    let MATCH_VALUE = null;
+
+    function getAllByIndexKeyPrefix(db, store, scopedId){
+      // transaction/payments use compound key [uuid, paymentId]; getAll() then
+      // filter by uuid is simplest and the dataset on one device is small.
+      return new Promise((res,rej)=>{
+        const r=db.transaction(store,'readonly').objectStore(store).getAll();
+        r.onsuccess=()=>res((r.result||[]).filter(x=>x.uuid===scopedId));
+        r.onerror=()=>rej(r.error);
+      });
+    }
+
+    function fmtAmount(v){
+      const n=Number(v);
+      const f=Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:2}):String(v);
+      return PROGRAM_CURRENCY?`${f} ${PROGRAM_CURRENCY}`:f;
+    }
+    function fmtDate(iso){
+      if(!iso) return '';
+      const d=new Date(iso);
+      if(isNaN(d)) return '';
+      return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'});
+    }
+
+    async function loadPayments(db, rec){
+      const approveBtn=document.getElementById('approveBtn');
+      const rejectBtn=document.getElementById('rejectBtn');
+      const note=document.getElementById('decisionNote');
+      const scoped=rec.uuid;
+
+      // Resolve the match column + value once, used by every decision.
+      MATCH_COL=COLUMN_TO_MATCH;
+      try{ const stored=await dbGet(db,'meta',`columnToMatch:${ACTIVE_PROGRAM_ID}`); if(stored&&stored.value) MATCH_COL=stored.value; }catch(e){}
+      if(!MATCH_COL) MATCH_COL='phoneNumber';
+      let rawVal=rec.data?.[MATCH_COL]||'';
+      MATCH_VALUE=rawVal;
+      if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){try{MATCH_VALUE=await fernetDecryptString(rawVal,SERVER_FERNET_KEY);}catch(e){}}
+
+      // Gather this beneficiary's tranches and the ones already collected.
+      let tranches=[], paid=[];
+      try{ tranches=await getAllByIndexKeyPrefix(db,'transaction',scoped); }catch(e){console.warn('tranche load failed',e);}
+      try{ paid=await getAllByIndexKeyPrefix(db,'payments',scoped); }catch(e){console.warn('payments load failed',e);}
+      const paidIds=new Set(paid.map(p=>String(p.paymentId)));
+
+      // Fallback: pre-v14 cache or no transaction rows — use the record amount
+      // as a single implicit tranche so the screen still works.
+      if(!tranches.length && rec.amount!=null && rec.amount!==''){
+        tranches=[{uuid:scoped,paymentId:rec.paymentId??null,amount:rec.amount,created:rec.created||null,status:'waiting'}];
+      }
+
+      // Hide tranches already collected (success/submitted) — "if successful,
+      // do not show".
+      const open=tranches.filter(t=>{
+        const s=String(t.status||'').toLowerCase();
+        if(s==='success'||s==='submitted') return false;
+        return !paidIds.has(String(t.paymentId));
+      });
+
+      const selectSection=document.getElementById('paymentSelect');
+      const amountBlock=document.getElementById('amountBlock');
+      const listEl=document.getElementById('paymentList');
+      const multiNote=document.getElementById('multiNote');
+
+      if(open.length===0){
+        // Everything already collected — nothing to distribute.
+        selectSection.classList.add('hidden');
+        amountBlock.classList.add('hidden');
+        approveBtn.disabled=true; rejectBtn.disabled=true;
+        note.textContent='✅ '+( "{{ t.all_collected or 'All payments for this beneficiary have already been collected.' }}");
+        return;
+      }
+
+      if(open.length===1){
+        // Single open tranche — no selection friction, show the amount block.
+        SELECTED_PAYMENT_ID=open[0].paymentId??null;
+        amountBlock.classList.remove('hidden');
+        document.getElementById('amountValue').textContent=fmtAmount(open[0].amount);
+        return;
+      }
+
+      // Multiple open tranches — render the selector.
+      multiNote.style.display='';
+      selectSection.classList.remove('hidden');
+      approveBtn.disabled=true; // require a selection first
+      listEl.innerHTML='';
+      open.sort((a,b)=>String(a.created||'').localeCompare(String(b.created||'')));
+      open.forEach((t)=>{
+        const opt=document.createElement('div');
+        opt.className='pay-option';
+        const ref=t.paymentId!=null?`Ref PAY-${t.paymentId}`:'';
+        const date=fmtDate(t.created);
+        const meta=[date,ref].filter(Boolean).join(' · ');
+        opt.innerHTML=`<div class="pay-radio"></div>`+
+          `<div class="pay-main"><div class="pay-title">${date||('Payment '+(t.paymentId??''))}</div>`+
+          `<div class="pay-meta">${meta}</div></div>`+
+          `<div class="pay-amount">${fmtAmount(t.amount)}</div>`;
+        opt.addEventListener('click',()=>{
+          SELECTED_PAYMENT_ID=t.paymentId??null;
+          [...listEl.children].forEach(c=>c.classList.remove('selected'));
+          opt.classList.add('selected');
+          const sl=document.getElementById('selectedLine');
+          sl.textContent=`{{ t.selected or 'Selected' }}: ${date||('Payment '+(t.paymentId??''))} — ${fmtAmount(t.amount)}`;
+          sl.classList.remove('hidden');
+          approveBtn.disabled=false;
+        });
+        listEl.appendChild(opt);
+      });
+    }
+
     async function savePaymentDecision(decisionValue){
       const note=document.getElementById('decisionNote');
+      if(decisionValue==='success' && SELECTED_PAYMENT_ID===null){
+        note.textContent='⚠️ Please select a payment first.';
+        return;
+      }
       try{
         const db=await openDB();
-        // Prefer the per-program columnToMatch stashed by the FSP admin sync.
-        // The baked-in COLUMN_TO_MATCH from the rendered HTML can be stale
-        // (e.g. when the service worker serves a precached shell that was
-        // rendered before the user's session knew about the program).
-        let col=COLUMN_TO_MATCH;
-        try{
-          const stored=await dbGet(db,'meta',`columnToMatch:${ACTIVE_PROGRAM_ID}`);
-          if(stored&&stored.value) col=stored.value;
-        }catch(e){console.warn('columnToMatch lookup failed:',e);}
-        if(!col) col="phoneNumber"; // last-resort default
         const rec=await dbFindRecordByAnyId(db,SCANNED_ID);
         if(!rec){alert("No matching record found.");return;}
-        let rawVal=rec.data?.[col]||"";
-        if(!rawVal){
-          alert(`Cannot find value for column "${col}". Please re-sync from the FSP admin page and try again.`);
+        if(!MATCH_VALUE){
+          alert(`Cannot find value for column "${MATCH_COL}". Please re-sync from the FSP admin page and try again.`);
           return;
         }
-        let matchValue=rawVal;
-        if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){try{matchValue=await fernetDecryptString(rawVal,SERVER_FERNET_KEY);}catch(e){console.warn("Decrypt match col failed:",e);}}
-        if(!db.objectStoreNames.contains("payments")){db.close();const u=indexedDB.open(DB_NAME,db.version+1);u.onupgradeneeded=()=>{if(!u.result.objectStoreNames.contains("payments"))u.result.createObjectStore("payments",{keyPath:"uuid"});};u.onsuccess=()=>{u.result.close();location.reload();};return;}
         const tx=db.transaction("payments","readwrite");
-        tx.objectStore("payments").put({uuid: rec.uuid,programId:ACTIVE_PROGRAM_ID,status:decisionValue,column_to_match:col,match_value:matchValue,timestamp:new Date().toISOString()});
+        tx.objectStore("payments").put({
+          uuid: rec.uuid,
+          paymentId: SELECTED_PAYMENT_ID,
+          programId: ACTIVE_PROGRAM_ID,
+          status: decisionValue,
+          column_to_match: MATCH_COL,
+          match_value: MATCH_VALUE,
+          timestamp: new Date().toISOString()
+        });
         tx.oncomplete=()=>{ note.textContent=`✅ Saved`; setTimeout(()=>{window.location.href=`/success-offline?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;},600); };
         tx.onerror=()=>{note.textContent="❌ Failed to save locally.";};
       }catch(err){console.error(err);note.textContent="❌ Unexpected error.";}
