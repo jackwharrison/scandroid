@@ -1017,10 +1017,17 @@ def instance_static(filename):
     # Azure instance-specific logos
     instance_file = os.path.join(azure_path, filename)
     if os.path.exists(instance_file):
-        return send_from_directory(azure_path, filename)
+        resp = send_from_directory(azure_path, filename)
+    else:
+        # Local fallback for development
+        resp = send_from_directory("static", filename)
 
-    # Local fallback for development
-    return send_from_directory("static", filename)
+    # These files (e.g. voucher logos) are overwritten in place on re-upload,
+    # so the browser must revalidate rather than serve a cached copy. The URL
+    # also carries a ?v=<mtime> cache-buster, but we set no-cache here as a
+    # second line of defence against stale logos after an upload.
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
 
 @app.route("/")
 def landing_page():
