@@ -175,24 +175,6 @@
         font-size: 13px;
       }
 
-      /* small status-pill kept from FSP UI */
-      .status-pill {
-        display:inline-flex;
-        align-items:center;
-        gap:6px;
-        padding:4px 10px;
-        border-radius:999px;
-        font-size:12px;
-        font-weight:700;
-        border:1px solid transparent;
-      }
-      .status-pill.online {
-        background:#e7f9ef; color:#0f5132; border-color:#b7ebcd;
-      }
-      .status-pill.offline {
-        background:#fdecec; color:#842029; border-color:#f5c2c7;
-      }
-
       main {
         flex-grow: 1;
         padding: 24px 16px 40px 16px;
@@ -503,8 +485,6 @@
       </select>
     </form>
 
-    <span id="netStatus" class="status-pill offline">{{ t.offline or "Offline" }}</span>
-
     <div class="account-dropdown">
       <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
         <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg" alt="">
@@ -658,9 +638,6 @@ document.addEventListener('click', function(e) {
 </script>
 
 <script>
-  const ONLINE_TEXT = "{{ t.online or 'Online' }}";
-  const OFFLINE_TEXT = "{{ t.offline or 'Offline' }}";
-
   // -----------------------------
   // UPDATED SYNC BUTTON HANDLER
   // -----------------------------
@@ -745,54 +722,20 @@ document.addEventListener('click', function(e) {
     });
   }
 
-  // Online detection -> update status pill
-  const pill = document.getElementById('netStatus');
-  function setOnlineState(isOnline) {
-      pill.textContent = isOnline ? ONLINE_TEXT : OFFLINE_TEXT;
-      pill.classList.toggle('online', isOnline);
-      pill.classList.toggle('offline', !isOnline);
-
-      // Disable/enable buttons based on connectivity
-      updateOnlineButtonState(isOnline);
-  }
-
-
-  async function pingWithTimeout() {
-    try {
-      const res = await fetch('/ping', { cache: 'no-store' });
-      return res.ok;
-    } catch {
-      return false;
+  // Connectivity: the status pill and its ping-based polling were removed
+  // because they misreported state. Sync/Send are guarded at click time
+  // (navigator.onLine checks in their handlers); here we keep the buttons'
+  // enabled state and offline hints in sync with the browser's native
+  // online/offline events, which are reliable for this purpose.
+  function applyConnectivityState() {
+    if (typeof updateOnlineButtonState === 'function') {
+      updateOnlineButtonState(navigator.onLine);
     }
   }
 
-
-  let consecutivePingFailures = 0;
-
-  async function checkOnline() {
-    const ok = await pingWithTimeout();
-
-    if (ok) {
-      consecutivePingFailures = 0;
-      setOnlineState(true);
-    } else {
-      consecutivePingFailures++;
-      if (consecutivePingFailures >= 3) {
-        setOnlineState(false);
-      }
-    }
-  }
-
-
-  // Default to whatever the browser tells us — flipped accurately by the
-  // first ping a moment later. This means the Sync/Send buttons reflect
-  // connectivity from the very first paint, not after 3 minutes of pings.
-  setOnlineState(navigator.onLine);
-
-  checkOnline();
-  setInterval(checkOnline, 60000);
-  window.addEventListener('online', () => setOnlineState(true));
-  window.addEventListener('offline', () => setOnlineState(false));
+  applyConnectivityState();
+  window.addEventListener('online', applyConnectivityState);
+  window.addEventListener('offline', applyConnectivityState);
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistration().then(reg => reg && reg.update());
   }
@@ -807,14 +750,35 @@ function scopedUUID(uuid) {
 
   // ---------- IndexedDB ----------
   async function openScandroidDB() {
-    return await idb.openDB('scandroid', 13, {
-      upgrade(db) {
+    return await idb.openDB('scandroid', 15, {
+      async upgrade(db, oldVersion, newVersion, tx) {
         if (!db.objectStoreNames.contains('records')) db.createObjectStore('records', { keyPath: 'uuid' });
         if (!db.objectStoreNames.contains('photos'))  db.createObjectStore('photos',  { keyPath: 'uuid' });
         if (!db.objectStoreNames.contains('meta'))    db.createObjectStore('meta',    { keyPath: 'key' });
         if (!db.objectStoreNames.contains('decisions')) db.createObjectStore('decisions', { keyPath: 'uuid' });
-        if (!db.objectStoreNames.contains('transaction')) db.createObjectStore('transaction', { keyPath: 'uuid' });
-        if (!db.objectStoreNames.contains('payments')) db.createObjectStore('payments', { keyPath: 'uuid' });
+
+        // 'transaction' and 'payments' must be keyed on ['uuid','paymentId'] so a
+        // single beneficiary can hold multiple payments across rounds without
+        // overwriting. Convert any old single-key ('uuid') store to the compound
+        // key, preserving records that already carry a paymentId. Records missing
+        // a paymentId can't fit the compound key and are dropped (they could not
+        // have been submitted correctly anyway).
+        for (const name of ['transaction', 'payments']) {
+          let existing = [];
+          if (db.objectStoreNames.contains(name)) {
+            try { existing = await tx.objectStore(name).getAll(); } catch (e) { existing = []; }
+            const kp = tx.objectStore(name).keyPath;
+            const isCompound = Array.isArray(kp) && kp[0] === 'uuid' && kp[1] === 'paymentId';
+            if (isCompound) continue; // already correct, leave data untouched
+            db.deleteObjectStore(name);
+          }
+          const store = db.createObjectStore(name, { keyPath: ['uuid', 'paymentId'] });
+          for (const rec of existing) {
+            if (rec && rec.uuid != null && rec.paymentId != null) {
+              try { store.put(rec); } catch (e) { /* skip un-migratable record */ }
+            }
+          }
+        }
       }
     });
   }
@@ -897,6 +861,7 @@ function scopedUUID(uuid) {
         for (const t of txList) {
           const uuid = t.registrationReferenceId || t.uuid;
           if (!uuid) continue;
+          if (t.paymentId == null) continue; // compound key needs both uuid and paymentId
 
           await db.put("transaction", {
             uuid: scopedUUID(uuid),
