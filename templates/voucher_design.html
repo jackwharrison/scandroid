@@ -188,19 +188,35 @@
     .voucher {
       background: #fff; aspect-ratio: 1.414 / 1; width: 100%; box-sizing: border-box;
       padding: 4.5%; position: relative; box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      container-type: inline-size;   /* enables cqw units below: 1cqw = 1% of voucher width */
     }
     .voucher-border {
       border: 1.5px solid #111; width: 100%; height: 100%; box-sizing: border-box;
       padding: 4%; display: flex; flex-direction: column;
     }
     .v-logos { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-    .v-logo { height: 11%; min-height: 30px; display: flex; align-items: center; }
-    .voucher .v-logo img { max-height: 46px; max-width: 130px; object-fit: contain; }
-    .voucher .v-logo.size-small img  { max-height: 33px; max-width: 95px; }
-    .voucher .v-logo.size-medium img { max-height: 46px; max-width: 130px; }
-    .voucher .v-logo.size-large img  { max-height: 61px; max-width: 168px; }
+    /* Logo sizing mirrors the PDF renderer (app.py _draw_voucher):
+       - LEFT logo is sized by HEIGHT (LEFT_LOGO_HEIGHT_CM), width follows aspect ratio.
+       - RIGHT logo is sized by WIDTH (RIGHT_LOGO_WIDTH_CM), height follows aspect ratio.
+       The voucher is a query container whose width represents the A5-landscape page
+       width of 21.0cm, so 1cm = 100/21 = 4.7619cqw. These figures apply that mapping
+       to the exact cm values in app.py, making the preview match the printed output. */
+    .v-logo { display: flex; align-items: flex-start; }
+    .voucher .v-logo img { object-fit: contain; }
+
+    /* LEFT: height-driven. 1.8 / 2.5 / 3.3 cm. */
     .v-logo.left { justify-content: flex-start; }
+    .voucher .v-logo.left img { width: auto; }
+    .voucher .v-logo.left.size-small  img { height: 8.57cqw; }
+    .voucher .v-logo.left.size-medium img { height: 11.90cqw; }
+    .voucher .v-logo.left.size-large  img { height: 15.71cqw; }
+
+    /* RIGHT: width-driven. 4.0 / 5.0 / 6.2 cm. */
     .v-logo.right { justify-content: flex-end; }
+    .voucher .v-logo.right img { height: auto; }
+    .voucher .v-logo.right.size-small  img { width: 19.05cqw; }
+    .voucher .v-logo.right.size-medium img { width: 23.81cqw; }
+    .voucher .v-logo.right.size-large  img { width: 29.52cqw; }
     .v-logo .placeholder {
       font-size: 0.7rem; color: #9ca3af; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 10px 14px;
     }
@@ -228,6 +244,30 @@
     .v-fields .row .k { color: #555; }
     .v-fields .row .v { font-weight: 600; }
     .preview-note { color: var(--muted); font-size: 0.78rem; margin-top: 12px; text-align: center; }
+
+    /* ------------------ QR TOGGLE SWITCH ------------------ */
+    .qr-toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .qr-toggle-text .qr-toggle-label { font-weight: 600; font-size: 0.92rem; }
+    .qr-toggle-text .qr-toggle-hint { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+    .switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider {
+      position: absolute; cursor: pointer; inset: 0; background: #cbd5e1;
+      border-radius: 999px; transition: background .2s ease;
+    }
+    .switch .slider::before {
+      content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px;
+      background: #fff; border-radius: 50%; transition: transform .2s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .switch input:checked + .slider { background: var(--violet); }
+    .switch input:checked + .slider::before { transform: translateX(20px); }
+    .switch input:focus-visible + .slider { box-shadow: 0 0 0 3px rgba(124,58,237,0.25); }
+
+    /* When QR is hidden, drop the QR box and let the fields use the full width. */
+    .voucher.no-qr .v-qr { display: none; }
+    .voucher.no-qr .v-bottom { gap: 0; }
 
     /* ------------------ TOAST ------------------ */
     #saveToast {
@@ -375,6 +415,19 @@
         <div class="sub-hint" style="margin-top:10px;">PNG or JPG. A PNG with a transparent background works best.</div>
       </div>
 
+      <div class="field">
+        <div class="qr-toggle-row">
+          <div class="qr-toggle-text">
+            <div class="qr-toggle-label">{{ t.voucher_show_qr or "Show QR code" }}</div>
+            <div class="qr-toggle-hint">{{ t.voucher_show_qr_hint or "Turn off if this program's vouchers don't need a QR code." }}</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="showQrToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
       <button type="button" class="save-btn" id="saveBtn">{{ t.voucher_save_design or "Save design" }}</button>
     </div>
 
@@ -384,7 +437,7 @@
       <p class="card-hint">{{ t.voucher_preview_desc or "A5 landscape, matching the printed voucher layout." }}</p>
 
       <div class="preview-stage">
-        <div class="voucher">
+        <div class="voucher" id="voucherEl">
           <div class="voucher-border">
             <div class="v-logos">
               <div class="v-logo left" id="vLogo1"><span class="placeholder">{{ t.voucher_left_logo or "Left logo" }}</span></div>
@@ -460,6 +513,7 @@ function getState(pid) {
       logo1Cleared: false, logo2Cleared: false,
       logo1Size: (s && s.logo1_size) ? s.logo1_size : "medium",
       logo2Size: (s && s.logo2_size) ? s.logo2_size : "medium",
+      showQr: (s && typeof s.show_qr === 'boolean') ? s.show_qr : true,
     };
   }
   return state[pid];
@@ -473,11 +527,13 @@ let activeProgramId = "{{ active_program_id }}";
 const programSelector = document.getElementById('programSelector');
 const titleInput = document.getElementById('titleInput');
 const subtitleInput = document.getElementById('subtitleInput');
+const showQrToggle = document.getElementById('showQrToggle');
 const logo1Input = document.getElementById('logo1Input');
 const logo2Input = document.getElementById('logo2Input');
 const logo1Clear = document.getElementById('logo1Clear');
 const logo2Clear = document.getElementById('logo2Clear');
 const vTitle = document.getElementById('vTitle');
+const voucherEl = document.getElementById('voucherEl');
 const vSubtitle = document.getElementById('vSubtitle');
 const vLogo1 = document.getElementById('vLogo1');
 const vLogo2 = document.getElementById('vLogo2');
@@ -533,6 +589,7 @@ function renderPreview() {
   const s = getState(activeProgramId);
   vTitle.textContent = s.title || '';
   vSubtitle.textContent = s.subtitle || '';
+  voucherEl.classList.toggle('no-qr', s.showQr === false);
   renderLogoSlot(1);
   renderLogoSlot(2);
 }
@@ -541,6 +598,7 @@ function loadProgramIntoForm() {
   const s = getState(activeProgramId);
   titleInput.value = s.title || '';
   subtitleInput.value = s.subtitle || '';
+  showQrToggle.checked = s.showQr !== false;
   renderPreview();
 }
 
@@ -554,6 +612,10 @@ titleInput.addEventListener('input', () => {
 subtitleInput.addEventListener('input', () => {
   getState(activeProgramId).subtitle = subtitleInput.value;
   vSubtitle.textContent = subtitleInput.value;
+});
+showQrToggle.addEventListener('change', () => {
+  getState(activeProgramId).showQr = showQrToggle.checked;
+  voucherEl.classList.toggle('no-qr', !showQrToggle.checked);
 });
 
 function handleUpload(inputEl, n) {
@@ -615,6 +677,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
   fd.append('subtitle', s.subtitle || '');
   fd.append('logo1_size', s.logo1Size || 'medium');
   fd.append('logo2_size', s.logo2Size || 'medium');
+  fd.append('show_qr', s.showQr === false ? '0' : '1');
 
   if (s.logo1File) fd.append('logo1', s.logo1File);
   else if (s.logo1Cleared) fd.append('logo1_clear', '1');
@@ -635,6 +698,7 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
     s.logo2Url = d.logo2_url;
     s.logo1Size = d.logo1_size || 'medium';
     s.logo2Size = d.logo2_size || 'medium';
+    s.showQr = (typeof d.show_qr === 'boolean') ? d.show_qr : true;
     s.logo1File = s.logo2File = null;
     s.logo1Data = s.logo2Data = null;
     s.logo1Cleared = s.logo2Cleared = false;

@@ -188,23 +188,29 @@ def _draw_voucher(c, item, static_folder, design=None):
         c.drawCentredString(width/2, sub_y, line)
         sub_y -= 0.6*cm
     # ---- QR CODE ------------------------------------------------------------
+    show_qr = design.get("show_qr", True)
+    refid = item.get("referenceid", "").strip()
     qr_box_size = 5.0 * cm
     qr_x = margin + 0.6*cm
     qr_y = margin + 0.6*cm
 
-    # Outer box
-    c.setLineWidth(0.7)
-    c.rect(qr_x - 0.1*cm, qr_y - 0.1*cm, qr_box_size + 0.2*cm, qr_box_size + 0.2*cm)
+    if show_qr:
+        # Outer box
+        c.setLineWidth(0.7)
+        c.rect(qr_x - 0.1*cm, qr_y - 0.1*cm, qr_box_size + 0.2*cm, qr_box_size + 0.2*cm)
 
-    # QR image
-    refid = item.get("referenceid", "").strip()
-    qr_img = _make_qr_image(refid, box_cm=3.0)
-    c.drawInlineImage(qr_img, qr_x, qr_y, width=qr_box_size, height=qr_box_size)
+        # QR image
+        qr_img = _make_qr_image(refid, box_cm=3.0)
+        c.drawInlineImage(qr_img, qr_x, qr_y, width=qr_box_size, height=qr_box_size)
 
     # *** Removed “Reference ID below QR” (as you requested) ***
 
     # ---- BENEFICIARY INFORMATION -------------------------------------------
-    info_x = qr_x + qr_box_size + 2.0*cm
+    if show_qr:
+        info_x = qr_x + qr_box_size + 2.0*cm
+    else:
+        # No QR: start the info block at the left margin instead of leaving a gap.
+        info_x = qr_x
     info_y = qr_y + qr_box_size - 0.5*cm
     line_height = 0.75 * cm
 
@@ -413,6 +419,7 @@ def _design_for_client(design):
         "logo2_url": _logo_url(design.get("logo2")),
         "logo1_size": _clean_size(design.get("logo1_size")),
         "logo2_size": _clean_size(design.get("logo2_size")),
+        "show_qr": design.get("show_qr", True),
     }
 
 
@@ -543,7 +550,7 @@ translations = {
     "payment_prep": "Prepare to Send Payments",
     "login_error": "Incorrect username or password.",
     "admin_dashboard_title": "Admin Dashboard",
-    "admin_dashboard_subtitle": "Manage your Scandroid configuration and voucher tools.",
+    "admin_dashboard_subtitle": "Manage your 121 Scan configuration and voucher tools.",
     "config_system_desc": "Edit API keys, endpoints, and system parameters.",
     "config_display_desc": "Configure which fields and details are shown to FSPs.",
     "generate_vouchers_desc": "Generate QR vouchers for printing and distribution.",
@@ -588,10 +595,29 @@ translations = {
     "voucher_design_incomplete_desc": "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers.",
     "voucher_design_go": "Design this voucher",
     "voucher_logo_size": "Size",
+    "voucher_show_qr": "Show QR code",
+    "voucher_show_qr_hint": "Turn off if this program's vouchers don't need a QR code.",
     "voucher_size_small": "Small",
     "voucher_size_medium": "Medium",
     "voucher_size_large": "Large",
     "program": "Program",
+    "home_title": "Welcome",
+    "current_program": "Program",
+    "people_scanned": "People scanned:",
+    "beneficiaries_ready_to_scan": "Ready to scan:",
+    "last_synced": "Last synced:",
+    "total_amount": "Total amount:",
+    "payments_ready_send": "Payments ready to send:",
+    "last_payments_submit": "Last submission:",
+    "cannot_sync_offline": "Cannot sync while offline",
+    "cannot_send_offline": "Cannot send while offline",
+    "loading_photo": "Loading photo…",
+    "decryption_enabled": "Decryption enabled",
+    "select_field_121": "Select field",
+    "select_option": "Select...",
+    "success_subtitle": "You can now scan the next beneficiary.",
+    "counter_loading": "Payments ready to push to 121: ...",
+    "counter_label": "Payments ready to push to 121:",
 }
 ,
 "fr": {
@@ -720,7 +746,7 @@ translations = {
     "payment_prep": "Préparer l'envoi des paiements",
     "login_error": "Nom d’utilisateur ou mot de passe incorrect.",
     "admin_dashboard_title": "Tableau de bord Admin",
-    "admin_dashboard_subtitle": "Gérez la configuration de Scandroid et les outils de bons.",
+    "admin_dashboard_subtitle": "Gérez la configuration de 121 Scan et les outils de bons.",
     "config_system_desc": "Modifier les clés API, les points d'accès et les paramètres du système.",
     "config_display_desc": "Configurer les champs et informations affichés aux FSP.",
     "generate_vouchers_desc": "Générer des bons QR pour impression et distribution.",
@@ -743,6 +769,49 @@ translations = {
     "no_form_connected": "Impossible de charger les détails du formulaire",
     "kobo_connection": "Connexion Kobo",
     "payment_amount": "Montant du paiement",
+    "program": "Programme",
+    "loading_counter": "Paiements prêts à envoyer à 121 : ...",
+    "home_title": "Bienvenue",
+    "current_program": "Programme",
+    "people_scanned": "Personnes scannées :",
+    "beneficiaries_ready_to_scan": "Prêts à scanner :",
+    "last_synced": "Dernière synchronisation :",
+    "total_amount": "Montant total :",
+    "payments_ready_send": "Paiements prêts à envoyer :",
+    "last_payments_submit": "Dernier envoi :",
+    "cannot_sync_offline": "Impossible de synchroniser hors ligne",
+    "cannot_send_offline": "Impossible d'envoyer hors ligne",
+    "loading_photo": "Chargement de la photo…",
+    "decryption_enabled": "Déchiffrement activé",
+    "select_field_121": "Sélectionner un champ",
+    "select_option": "Sélectionner...",
+    "voucher_design": "Conception du bon",
+    "voucher_design_title": "Conception du bon",
+    "voucher_design_desc": "Personnalisez le titre, le sous-titre et les logos imprimés sur les bons de chaque programme.",
+    "voucher_design_settings": "Paramètres de conception",
+    "voucher_design_settings_desc": "Ceux-ci remplacent les valeurs imprimées sur le bon. Chaque programme conserve sa propre conception.",
+    "voucher_title_label": "Titre",
+    "voucher_subtitle_label": "Sous-titre",
+    "voucher_logos_label": "Logos",
+    "voucher_left_logo": "Logo de gauche",
+    "voucher_right_logo": "Logo de droite",
+    "voucher_logo_upload": "Téléverser",
+    "voucher_logo_remove": "supprimer",
+    "voucher_no_logo": "Aucun logo",
+    "voucher_live_preview": "Aperçu en direct",
+    "voucher_preview_desc": "A5 paysage, correspondant à la mise en page du bon imprimé.",
+    "voucher_save_design": "Enregistrer la conception",
+    "voucher_design_saved": "Conception enregistrée",
+    "voucher_design_save_failed": "Impossible d'enregistrer la conception",
+    "voucher_design_incomplete_title": "Conception du bon non terminée",
+    "voucher_design_incomplete_desc": "Ce programme n'a pas encore de conception de bon. Définissez le titre, le sous-titre et les logos avant de générer les bons.",
+    "voucher_design_go": "Concevoir ce bon",
+    "voucher_logo_size": "Taille",
+    "voucher_show_qr": "Afficher le code QR",
+    "voucher_show_qr_hint": "Désactivez si les bons de ce programme n'ont pas besoin d'un code QR.",
+    "voucher_size_small": "Petit",
+    "voucher_size_medium": "Moyen",
+    "voucher_size_large": "Grand",
 }
 ,
 "ar": {
@@ -870,7 +939,7 @@ translations = {
     "payment_prep": "Prepare to send payments",
     "login_error": "اسم المستخدم أو كلمة المرور غير صحيحة.",
     "admin_dashboard_title": "لوحة تحكم المسؤول",
-    "admin_dashboard_subtitle": "إدارة إعدادات Scandroid وأدوات القسائم",
+    "admin_dashboard_subtitle": "إدارة إعدادات 121 Scan وأدوات القسائم",
     "config_system_desc": "تعديل مفاتيح API ونقاط النهاية ومعلمات النظام.",
     "config_display_desc":"تكوين الحقول والمعلومات التي يتم عرضها لمقدمي الخدمات المالية.",
     "generate_vouchers_desc": "إنشاء قسائم QR للطباعة والتوزيع.",
@@ -894,6 +963,49 @@ translations = {
     "no_form_connected": "تعذّر تحميل تفاصيل النموذج",
     "kobo_connection": "اتصال كوبا",
     "payment_amount": "مبلغ الدفع",
+    "program": "البرنامج",
+    "loading_counter": "المدفوعات الجاهزة للإرسال إلى 121: ...",
+    "home_title": "مرحبًا",
+    "current_program": "البرنامج",
+    "people_scanned": "الأشخاص الذين تم مسحهم:",
+    "beneficiaries_ready_to_scan": "جاهزون للمسح:",
+    "last_synced": "آخر مزامنة:",
+    "total_amount": "المبلغ الإجمالي:",
+    "payments_ready_send": "المدفوعات الجاهزة للإرسال:",
+    "last_payments_submit": "آخر إرسال:",
+    "cannot_sync_offline": "لا يمكن المزامنة دون اتصال",
+    "cannot_send_offline": "لا يمكن الإرسال دون اتصال",
+    "loading_photo": "جارٍ تحميل الصورة…",
+    "decryption_enabled": "فك التشفير مُفعَّل",
+    "select_field_121": "اختر حقلاً",
+    "select_option": "اختر...",
+    "voucher_design": "تصميم القسيمة",
+    "voucher_design_title": "تصميم القسيمة",
+    "voucher_design_desc": "خصّص العنوان والعنوان الفرعي والشعارات المطبوعة على قسائم كل برنامج.",
+    "voucher_design_settings": "إعدادات التصميم",
+    "voucher_design_settings_desc": "تحل هذه محل القيم المطبوعة على القسيمة. يحتفظ كل برنامج بتصميمه الخاص.",
+    "voucher_title_label": "العنوان",
+    "voucher_subtitle_label": "العنوان الفرعي",
+    "voucher_logos_label": "الشعارات",
+    "voucher_left_logo": "الشعار الأيسر",
+    "voucher_right_logo": "الشعار الأيمن",
+    "voucher_logo_upload": "رفع",
+    "voucher_logo_remove": "إزالة",
+    "voucher_no_logo": "لا يوجد شعار",
+    "voucher_live_preview": "معاينة مباشرة",
+    "voucher_preview_desc": "A5 أفقي، مطابق لتخطيط القسيمة المطبوعة.",
+    "voucher_save_design": "حفظ التصميم",
+    "voucher_design_saved": "تم حفظ التصميم",
+    "voucher_design_save_failed": "تعذّر حفظ التصميم",
+    "voucher_design_incomplete_title": "لم يكتمل تصميم القسيمة",
+    "voucher_design_incomplete_desc": "لا يحتوي هذا البرنامج على تصميم قسيمة بعد. حدّد العنوان والعنوان الفرعي والشعارات قبل إنشاء القسائم.",
+    "voucher_design_go": "تصميم هذه القسيمة",
+    "voucher_logo_size": "الحجم",
+    "voucher_show_qr": "إظهار رمز QR",
+    "voucher_show_qr_hint": "أوقف التشغيل إذا كانت قسائم هذا البرنامج لا تحتاج إلى رمز QR.",
+    "voucher_size_small": "صغير",
+    "voucher_size_medium": "متوسط",
+    "voucher_size_large": "كبير",
     }
 }
 
@@ -1385,15 +1497,8 @@ def config_page():
                                 if prop.get("name") == "columnToMatch":
                                     column_to_match_121 = prop.get("value")
                                     break
-                        if not column_to_match_121:
-                            print(f"[system_config] 121 fsp-configurations for program "
-                                  f"{program_id} had no 'columnToMatch' property")
-                    else:
-                        print(f"[system_config] fsp-configurations returned "
-                              f"{r.status_code} for program {program_id}")
-                except Exception as e:
-                    print(f"[system_config] columnToMatch fetch error for program "
-                          f"{program_id}: {e}")
+                except Exception:
+                    pass
 
                 # Registration attributes
                 try:
@@ -1511,22 +1616,15 @@ def config_page():
                 pdata.setdefault("photo", {})["field_name"] = ""
 
     # ------------------------------------------------------
-    # Persist COLUMN_TO_MATCH (per-program, last-known-good)
+    # Persist COLUMN_TO_MATCH
     # ------------------------------------------------------
     if column_to_match_121 and active_program_id:
         per_program = system_config.setdefault("COLUMN_TO_MATCH_PER_PROGRAM", {})
         per_program[str(active_program_id)] = column_to_match_121
         try:
             save_config(system_config)
-        except Exception as e:
-            # Surface write failures instead of hiding them — a silent failure
-            # here is exactly what made the value appear to "not save".
-            print(f"[system_config] FAILED to persist COLUMN_TO_MATCH_PER_PROGRAM "
-                  f"for program {active_program_id}: {e}")
-    elif active_program_id and not column_to_match_121:
-        print(f"[system_config] no columnToMatch returned from 121 API for "
-              f"program {active_program_id}; nothing persisted this load "
-              f"(existing cached value, if any, is retained)")
+        except Exception:
+            pass
 
     # ------------------------------------------------------
     # RENDER
@@ -1744,8 +1842,16 @@ def fsp_admin():
     url121 = system_config.get("url121")
     if url121:
         try:
-            token = get_121_token()
-            if token:
+            login_resp = requests.post(
+                f"{url121}/api/users/login",
+                json={
+                    "username": system_config.get("username121", ""),
+                    "password": system_config.get("password121", "")
+                },
+                timeout=8
+            )
+            if login_resp.status_code == 201:
+                token = login_resp.json().get("access_token_general")
                 r = requests.get(
                     f"{url121}/api/programs/{program_id}",
                     cookies={"access_token_general": token},
@@ -1779,7 +1885,6 @@ def fsp_admin():
 def sync_fsp():
     import subprocess
     import os
-    import sys
 
     # 🔴 get selected program from session
     program_id = session.get("fsp_program_id")
@@ -1794,11 +1899,7 @@ def sync_fsp():
 
     try:
         result = subprocess.run(
-            # Use the SAME interpreter Flask is running under (the venv's
-            # python), not a bare "python" from PATH. Otherwise the subprocess
-            # runs against a different Python that lacks the installed packages
-            # (e.g. azure-monitor-opentelemetry), producing ModuleNotFoundError.
-            [sys.executable, "offline_sync.py"],
+            ["python", "offline_sync.py"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1870,8 +1971,16 @@ def scan():
         url121 = system_config.get("url121")
         if url121:
             try:
-                token = get_121_token()
-                if token:
+                login_resp = requests.post(
+                    f"{url121}/api/users/login",
+                    json={
+                        "username": system_config.get("username121", ""),
+                        "password": system_config.get("password121", "")
+                    },
+                    timeout=8
+                )
+                if login_resp.status_code == 201:
+                    token = login_resp.json().get("access_token_general")
                     r = requests.get(
                         f"{url121}/api/programs/{program_id}",
                         cookies={"access_token_general": token},
@@ -2038,12 +2147,7 @@ def api_column_to_match(program_id):
 
 def get_column_to_match(program_id):
     """Fetch columnToMatch for a program from the 121 API.
-
-    On a successful fetch the value is written through to
-    COLUMN_TO_MATCH_PER_PROGRAM in system_config so it survives later API
-    outages. Falls back to that stored value (then the legacy global) when the
-    API is unavailable.
-    """
+    Falls back to system_config COLUMN_TO_MATCH if API unavailable."""
     config = load_config()
     url121 = config.get("url121")
 
@@ -2060,46 +2164,17 @@ def get_column_to_match(program_id):
                     for fsp in r.json():
                         for prop in fsp.get("properties", []):
                             if prop.get("name") == "columnToMatch":
-                                value = prop.get("value")
-                                if value:
-                                    # Write-through: cache last-known-good so
-                                    # the offline sync and beneficiary render
-                                    # still resolve the column when the API is
-                                    # later unreachable.
-                                    try:
-                                        per_program = config.setdefault("COLUMN_TO_MATCH_PER_PROGRAM", {})
-                                        if per_program.get(str(program_id)) != value:
-                                            per_program[str(program_id)] = value
-                                            save_config(config)
-                                    except Exception as e:
-                                        print(f"[get_column_to_match] failed to persist columnToMatch for program {program_id}: {e}")
-                                    return value
-                else:
-                    print(f"[get_column_to_match] fsp-configurations returned {r.status_code} for program {program_id}")
+                                return prop.get("value")
         except Exception as e:
-            print(f"[get_column_to_match] API error for program {program_id}: {e}")
+            print(f"[get_column_to_match] API error: {e}")
 
     # Fallback to per-program stored value, then legacy global value
     per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-    resolved = per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
-    if not resolved:
-        print(f"[get_column_to_match] no columnToMatch resolved for program {program_id} (API + cache both empty)")
-    return resolved
+    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
 
-
-_token_cache = {"token": None, "expires_at": 0}
 
 def get_121_token():
     import requests
-    import time
-
-    # Reuse a recently fetched token instead of logging in on every call.
-    # get_column_to_match (and other helpers) are hit on render paths, and a
-    # fresh remote login per request is the main cause of slow page loads.
-    now = time.time()
-    if _token_cache["token"] and now < _token_cache["expires_at"]:
-        return _token_cache["token"]
-
     config = load_config()
     username = config.get("username121")
     password = config.get("password121")
@@ -2128,11 +2203,6 @@ def get_121_token():
             print("❌ Login succeeded but no token returned")
             return None
 
-        # Cache for a conservative 10 minutes (121 tokens live longer, but a
-        # short TTL keeps us well clear of expiry while killing per-request
-        # logins).
-        _token_cache["token"] = token
-        _token_cache["expires_at"] = now + 600
         return token
 
     except Exception as e:
@@ -2267,16 +2337,7 @@ def submit_payments():
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
         # -------------------------------
-        # Preferred path: the device-built CSV now carries an explicit
-        # "paymentId" column, because one beneficiary may have several
-        # concurrent payments (tranches) in the same program and the phone
-        # number alone cannot say which tranche a row settles. When the column
-        # is present we trust it. For backward compatibility with older CSVs
-        # that lack the column, we fall back to inferring the paymentId from the
-        # offline cache via match_to_pid (which only works when a beneficiary
-        # has a single payment).
         grouped = {}
-        csv_has_payment_id = bool(rows) and ("paymentId" in rows[0])
 
         for row in rows:
             raw_value = row.get(column_to_match, "").strip()
@@ -2290,17 +2351,7 @@ def submit_payments():
                     print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
                     continue
 
-            if csv_has_payment_id:
-                pid_raw = (row.get("paymentId") or "").strip()
-                if not pid_raw:
-                    print(f"[!] Row missing paymentId for {column_to_match}: {raw_value}")
-                    continue
-                try:
-                    payment_id = int(pid_raw)
-                except (TypeError, ValueError):
-                    payment_id = pid_raw
-            else:
-                payment_id = match_to_pid.get(raw_value)
+            payment_id = match_to_pid.get(raw_value)
 
             if not payment_id:
                 print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
@@ -2433,6 +2484,7 @@ def voucher_design():
             "logo2": existing.get("logo2"),
             "logo1_size": _clean_size(request.form.get("logo1_size") or existing.get("logo1_size")),
             "logo2_size": _clean_size(request.form.get("logo2_size") or existing.get("logo2_size")),
+            "show_qr": (request.form.get("show_qr", "1") != "0"),
         }
 
         # Explicit clears
