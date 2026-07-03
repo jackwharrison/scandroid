@@ -5,16 +5,10 @@
 import os
 import sys
 import logging
+from azure.monitor.opentelemetry import configure_azure_monitor
 
-# Only configure Azure Monitor when a connection string is present (i.e. in the
-# deployed environment). The import is optional so local/dev machines without
-# the azure-monitor-opentelemetry package can still run the sync.
 if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-    try:
-        from azure.monitor.opentelemetry import configure_azure_monitor
-        configure_azure_monitor()
-    except ModuleNotFoundError:
-        pass
+    configure_azure_monitor()
 
 # Log to stdout with a bare "message only" format so the parent process
 # (app.py /sync-fsp) can keep scanning this script's stdout for its status
@@ -171,6 +165,34 @@ def get_registration(program_id, registration_id):
     response = requests.get(url, cookies=COOKIES)
     response.raise_for_status()
     return response.json()
+
+
+def resolve_column_to_match(program_id):
+    """Resolve the columnToMatch for a program.
+
+    The authoritative source is the 121 FSP configuration
+    (GET /api/programs/{id}/fsp-configurations -> a list of FSP configs, each
+    with a `properties` array containing a `columnToMatch` property). We fetch
+    it live at sync time so the bundle is built against the column 121 reports
+    right now. If the API can't be reached we fall back to the per-program value
+    stored in config, then the legacy global COLUMN_TO_MATCH — but the live
+    value is preferred and is what gets written into the batch manifest.
+
+    Returns the column name (str) or None if it truly cannot be determined.
+    """
+    try:
+        url = f"{API_BASE}/programs/{program_id}/fsp-configurations"
+        r = requests.get(url, cookies=COOKIES, timeout=10)
+        if r.status_code == 200:
+            for fsp in r.json():
+                for prop in fsp.get("properties", []):
+                    if prop.get("name") == "columnToMatch" and prop.get("value"):
+                        return prop["value"]
+    except Exception as e:
+        logger.warning("[resolve_column_to_match] API error for program %s: %s", program_id, e)
+
+    per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
 
 
 def fetch_registrations_bulk(program_id, registration_ids):
@@ -398,6 +420,13 @@ def download_cache(program_id, payment_id):
     batch_dir = get_next_batch_dir(base_path, payment_id)
     photos_dir = os.path.join(batch_dir, "photos")
 
+    # Resolve the match column ONCE, live from 121, reused for every record
+    # and written into the manifest below.
+    match_key = resolve_column_to_match(program_id)
+    if not match_key:
+        logger.error("[!] Could not resolve columnToMatch for program %s — "
+                     "offline payments will not be matchable.", program_id)
+
     transactions = get_transactions(program_id, payment_id)
     cache_data = []
 
@@ -425,8 +454,6 @@ def download_cache(program_id, payment_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
 
@@ -470,6 +497,17 @@ def download_cache(program_id, payment_id):
     with open(tx_path, "w", encoding="utf-8") as f:
         json.dump(transactions, f, indent=2)
 
+    batch_info = {
+        "batchType": "payment-single",
+        "programId": program_id,
+        "paymentId": payment_id,
+        "columnToMatch": match_key,
+        "recordCount": len(cache_data),
+        "generatedAt": datetime.utcnow().isoformat() + "Z",
+    }
+    with open(os.path.join(batch_dir, "batch_info.json"), "w", encoding="utf-8") as f:
+        json.dump(batch_info, f, indent=2)
+
     logger.info(f"\n[OK] Done. Batch saved to: {batch_dir}")
     logger.info(f"{len(cache_data)} beneficiaries ready for offline validation.")
     return len(cache_data)
@@ -496,6 +534,13 @@ def download_recent_payments_cache(program_id):
     os.makedirs(base_path, exist_ok=True)
     batch_dir = get_next_batch_dir(base_path, "recent")
     photos_dir = os.path.join(batch_dir, "photos")
+
+    # Resolve the match column ONCE, live from 121, and reuse it for every
+    # record below AND record it in the manifest so the client never has to guess.
+    match_key = resolve_column_to_match(program_id)
+    if not match_key:
+        logger.error("[!] Could not resolve columnToMatch for program %s — "
+                     "offline payments will not be matchable.", program_id)
 
     all_transactions = get_all_transactions(program_id)
     logger.info(f"[INFO] Total transactions fetched: {len(all_transactions)}")
@@ -557,28 +602,30 @@ def download_recent_payments_cache(program_id):
         logger.info(f"  - {k}: {v}")
     logger.info(f"[INFO] Filtered transactions: {len(filtered)}")
 
-    # 2) Keep ALL waiting transactions. A beneficiary (uuid) may have more than
-    #    one concurrent payment in the same program (e.g. a "food" tranche and a
-    #    "health" tranche), each identified by its own paymentId. We must NOT
-    #    collapse to one transaction per uuid or the second tranche disappears.
-    #    Registrations are still fetched once per uuid (deduped below) to avoid
-    #    refetching the same beneficiary for every tranche they hold.
-    all_transactions_to_cache = list(filtered)
-    logger.info(f"[INFO] Transactions to cache (all tranches): {len(all_transactions_to_cache)}")
+    # 2) Keep only the latest transaction per UUID
+    latest_by_uuid = {}
+    for t in filtered:
+        uuid = t.get("registrationReferenceId")
+        if not uuid:
+            continue
+        existing = latest_by_uuid.get(uuid)
+        if not existing or t.get("created", "") > existing.get("created", ""):
+            latest_by_uuid[uuid] = t
 
-    # 3) Fetch registrations in bulk (parallel) — dedup reg_ids so each
-    #    beneficiary is fetched only once even if they hold several tranches.
+    logger.info(f"[INFO] Final unique transactions to cache: {len(latest_by_uuid)}")
+
+    # 3) Fetch registrations in bulk (parallel)
     reg_ids = [
         t.get("registrationId")
-        for t in all_transactions_to_cache
+        for t in latest_by_uuid.values()
         if t.get("registrationId")
     ]
     registrations_map = fetch_registrations_bulk(program_id, reg_ids)
 
     cache_data = []
 
-    # 4) Build records — one record per (uuid, paymentId) transaction
-    for t in all_transactions_to_cache:
+    # 4) Build records
+    for t in latest_by_uuid.values():
         reg_id = t.get("registrationId")
         uuid = t.get("registrationReferenceId")
 
@@ -604,8 +651,6 @@ def download_recent_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
@@ -628,11 +673,7 @@ def download_recent_payments_cache(program_id):
             "registrationId": reg_id,
             "photo_filename": photo_filename,
             "paymentId": t.get("paymentId"),
-            # 121 transactions expose the value as "transferValue"; fall back to
-            # "amount" for older payloads. This is the per-tranche amount.
-            "amount": t.get("transferValue", t.get("amount", 0)),
-            "created": created,
-            "status": status,
+            "amount": t.get("amount", 0),
             "data": encrypted_data,
             "valid": is_valid,
             "reason": reason,
@@ -640,28 +681,18 @@ def download_recent_payments_cache(program_id):
 
         cache_data.append(record)
 
-    # 5) Download & encrypt photos in parallel.
-    #    A beneficiary with multiple tranches produces multiple records sharing
-    #    one uuid and one photo file, so dedup by photo_filename to avoid
-    #    downloading the same photo several times.
-    seen_photos = set()
-    photo_records = []
-    for r in cache_data:
-        if r["photo_filename"] in seen_photos:
-            continue
-        seen_photos.add(r["photo_filename"])
-        photo_records.append(r)
-    download_photos_bulk(photo_records, photos_dir)
+    # 5) Download & encrypt photos in parallel
+    download_photos_bulk(cache_data, photos_dir)
 
     # 6) Save encrypted registration data
     json_path = os.path.join(batch_dir, "registrations_cache.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(cache_data, f, indent=2)
 
-    # Save all cached transactions (every tranche, not just latest per uuid)
+    # Save filtered latest transactions
     tx_path = os.path.join(batch_dir, "transactions.json")
     with open(tx_path, "w", encoding="utf-8") as f:
-        json.dump(all_transactions_to_cache, f, indent=2)
+        json.dump(list(latest_by_uuid.values()), f, indent=2)
 
     logger.info(f"\n[OK] Batch saved to: {batch_dir}")
     logger.info(f"{len(cache_data)} beneficiaries ready.")
@@ -669,6 +700,7 @@ def download_recent_payments_cache(program_id):
     batch_info = {
         "batchType": "payment-recent",
         "programId": program_id,
+        "columnToMatch": match_key,
         "recordCount": len(cache_data),
         "generatedAt": datetime.utcnow().isoformat() + "Z",
     }
