@@ -113,23 +113,30 @@ def _draw_voucher(c, item, static_folder, design=None):
         or os.path.join(static_folder, "ns2.png")
     )
 
-    # LEFT LOGO
+    # LEFT LOGO – scale by HEIGHT, derive width from aspect ratio.
+    # We must pass an explicit width: with preserveAspectRatio=True and only a
+    # height, ReportLab has no bounding box and wide images fail to render.
+    left_logo_top = height - margin - 0.5*cm
     try:
         logo1 = ImageReader(left_logo_path)
+        img_w, img_h = logo1.getSize()
+        scale = logo_height / img_h
+        scaled_width = img_w * scale
         c.drawImage(
             logo1,
-            margin,                          # <--- as far left as possible
+            margin,                          # as far left as possible
             logo_top_y - logo_height,
-            preserveAspectRatio=True,
+            width=scaled_width,
             height=logo_height,
+            preserveAspectRatio=True,
             mask='auto'
         )
-        left_logo_bottom = logo_top_y - logo_height
         left_logo_top = logo_top_y
-    except:
-        left_logo_top = height - margin - 0.5*cm
+    except Exception as e:
+        app.logger.warning("Left voucher logo failed to draw (%s): %s", left_logo_path, e)
 
     # RIGHT LOGO – wide logo, scale by width
+    right_logo_top = height - margin - 0.5*cm
     try:
         logo2 = ImageReader(right_logo_path)
         max_width = RIGHT_LOGO_WIDTH_CM.get(_clean_size(design.get("logo2_size")), 5.0) * cm
@@ -148,8 +155,8 @@ def _draw_voucher(c, item, static_folder, design=None):
             mask='auto'
         )
         right_logo_top = logo_top_y
-    except:
-        right_logo_top = height - margin - 0.5*cm
+    except Exception as e:
+        app.logger.warning("Right voucher logo failed to draw (%s): %s", right_logo_path, e)
 
     # --- CENTER "Project" between logos (vertically aligned to logos) ---
     project_y = min(left_logo_top, right_logo_top) - 0.3*cm
