@@ -21,17 +21,21 @@
     .header-controls { display:flex; align-items:center; gap:12px; }
     .lang-select select { padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; font-weight:600; cursor:pointer; font-size:14px; }
     main { flex:1; display:flex; justify-content:center; align-items:center; padding:24px var(--pad); }
-    .card { background:var(--card); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.06); border:1px solid var(--line); width:100%; max-width:440px; overflow:hidden; }
-    .card-body { padding:32px 24px; text-align:center; }
-    .error-icon { font-size:56px; margin-bottom:8px; }
-    h2 { margin:0 0 8px; font-size:1.6rem; color:#dc2626; }
-    .error-msg { color:var(--muted); margin:0 0 16px; font-size:15px; }
-    .reason-box { margin:0 0 24px; padding:12px 16px; background:#fee2e2; border-left:4px solid #dc2626; border-radius:8px; font-weight:600; color:#7f1d1d; font-size:14px; text-align:left; }
-    .actions { display:grid; gap:12px; }
-    .btn { padding:13px 16px; font-weight:700; border:none; border-radius:12px; font-size:1rem; cursor:pointer; transition:opacity 0.15s; }
-    .btn:active { opacity:0.75; }
-    .btn-scan { background:#e8f9ef; color:#065f46; border:1px solid #a7f3d0; }
-    .btn-home { background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd; }
+    .card { background:var(--card); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.06); border:1px solid var(--line); width:100%; max-width:420px; overflow:hidden; }
+    .card-body { padding:36px 28px 28px; text-align:center; }
+    /* Error badge: a soft ring around a drawn cross, mirroring the success page's check. */
+    .error-badge { width:72px; height:72px; margin:0 auto 18px; border-radius:50%; background:#fee2e2; display:flex; align-items:center; justify-content:center; }
+    .error-badge svg { width:34px; height:34px; stroke:#dc2626; stroke-width:3; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+    h2 { margin:0 0 6px; font-size:1.5rem; font-weight:800; letter-spacing:-0.01em; color:#b91c1c; }
+    .error-msg { color:var(--muted); margin:0 0 20px; font-size:15px; line-height:1.45; }
+    /* Reason: a distinct alert — it carries the *why*, which the worker needs to act. */
+    .reason-box { margin:0 0 22px; padding:12px 14px; background:#fef2f2; border:1px solid #fecaca; border-radius:12px; font-weight:600; color:#991b1b; font-size:14px; line-height:1.4; }
+    .actions { display:grid; gap:10px; }
+    .btn { padding:14px 16px; font-weight:700; border:none; border-radius:12px; font-size:1rem; cursor:pointer; transition:transform 0.1s ease, filter 0.15s ease; }
+    .btn:hover { filter:brightness(0.97); }
+    .btn:active { transform:translateY(1px); }
+    .btn-scan { background:#059669; color:#fff; }
+    .btn-home { background:#fff; color:#1d4ed8; border:1px solid #bfdbfe; }
     footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
     @media (max-width:600px) {
       header { padding:8px 12px; }
@@ -70,7 +74,9 @@
 <main>
   <div class="card">
     <div class="card-body">
-      <div class="error-icon">❌</div>
+      <div class="error-badge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+      </div>
       <h2>{{ t["invalid_qr_title"] }}</h2>
       <p class="error-msg">{{ t["invalid_qr_message"] }}</p>
       <div class="reason-box" id="reasonBox">{{ t["checking_reason"] }}</div>

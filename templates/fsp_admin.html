@@ -705,6 +705,22 @@ document.addEventListener('click', function(e) {
 
   // Service worker
   if ('serviceWorker' in navigator) {
+    // Auto-update: when a new service worker takes control of this page,
+    // reload ONCE so the freshly-deployed HTML/JS is actually used instead of
+    // the old cached version. Guards:
+    //  - hadController: only reload on a genuine *update* (a controller was
+    //    already active at load), never on the very first SW taking control of
+    //    a page that previously had none — that first load is already current.
+    //  - reloadedForUpdate flag: prevents an infinite reload loop.
+    let reloadedForUpdate = false;
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;          // first-ever takeover: nothing stale to replace
+      if (reloadedForUpdate) return;       // already reloaded once
+      reloadedForUpdate = true;
+      window.location.reload();
+    });
+
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/service-worker.js?v=3', { updateViaCache: 'none' })
         .then(() => {

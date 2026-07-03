@@ -21,17 +21,23 @@
     .header-controls { display:flex; align-items:center; gap:12px; }
     .lang-select select { padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; font-weight:600; cursor:pointer; font-size:14px; }
     main { flex:1; display:flex; justify-content:center; align-items:center; padding:24px var(--pad); }
-    .card { background:var(--card); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.06); border:1px solid var(--line); width:100%; max-width:440px; overflow:hidden; }
-    .card-body { padding:32px 24px; text-align:center; }
-    .success-icon { font-size:56px; margin-bottom:8px; }
-    h2 { margin:0 0 8px; font-size:1.6rem; color:#065f46; }
-    .success-msg { color:var(--muted); margin:0 0 20px; font-size:15px; }
-    .counter { font-weight:700; color:#002855; font-size:1.1rem; margin:0 0 24px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 16px; }
-    .actions { display:grid; gap:12px; }
-    .btn { padding:13px 16px; font-weight:700; border:none; border-radius:12px; font-size:1rem; cursor:pointer; transition:opacity 0.15s; }
-    .btn:active { opacity:0.75; }
-    .btn-scan { background:#e8f9ef; color:#065f46; border:1px solid #a7f3d0; }
-    .btn-home { background:#eff6ff; color:#1d4ed8; border:1px solid #93c5fd; }
+    .card { background:var(--card); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.06); border:1px solid var(--line); width:100%; max-width:420px; overflow:hidden; }
+    .card-body { padding:36px 28px 28px; text-align:center; }
+    /* Check badge: a soft ring around a drawn tick, replacing the raw emoji. */
+    .check-badge { width:72px; height:72px; margin:0 auto 18px; border-radius:50%; background:#e8f9ef; display:flex; align-items:center; justify-content:center; }
+    .check-badge svg { width:36px; height:36px; stroke:#059669; stroke-width:3; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+    h2 { margin:0 0 6px; font-size:1.5rem; font-weight:800; letter-spacing:-0.01em; color:#065f46; }
+    .success-msg { color:var(--muted); margin:0 0 22px; font-size:15px; line-height:1.45; }
+    /* Counter: a quiet status line, NOT a boxed pseudo-button — it sits above the
+       two real actions and must not read as a third tappable control. */
+    .counter { display:flex; align-items:center; justify-content:center; gap:8px; margin:0 0 22px; padding:12px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); color:var(--muted); font-size:14px; }
+    .counter .count-num { font-weight:800; font-size:1.15rem; color:#002855; }
+    .actions { display:grid; gap:10px; }
+    .btn { padding:14px 16px; font-weight:700; border:none; border-radius:12px; font-size:1rem; cursor:pointer; transition:transform 0.1s ease, filter 0.15s ease; }
+    .btn:hover { filter:brightness(0.97); }
+    .btn:active { transform:translateY(1px); }
+    .btn-scan { background:#059669; color:#fff; }
+    .btn-home { background:#fff; color:#1d4ed8; border:1px solid #bfdbfe; }
     footer { display:flex; justify-content:space-between; align-items:center; padding:12px 18px; font-size:0.9rem; background:var(--navy); color:#fff; border-top:1px solid rgba(255,255,255,0.15); flex-shrink:0; }
     @media (max-width:600px) {
       header { padding:8px 12px; }
@@ -69,10 +75,15 @@
 <main>
   <div class="card">
     <div class="card-body">
-      <div class="success-icon">✅</div>
+      <div class="check-badge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 12 10 18 20 6"></polyline></svg>
+      </div>
       <h2>{{ t["success_title"] }}</h2>
       <p class="success-msg">{{ t["success_message"] }}</p>
-      <div id="counter" class="counter">{{ t["payments_ready"] }}: …</div>
+      <div class="counter">
+        <span class="count-label">{{ t["payments_ready"]|trim|replace('：','')|replace(':','')|trim }}</span>
+        <span id="counter" class="count-num">…</span>
+      </div>
       <div class="actions">
         <button class="btn btn-scan" onclick="window.location.href='/scan?lang={{ lang }}'">
           {{ t["scan_next"] }}
@@ -93,12 +104,13 @@
 <script>
   const ACTIVE_PROGRAM_ID = "{{ program_id or '' }}";
   window.addEventListener("DOMContentLoaded", async () => {
+    const setCount = (n) => { document.getElementById("counter").textContent = n; };
     try {
       const dbReq = indexedDB.open("scandroid");
       dbReq.onsuccess = function () {
         const db = dbReq.result;
         if (!db.objectStoreNames.contains("payments")) {
-          document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0";
+          setCount(0);
           return;
         }
         const store = db.transaction("payments","readonly").objectStore("payments");
@@ -108,12 +120,12 @@
             p.status === "success" &&
             (!ACTIVE_PROGRAM_ID || (p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')))
           ).length;
-          document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: " + count;
+          setCount(count);
         };
-        req.onerror = () => { document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0"; };
+        req.onerror = () => setCount(0);
       };
-      dbReq.onerror = () => { document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0"; };
-    } catch(e) { document.getElementById("counter").textContent = "{{ t['payments_ready'] }}: 0"; }
+      dbReq.onerror = () => setCount(0);
+    } catch(e) { setCount(0); }
   });
 </script>
 </body>

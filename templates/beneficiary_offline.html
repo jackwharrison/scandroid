@@ -144,6 +144,21 @@
   });
 </script>
 <script>
+    // Auto-update: this page is controlled by the service worker but doesn't
+    // register it. When a newly-deployed SW takes control, reload ONCE so the
+    // current HTML replaces any stale cached copy (this is what was showing the
+    // "requested version < existing version" error). Guards prevent an infinite
+    // loop and avoid a needless reload on the first-ever SW takeover.
+    if ('serviceWorker' in navigator) {
+      let _reloadedForUpdate = false;
+      const _hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!_hadController || _reloadedForUpdate) return;
+        _reloadedForUpdate = true;
+        window.location.reload();
+      });
+    }
+
     const b64u = {
       toBytes:(s)=>{ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; const bin=atob(s),out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); return out; },
       fromBytes:(b)=>{ let s=''; for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
