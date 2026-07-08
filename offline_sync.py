@@ -545,7 +545,6 @@ def download_recent_payments_cache(program_id):
     all_transactions = get_all_transactions(program_id)
     logger.info(f"[INFO] Total transactions fetched: {len(all_transactions)}")
 
-    fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
     filtered = []
 
     counts = {
@@ -554,7 +553,6 @@ def download_recent_payments_cache(program_id):
         "deleted": 0,
         "missing_created": 0,
         "invalid_date": 0,
-        "too_old": 0,
         "valid": 0,
     }
 
@@ -588,10 +586,6 @@ def download_recent_payments_cache(program_id):
         except ValueError:
             counts["invalid_date"] += 1
             logger.info(f"[SKIP] Invalid date: {created}")
-            continue
-
-        if created_dt < fourteen_days_ago:
-            counts["too_old"] += 1
             continue
 
         filtered.append(t)
@@ -657,7 +651,7 @@ def download_recent_payments_cache(program_id):
 
         photo_filename = f"{uuid}.enc"
 
-        is_valid = status == "waiting" and not deleted and created_dt >= fourteen_days_ago
+        is_valid = status == "waiting" and not deleted
 
         reason = "ok"
         if not is_valid:
@@ -665,8 +659,6 @@ def download_recent_payments_cache(program_id):
                 reason = f"status={status}"
             elif deleted:
                 reason = "deleted"
-            elif created_dt < fourteen_days_ago:
-                reason = "too_old"
 
         record = {
             "uuid": uuid,
