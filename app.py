@@ -25,6 +25,76 @@ from config_loader import load_display_config, save_display_config
 # Register a Unicode-safe font
 pdfmetrics.registerFont(TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf")))
 
+# ---------------------------------------------------------------------------
+# Arabic (right-to-left) text support for PDF rendering
+#
+# ReportLab's drawString does NOT perform Arabic contextual shaping (joining
+# letters into their initial/medial/final forms) or bidirectional reordering.
+# Without the two steps below, Arabic prints as isolated, reversed letters.
+#   1. arabic_reshaper -> connects the letters into their correct joined forms
+#   2. python-bidi (get_display) -> reorders logical text into visual RTL order
+# Install with:  pip install arabic-reshaper python-bidi
+# ---------------------------------------------------------------------------
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    _HAS_ARABIC_SHAPING = True
+except ImportError:
+    _HAS_ARABIC_SHAPING = False
+
+import re as _re
+
+# Arabic + Arabic Supplement/Extended + Presentation Forms A/B ranges.
+_ARABIC_RE = _re.compile(
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
+)
+
+# DejaVuSans has weak coverage of Arabic *presentation forms* (the joined
+# glyphs arabic_reshaper produces), so joined Arabic can render as boxes.
+# Prefer a proper Arabic font if one is present in static/fonts; otherwise
+# fall back to DejaVu (better than nothing) and log a warning once.
+ARABIC_FONT = "DejaVu"
+for _candidate in (
+    "NotoNaskhArabic-Regular.ttf",
+    "NotoSansArabic-Regular.ttf",
+    "Amiri-Regular.ttf",
+    "Cairo-Regular.ttf",
+):
+    _fp = os.path.join("static", "fonts", _candidate)
+    if os.path.exists(_fp):
+        try:
+            pdfmetrics.registerFont(TTFont("ArabicFont", _fp))
+            ARABIC_FONT = "ArabicFont"
+            break
+        except Exception:
+            pass
+
+
+def _contains_arabic(text):
+    """True if the string contains any Arabic-script character."""
+    return bool(text) and bool(_ARABIC_RE.search(str(text)))
+
+
+def _shape_rtl(text):
+    """Return text ready for ReportLab drawing.
+
+    Arabic runs are reshaped + bidi-reordered so they print correctly;
+    Latin/other text passes through unchanged. Never raises — on any error
+    it returns the original text so a voucher still prints.
+    """
+    text = "" if text is None else str(text)
+    if _HAS_ARABIC_SHAPING and _contains_arabic(text):
+        try:
+            return get_display(arabic_reshaper.reshape(text))
+        except Exception:
+            return text
+    return text
+
+
+def _font_for(text):
+    """Pick the Arabic-capable font for Arabic text, DejaVu otherwise."""
+    return ARABIC_FONT if _contains_arabic(text) else "DejaVu"
+
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -176,8 +246,8 @@ def _draw_voucher(c, item, static_folder, design=None):
     # --- MAIN TITLE just below "Project" ---
     title_text = design.get("title") or "CASH ON THE MOVE"
     title_y = project_y - 1.4*cm
-    c.setFont("DejaVu", 22)
-    c.drawCentredString(width/2, title_y, title_text)
+    c.setFont(_font_for(title_text), 22)
+    c.drawCentredString(width/2, title_y, _shape_rtl(title_text))
 
     # Subtitle lines (newline-separated; falls back to the original copy)
     subtitle_raw = design.get("subtitle")
@@ -189,10 +259,10 @@ def _draw_voucher(c, item, static_folder, design=None):
             "in vulnerable situations",
         ]
 
-    c.setFont("DejaVu", 11)
     sub_y = title_y - 1.0*cm
     for line in subtitle_lines:
-        c.drawCentredString(width/2, sub_y, line)
+        c.setFont(_font_for(line), 11)
+        c.drawCentredString(width/2, sub_y, _shape_rtl(line))
         sub_y -= 0.6*cm
     # ---- QR CODE ------------------------------------------------------------
     show_qr = design.get("show_qr", True)
@@ -246,8 +316,13 @@ def _draw_voucher(c, item, static_folder, design=None):
     y = info_y
     for key, value in fields_to_print.items():
         label = pretty_label(key)
-        c.setFont("DejaVu", 12)
-        c.drawString(info_x, y, f"{label}: {value}")
+        line = f"{label}: {value}"
+        c.setFont(_font_for(line), 12)
+        if _contains_arabic(value):
+            # RTL row: reshape/reorder and right-align within the voucher body.
+            c.drawRightString(width - margin - 0.4*cm, y, _shape_rtl(line))
+        else:
+            c.drawString(info_x, y, _shape_rtl(line))
         y -= line_height
 
     # ---- SMALL REFERENCE ID AT BOTTOM ------------------------------------

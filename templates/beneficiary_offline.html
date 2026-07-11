@@ -213,8 +213,8 @@
         const hasVal=data&&Object.prototype.hasOwnProperty.call(data,fk);
         const raw=hasVal?data[fk]:"";
         const row=document.createElement('div'); row.className='field-row';
-        const lab=document.createElement('div'); lab.className='field-label'; lab.textContent=label;
-        const v=document.createElement('div'); v.className='field-value';
+        const lab=document.createElement('div'); lab.className='field-label'; lab.setAttribute('dir','auto'); lab.textContent=label;
+        const v=document.createElement('div'); v.className='field-value'; v.setAttribute('dir','auto');
         (async()=>{ try{ if(!hasVal||raw===""||raw==null){v.innerHTML='<span class="note">(not available)</span>';} else if(looksEncrypted(String(raw))){ v.textContent=keyB64?await fernetDecryptString(String(raw),keyB64):'(encrypted)'; } else{v.textContent=String(raw);} }catch{v.innerHTML='<span class="note">(decryption failed)</span>';} })();
         row.appendChild(lab); row.appendChild(v); container.appendChild(row);
       }

@@ -1279,7 +1279,12 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     const text = await res.text();
     if (!res.ok) throw new Error(text || "Failed submitting payments");
 
-    // SUCCESS → update status = submitted
+    // SUCCESS → mark each submitted record in place.
+    // NOTE: p.uuid is ALREADY scoped (records are stored with scopedUUID), and
+    // the store key is ['uuid','paymentId']. Re-scoping here would change the key
+    // and INSERT a duplicate instead of updating — leaving the original as
+    // "success", which is why the counter came back after a refresh. Keep the
+    // key as-is so put() overwrites the existing row.
     const db = await openScandroidDB();
     const tx = db.transaction("payments", "readwrite");
     const store = tx.objectStore("payments");
@@ -1287,10 +1292,12 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     for (const p of payments) {
       if (p.status === "success") {
         p.status = "submitted";
-        p.uuid = scopedUUID(p.uuid);
         await store.put(p);
       }
     }
+    // Wait for the write transaction to actually commit before updating the
+    // UI / localStorage, so a refresh can't race an uncommitted change.
+    await tx.done;
 
     // Update counters
     document.getElementById("paymentsReadyCount").textContent = "0";
@@ -1312,8 +1319,13 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
 
   } catch (err) {
     console.error(err);
-    errorBox.textContent =
-      "❌ Failed to send payments — records left unchanged for debugging.";
+    // Surface the actual server/network reason instead of a generic message.
+    // (When the server responds non-OK, `err.message` holds its response body.)
+    let detail = (err && err.message) ? String(err.message).trim() : "";
+    if (detail.length > 500) detail = detail.slice(0, 500) + "…";
+    errorBox.textContent = detail
+      ? ("❌ Failed to send payments: " + detail)
+      : "❌ Failed to send payments — records left unchanged for debugging.";
     errorBox.style.display = "block";
   }
 
