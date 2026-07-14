@@ -28,7 +28,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from cryptography.fernet import Fernet
 from config_loader import load_config, load_display_config
 
-
 # ----------------------------------------------------------------------
 # CONFIG & GLOBALS
 # ----------------------------------------------------------------------
@@ -45,10 +44,7 @@ if not program_id:
 program_id = str(program_id)
 
 programs = config.get("PROGRAMS", [])
-program = next(
-    (p for p in programs if str(p.get("programId")) == program_id),
-    None
-)
+program = next((p for p in programs if str(p.get("programId")) == program_id), None)
 
 if not program:
     raise RuntimeError(f"Program not found for programId={program_id}")
@@ -63,7 +59,9 @@ display_config = load_display_config()
 _prog_config = display_config.get("programs", {}).get(str(program_id), {})
 FIELD_KEYS = [field["key"] for field in _prog_config.get("fields", [])]
 PHOTO_FIELD_NAME = _prog_config.get("photo", {}).get("field_name", "photo")
-logger.info(f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {program_id}: {FIELD_KEYS}")
+logger.info(
+    f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {program_id}: {FIELD_KEYS}"
+)
 
 try:
     fernet = Fernet(ENCRYPTION_KEY.encode())
@@ -81,6 +79,7 @@ HEADERS_KOBO = {"Authorization": f"Token {KOBO_TOKEN}"}
 # ----------------------------------------------------------------------
 # ENCRYPTION HELPERS
 # ----------------------------------------------------------------------
+
 
 def encrypt_data(data_dict):
     """
@@ -101,6 +100,7 @@ def encrypt_photo(photo_bytes):
 # ----------------------------------------------------------------------
 # AUTH / SESSION
 # ----------------------------------------------------------------------
+
 
 def login_and_get_token():
     """
@@ -132,6 +132,7 @@ login_and_get_token()
 # ----------------------------------------------------------------------
 # 121 API HELPERS
 # ----------------------------------------------------------------------
+
 
 def get_transactions(program_id, payment_id):
     url = f"{API_BASE}/programs/{program_id}/payments/{payment_id}/transactions"
@@ -205,6 +206,7 @@ def fetch_registrations_bulk(program_id, registration_ids):
 # KOBO HELPERS
 # ----------------------------------------------------------------------
 
+
 def get_kobo_submission(uuid):
     """
     Fetch a single Kobo submission by _uuid.
@@ -213,7 +215,7 @@ def get_kobo_submission(uuid):
     """
     # Keep it simple & safe: full submission (no fields filter),
     # since we rely on photo field, *_URL, _attachments, and _id.
-    url = f"{KOBO_BASE}/api/v2/assets/{ASSET_ID}/data.json?query={{\"_uuid\":\"{uuid}\"}}"
+    url = f'{KOBO_BASE}/api/v2/assets/{ASSET_ID}/data.json?query={{"_uuid":"{uuid}"}}'
     response = requests.get(url, headers=HEADERS_KOBO)
     response.raise_for_status()
     results = response.json().get("results", [])
@@ -258,7 +260,9 @@ def download_and_encrypt_photo(uuid, save_path):
 
         res = requests.get(photo_url, headers=HEADERS_KOBO)
         if res.status_code != 200:
-            logger.warning(f"[!] Direct photo download failed for UUID {uuid}: {res.status_code}")
+            logger.warning(
+                f"[!] Direct photo download failed for UUID {uuid}: {res.status_code}"
+            )
             return
 
         encrypted_bytes = encrypt_photo(res.content)
@@ -287,14 +291,17 @@ def download_and_encrypt_photo(uuid, save_path):
     photo_base = photo_filename.rsplit(".", 1)[0]
 
     matching = [
-        a for a in attachments
+        a
+        for a in attachments
         if norm(photo_base) in norm(a.get("filename", ""))
         or norm(photo_filename) in norm(a.get("filename", ""))
     ]
 
     if not matching:
         fnames = [a.get("filename", "") for a in attachments]
-        logger.warning(f"[!] No matching attachment for '{photo_filename}' (UUID {uuid})")
+        logger.warning(
+            f"[!] No matching attachment for '{photo_filename}' (UUID {uuid})"
+        )
         logger.debug(f"[DEBUG] Available filenames: {fnames}")
         return
 
@@ -321,11 +328,17 @@ def download_and_encrypt_photo(uuid, save_path):
     # --- 5) Download (retry without medium if it fails) ---
     res = requests.get(file_url, headers=HEADERS_KOBO)
     if res.status_code != 200:
-        fallback = file_url.replace("/medium/", "/original/").replace("?view=medium", "")
-        logger.warning(f"[!] Medium download failed ({res.status_code}), retrying: {fallback[:80]}")
+        fallback = file_url.replace("/medium/", "/original/").replace(
+            "?view=medium", ""
+        )
+        logger.warning(
+            f"[!] Medium download failed ({res.status_code}), retrying: {fallback[:80]}"
+        )
         res = requests.get(fallback, headers=HEADERS_KOBO)
     if res.status_code != 200:
-        logger.warning(f"[!] Failed to download attachment for UUID {uuid}: {res.status_code}")
+        logger.warning(
+            f"[!] Failed to download attachment for UUID {uuid}: {res.status_code}"
+        )
         return
 
     # --- 6) Encrypt & save ---
@@ -364,6 +377,7 @@ def download_photos_bulk(records, photos_dir):
 # BATCH DIRECTORY HELPERS
 # ----------------------------------------------------------------------
 
+
 def get_next_batch_dir(base_path, payment_id):
     """
     Create a unique batch directory for a given payment or "recent",
@@ -371,7 +385,9 @@ def get_next_batch_dir(base_path, payment_id):
     """
     batch_number = 1
     while True:
-        batch_path = os.path.join(base_path, f"payment-{payment_id}-batch-{batch_number}")
+        batch_path = os.path.join(
+            base_path, f"payment-{payment_id}-batch-{batch_number}"
+        )
         if not os.path.exists(batch_path):
             os.makedirs(os.path.join(batch_path, "photos"), exist_ok=True)
             return batch_path
@@ -381,6 +397,7 @@ def get_next_batch_dir(base_path, payment_id):
 # ----------------------------------------------------------------------
 # MAIN: SPECIFIC PAYMENT BATCH
 # ----------------------------------------------------------------------
+
 
 def download_cache(program_id, payment_id):
     """
@@ -424,7 +441,9 @@ def download_cache(program_id, payment_id):
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
         per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
+        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get(
+            "COLUMN_TO_MATCH"
+        )
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
 
@@ -450,6 +469,8 @@ def download_cache(program_id, payment_id):
             "paymentId": t.get("paymentId"),
             "amount": t.get("amount", 0),
             "data": encrypted_data,
+            "dataEncrypted": True,
+            "encryptionScheme": "fernet-v1",
             "valid": is_valid,
             "reason": reason,
         }
@@ -476,6 +497,7 @@ def download_cache(program_id, payment_id):
 # ----------------------------------------------------------------------
 # MAIN: RECENT PAYMENTS BATCH (last 14 days)
 # ----------------------------------------------------------------------
+
 
 def download_recent_payments_cache(program_id):
     """
@@ -605,14 +627,18 @@ def download_recent_payments_cache(program_id):
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
         per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get("COLUMN_TO_MATCH")
+        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get(
+            "COLUMN_TO_MATCH"
+        )
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
 
         photo_filename = f"{uuid}.enc"
 
-        is_valid = status == "waiting" and not deleted and created_dt >= fourteen_days_ago
+        is_valid = (
+            status == "waiting" and not deleted and created_dt >= fourteen_days_ago
+        )
 
         reason = "ok"
         if not is_valid:
@@ -630,6 +656,8 @@ def download_recent_payments_cache(program_id):
             "paymentId": t.get("paymentId"),
             "amount": t.get("amount", 0),
             "data": encrypted_data,
+            "dataEncrypted": True,
+            "encryptionScheme": "fernet-v1",
             "valid": is_valid,
             "reason": reason,
         }
@@ -656,6 +684,8 @@ def download_recent_payments_cache(program_id):
         "batchType": "payment-recent",
         "programId": program_id,
         "recordCount": len(cache_data),
+        "dataEncrypted": True,
+        "encryptionScheme": "fernet-v1",
         "generatedAt": datetime.utcnow().isoformat() + "Z",
     }
 

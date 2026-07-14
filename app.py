@@ -2196,6 +2196,20 @@ def submit_payments():
         latest_batch = batch_dirs[-1]
         print(f"[DEBUG] Using batch folder: {latest_batch}")
 
+        latest_batch_info = {}
+        latest_batch_info_path = os.path.join(
+            cache_base, latest_batch, "batch_info.json"
+        )
+        if os.path.exists(latest_batch_info_path):
+            try:
+                with open(latest_batch_info_path, "r", encoding="utf-8") as f:
+                    latest_batch_info = json.load(f)
+            except Exception:
+                latest_batch_info = {}
+
+        # Legacy batches (without metadata) are assumed encrypted.
+        cache_data_encrypted = bool(latest_batch_info.get("dataEncrypted", True))
+
         reg_cache_path = os.path.join(
             cache_base, latest_batch, "registrations_cache.json"
         )
@@ -2218,17 +2232,23 @@ def submit_payments():
             payment_id = record.get("paymentId")
 
             encrypted_value = record.get("data", {}).get(column_to_match, "")
+            record_data_encrypted = record.get("dataEncrypted")
+            if record_data_encrypted is None:
+                record_data_encrypted = cache_data_encrypted
 
             if encrypted_value and payment_id:
-                try:
-                    decrypted_value = (
-                        fernet.decrypt(encrypted_value.encode()).decode().strip()
-                    )
-                    match_to_pid[decrypted_value] = payment_id
-                except InvalidToken as e:
-                    print(
-                        f"[!] Failed to decrypt value for UUID {uuid} — invalid token: {e}"
-                    )
+                if record_data_encrypted:
+                    try:
+                        decrypted_value = (
+                            fernet.decrypt(encrypted_value.encode()).decode().strip()
+                        )
+                        match_to_pid[decrypted_value] = payment_id
+                    except InvalidToken as e:
+                        print(
+                            f"[!] Failed to decrypt value for UUID {uuid} — invalid token: {e}"
+                        )
+                else:
+                    match_to_pid[str(encrypted_value).strip()] = payment_id
 
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
@@ -2239,8 +2259,15 @@ def submit_payments():
             raw_value = row.get(column_to_match, "").strip()
             status = row.get("status", "").strip()
 
-            # If incoming value is still encrypted (rare)
-            if raw_value.startswith("gAAAA"):
+            # Only decrypt CSV values when explicitly marked as encrypted.
+            row_value_encrypted = str(
+                row.get("_scandroid_encrypted", "")
+            ).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }  # permissive “truthy” markers so different CSV exporters/users can flag encrypted rows without exact casing/format
+            if row_value_encrypted:
                 try:
                     raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
                 except InvalidToken as e:
