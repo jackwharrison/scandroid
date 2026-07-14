@@ -65,7 +65,11 @@ FIELD_KEYS = [field["key"] for field in _prog_config.get("fields", [])]
 PHOTO_FIELD_NAME = _prog_config.get("photo", {}).get("field_name", "photo")
 logger.info(f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {program_id}: {FIELD_KEYS}")
 
-fernet = Fernet(ENCRYPTION_KEY.encode())
+try:
+    fernet = Fernet(ENCRYPTION_KEY.encode())
+except ValueError as e:
+    logger.error(f"[!] ENCRYPTION_KEY is invalid (not a valid Fernet key): {e}")
+    sys.exit(1)
 
 # Thread pool size (can be overridden by env var)
 MAX_WORKERS = int(os.getenv("OFFLINE_SYNC_WORKERS", "8"))

@@ -2065,7 +2065,7 @@ def submit_payments():
     import json
     import traceback
     from datetime import datetime
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, InvalidToken
 
     try:
         # Load config
@@ -2178,8 +2178,8 @@ def submit_payments():
                 try:
                     decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
                     match_to_pid[decrypted_value] = payment_id
-                except Exception as e:
-                    print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+                except InvalidToken as e:
+                    print(f"[!] Failed to decrypt value for UUID {uuid} — invalid token: {e}")
 
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
@@ -2194,8 +2194,8 @@ def submit_payments():
             if raw_value.startswith("gAAAA"):
                 try:
                     raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
-                except Exception as e:
-                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+                except InvalidToken as e:
+                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — invalid token: {e}")
                     continue
 
             payment_id = match_to_pid.get(raw_value)
