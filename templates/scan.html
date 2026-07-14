@@ -270,6 +270,32 @@
     .manual-entry-box.open {
       display: block;
     }
+
+    /* ---------- "CAN'T READ CODE" PROMINENCE ---------- */
+    .scan-alert {
+      margin-top: 18px;
+      background: #fff7ed;
+      border: 2px solid #f59e0b;
+      color: #7c2d12;
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      text-align: left;
+    }
+    .scan-alert.hidden { display: none; }
+    .scan-alert svg { flex: 0 0 auto; margin-top: 1px; color: #b45309; }
+    .scan-alert-main { font-size: 15px; font-weight: 800; }
+    .scan-alert-sub  { display: block; font-size: 13px; font-weight: 500; margin-top: 3px; color: #9a3412; }
+    .manual-entry-box.highlight {
+      border-color: #f59e0b;
+      animation: manualPulse 1s ease-in-out 0s 3;
+    }
+    @keyframes manualPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+      50%      { box-shadow: 0 0 0 6px rgba(245,158,11,0.35); }
+    }
     .manual-entry-box label {
       display: block;
       font-size: 13px;
@@ -442,6 +468,19 @@
 
       <div id="status">{{ t.waiting_to_start or "Waiting to start…" }}</div>
 
+      <!-- Prominent "can't read the code" alert (hidden until scanning fails) -->
+      <div id="scanAlert" class="scan-alert hidden" role="alert">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <path d="M12 9v4"/><path d="M12 17h.01"/>
+        </svg>
+        <span>
+          <span class="scan-alert-main">{{ t.no_read_banner or "Can’t read this QR code" }}</span>
+          <span class="scan-alert-sub">{{ t.no_read_banner_sub or "Type the Reference ID printed under the QR code into the box below." }}</span>
+        </span>
+      </div>
+
       <!-- Manual code entry fallback -->
       <button class="manual-toggle-btn" id="manualToggleBtn" type="button">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -500,10 +539,17 @@ document.addEventListener("DOMContentLoaded", () => {
       requesting: "{{ t.requesting_camera or 'Requesting camera… If prompted, tap Allow.' }}",
       denied: "{{ t.camera_denied or 'Camera permission denied or not available.' }}",
       scanning: "{{ t.scanning or 'Scanning…' }}",
-      starting: "{{ t.starting_camera or 'Starting camera…' }}"
+      scan_trouble_hint: "{{ t.scan_trouble_hint or 'Still trying to read the code — hold steady and move a little closer.' }}",
+      starting: "{{ t.starting_camera or 'Starting camera…' }}",
+      no_read_hint: "{{ t.no_read_hint or 'This QR code can\\'t be read — it may be blurred, faded or low quality. Enter the Reference ID printed below the QR code using the box below.' }}",
+      decoder_unavailable: "{{ t.decoder_unavailable or 'The scanner could not start on this device. Enter the Reference ID printed below the QR code using the box below.' }}",
+      no_read_banner: "{{ t.no_read_banner or 'Can’t read this QR code' }}",
+      no_read_banner_sub: "{{ t.no_read_banner_sub or 'Type the Reference ID printed under the QR code into the box below.' }}"
     };
 
     let stream = null;
+    let watchdog = null;   // guides operator to manual entry if nothing decodes
+    let softHint = null;   // earlier, gentler "still trying" nudge
     let rafId = null;
 
     const setStatus = (m) => {
@@ -699,57 +745,118 @@ document.addEventListener("DOMContentLoaded", () => {
       startDecoding();
     }
 
+    function revealManual() {
+      const alert = document.getElementById('scanAlert');
+      const box   = document.getElementById('manualEntryBox');
+      if (alert) alert.classList.remove('hidden');
+      if (!box) return;
+      box.classList.add('open');
+      box.classList.remove('highlight');
+      void box.offsetWidth;            // restart the pulse animation if re-triggered
+      box.classList.add('highlight');
+      try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+      const inp = document.getElementById('manualCodeInput');
+      if (inp) { try { inp.focus({ preventScroll: true }); } catch {} }
+    }
+
     async function startDecoding() {
       setStatus(TXT.scanning);
 
+      // Decide whether the device's native BarcodeDetector is genuinely usable.
+      // On Chrome/Android it is often *present* but non-functional (its supported
+      // formats list is empty / it silently returns nothing). Only trust it if it
+      // actually reports support for qr_code.
+      let detector = null, useNative = false;
       if ('BarcodeDetector' in window) {
         try {
-          const detector = new BarcodeDetector({ formats: ['qr_code'] });
-          return loopNative(detector);
-        } catch {}
+          const formats = await BarcodeDetector.getSupportedFormats();
+          if (formats && formats.includes('qr_code')) {
+            detector = new BarcodeDetector({ formats: ['qr_code'] });
+            useNative = true;
+          }
+        } catch { useNative = false; }
       }
 
-      loopJsQR();
+      const jsqrReady = (typeof jsQR === 'function');
+
+      // Neither reader available — don't leave a live-but-silent camera.
+      if (!useNative && !jsqrReady) {
+        setStatus(TXT.decoder_unavailable);
+        revealManual();
+        return;
+      }
+
+      runLoop(detector, useNative, jsqrReady);
     }
 
-    function loopNative(detector) {
+    // Single scan loop. The native reader (when usable) runs every frame. jsQR is
+    // the more tolerant fallback used by iOS; here we bring it to Android/Chrome
+    // too — but to avoid burning CPU on devices where native works instantly, we
+    // only start also running jsQR once native has produced nothing for a short
+    // while (or immediately, if there's no usable native reader).
+    function runLoop(detector, useNative, jsqrReady) {
+      const JSQR_FALLBACK_MS = 2500;   // give native a head start, then add jsQR
+      const SOFT_HINT_MS     = 3500;   // gentle "still trying" nudge
+      const WATCHDOG_MS      = 7000;   // then: loud alert + push to manual entry
+
+      let jsqrActive = (!useNative && jsqrReady);
+      let canvas = null, ctx = null;
+
+      if (useNative && jsqrReady) {
+        setTimeout(() => { jsqrActive = true; }, JSQR_FALLBACK_MS);
+      }
+
+      if (watchdog) clearTimeout(watchdog);
+      if (softHint) clearTimeout(softHint);
+      softHint = setTimeout(() => setStatus(TXT.scan_trouble_hint), SOFT_HINT_MS);
+      watchdog = setTimeout(() => {
+        setStatus(TXT.no_read_hint);
+        revealManual();
+      }, WATCHDOG_MS);
+
+      const decodeJs = () => {
+        if (!jsqrReady || video.readyState < 2) return null;
+        if (!canvas) {
+          canvas = document.createElement('canvas');
+          ctx = canvas.getContext('2d', { willReadFrequently: true });
+        }
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        ctx.drawImage(video, 0, 0);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const qr = jsQR(img.data, canvas.width, canvas.height);
+        return (qr && qr.data) ? qr.data : null;
+      };
+
       const tick = async () => {
-        try {
-          const codes = await detector.detect(video);
-          if (codes?.length) {
-            cleanup();
-            return routeAfterScan(codes[0].rawValue || '');
+        let value = null;
+
+        if (useNative) {
+          try {
+            const codes = await detector.detect(video);
+            if (codes && codes.length) value = codes[0].rawValue || '';
+          } catch {
+            // Native reader faulted — abandon it and rely on jsQR from now on.
+            useNative = false;
+            if (jsqrReady) jsqrActive = true;
           }
-        } catch {
-          return loopJsQR();
+        }
+
+        if (!value && jsqrActive) value = decodeJs();
+
+        if (value) {
+          cleanup();
+          return routeAfterScan(value);
         }
         rafId = requestAnimationFrame(tick);
       };
-      rafId = requestAnimationFrame(tick);
-    }
 
-    function loopJsQR() {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-      const tick = () => {
-        if (video.readyState >= 2) {
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-          ctx.drawImage(video, 0, 0);
-          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const qr = jsQR(img.data, canvas.width, canvas.height);
-          if (qr?.data) {
-            cleanup();
-            return routeAfterScan(qr.data);
-          }
-        }
-        rafId = requestAnimationFrame(tick);
-      };
       rafId = requestAnimationFrame(tick);
     }
 
     function cleanup() {
+      if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+      if (softHint) { clearTimeout(softHint); softHint = null; }
       if (rafId) cancelAnimationFrame(rafId);
       try { stream && stream.getTracks().forEach(t => t.stop()); } catch {}
     }
