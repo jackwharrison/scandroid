@@ -1,5 +1,6 @@
 import json
 import os
+from cryptography.fernet import Fernet, InvalidToken
 
 # Optional: load a local .env file during development so the env-managed fields
 # below can be set without exporting them in your shell. On Azure these values
@@ -25,15 +26,61 @@ except Exception:
 # To move a field in or out of env management, just edit this dict.
 # ---------------------------------------------------------------------------
 ENV_MANAGED_FIELDS = {
-    "url121":          "URL_121",
-    "username121":     "USERNAME_121",
-    "password121":     "PASSWORD_121",
-    "ENCRYPTION_KEY":  "ENCRYPTION_KEY",
+    "url121": "URL_121",
+    "username121": "USERNAME_121",
+    "password121": "PASSWORD_121",
+    "ENCRYPTION_KEY": "ENCRYPTION_KEY",
     "programCurrency": "PROGRAM_CURRENCY",
-    "programTitle":    "PROGRAM_TITLE",
+    "programTitle": "PROGRAM_TITLE",
     "COLUMN_TO_MATCH": "COLUMN_TO_MATCH",
     "nationalSociety": "NATIONAL_SOCIETY",
 }
+
+# KoBo credentials are encrypted at rest in system_config.json
+ENCRYPTED_FIELDS = {"KOBO_TOKEN", "KOBO_SERVER"}
+
+
+def _get_cipher():
+    """Get or create a Fernet cipher using ENCRYPTION_KEY from environment.
+
+    If ENCRYPTION_KEY is not set, encryption/decryption is skipped (plaintext mode).
+    """
+    key = os.getenv("ENCRYPTION_KEY")
+    if not key:
+        return None
+    try:
+        return Fernet(key.encode())
+    except ValueError as e:
+        print(f"Warning: Invalid ENCRYPTION_KEY format: {e}")
+        return None
+
+
+def _encrypt_value(value, cipher=None):
+    """Encrypt a string value using Fernet, if cipher is available."""
+    if not cipher or not value:
+        return value
+    try:
+        encrypted = cipher.encrypt(value.encode())
+        return encrypted.decode()
+    except (InvalidToken, UnicodeDecodeError) as e:
+        print(f"Warning: Encryption failed: {e}")
+        return value
+
+
+def _decrypt_value(value, cipher=None):
+    """Decrypt a string value using Fernet if it looks encrypted."""
+    if not cipher or not value or not isinstance(value, str):
+        return value
+    try:
+        decrypted = cipher.decrypt(value.encode())
+        return decrypted.decode()
+    except InvalidToken:
+        # If decryption fails, assume it's plaintext (backward compatibility)
+        return value
+    except (UnicodeDecodeError, ValueError) as e:
+        # Handle encoding errors gracefully
+        print(f"Warning: Failed to decode decrypted value: {e}")
+        return value
 
 
 def _get_paths():
@@ -73,6 +120,13 @@ def load_config():
     if os.path.exists(system_path):
         with open(system_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+    # Decrypt KoBo credentials if present
+    cipher = _get_cipher()
+    for field in ENCRYPTED_FIELDS:
+        if field in data:
+            data[field] = _decrypt_value(data[field], cipher)
+
     return _apply_env_overrides(data)
 
 
@@ -82,9 +136,18 @@ def save_config(data):
     Env-managed fields are stripped before writing, so values that come from
     the environment (including secrets like password121 and ENCRYPTION_KEY) are
     never baked back into system_config.json by a UI save or a runtime write.
+
+    KoBo credentials (KOBO_SERVER, KOBO_TOKEN) are encrypted before saving.
     """
     system_path, _ = _get_paths()
     to_save = {k: v for k, v in data.items() if k not in ENV_MANAGED_FIELDS}
+
+    # Encrypt KoBo credentials before saving
+    cipher = _get_cipher()
+    for field in ENCRYPTED_FIELDS:
+        if field in to_save:
+            to_save[field] = _encrypt_value(to_save[field], cipher)
+
     with open(system_path, "w", encoding="utf-8") as f:
         json.dump(to_save, f, indent=2, ensure_ascii=False)
 
