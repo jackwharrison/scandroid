@@ -18,6 +18,7 @@ from flask_session import Session
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from openpyxl import load_workbook
+import sys
 from config_loader import load_display_config, save_display_config
 
 
@@ -1982,7 +1983,7 @@ def sync_fsp():
 
     try:
         result = subprocess.run(
-            ["python", "offline_sync.py"],
+            [sys.executable, "offline_sync.py"],
             capture_output=True,
             text=True,
             encoding="utf-8",
