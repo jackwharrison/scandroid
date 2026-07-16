@@ -1,5 +1,5 @@
 /* Scandroid PWA service worker — v8 */
-const CACHE_VERSION = 'v26'; // bump on every deploy
+const CACHE_VERSION = 'v28'; // bump on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 // NOTE: We deliberately do NOT precache /scan, /fsp-admin, /fsp-login here
@@ -91,6 +91,17 @@ self.addEventListener("fetch", (event) => {
 
   if (offlineFirstRoutes.includes(url.pathname)) {
     event.respondWith(cacheFirst(req));
+    return;
+  }
+
+  // -------- INSTANCE-STATIC (uploaded logos, etc.) --------
+  // These files are mutable: they are overwritten in place on re-upload and
+  // versioned with a ?v=<mtime> query string. The generic static handler below
+  // uses cacheFirst with ignoreSearch, which would ignore ?v= and serve a stale
+  // logo forever (only a hard refresh would show the new one). Use network-first
+  // so a changed ?v= always fetches fresh, falling back to cache only offline.
+  if (url.pathname.startsWith("/instance-static/")) {
+    event.respondWith(networkThenCache(req));
     return;
   }
 

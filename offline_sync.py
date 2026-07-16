@@ -172,6 +172,34 @@ def get_registration(program_id, registration_id):
     return response.json()
 
 
+def resolve_column_to_match(program_id):
+    """Resolve the columnToMatch for a program.
+
+    The authoritative source is the 121 FSP configuration
+    (GET /api/programs/{id}/fsp-configurations -> a list of FSP configs, each
+    with a `properties` array containing a `columnToMatch` property). We fetch
+    it live at sync time so the bundle is built against the column 121 reports
+    right now. If the API can't be reached we fall back to the per-program value
+    stored in config, then the legacy global COLUMN_TO_MATCH — but the live
+    value is preferred and is what gets written into the batch manifest.
+
+    Returns the column name (str) or None if it truly cannot be determined.
+    """
+    try:
+        url = f"{API_BASE}/programs/{program_id}/fsp-configurations"
+        r = requests.get(url, cookies=COOKIES, timeout=10)
+        if r.status_code == 200:
+            for fsp in r.json():
+                for prop in fsp.get("properties", []):
+                    if prop.get("name") == "columnToMatch" and prop.get("value"):
+                        return prop["value"]
+    except Exception as e:
+        logger.warning("[resolve_column_to_match] API error for program %s: %s", program_id, e)
+
+    per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
+    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
+
+
 def fetch_registrations_bulk(program_id, registration_ids):
     """
     Fetch registrations in parallel for a set of registrationIds.
@@ -413,6 +441,13 @@ def download_cache(program_id, payment_id):
     batch_dir = get_next_batch_dir(base_path, payment_id)
     photos_dir = os.path.join(batch_dir, "photos")
 
+    # Resolve the match column ONCE, live from 121, reused for every record
+    # and written into the manifest below.
+    match_key = resolve_column_to_match(program_id)
+    if not match_key:
+        logger.error("[!] Could not resolve columnToMatch for program %s — "
+                     "offline payments will not be matchable.", program_id)
+
     transactions = get_transactions(program_id, payment_id)
     cache_data = []
 
@@ -440,10 +475,6 @@ def download_cache(program_id, payment_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get(
-            "COLUMN_TO_MATCH"
-        )
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
 
@@ -489,6 +520,17 @@ def download_cache(program_id, payment_id):
     with open(tx_path, "w", encoding="utf-8") as f:
         json.dump(transactions, f, indent=2)
 
+    batch_info = {
+        "batchType": "payment-single",
+        "programId": program_id,
+        "paymentId": payment_id,
+        "columnToMatch": match_key,
+        "recordCount": len(cache_data),
+        "generatedAt": datetime.utcnow().isoformat() + "Z",
+    }
+    with open(os.path.join(batch_dir, "batch_info.json"), "w", encoding="utf-8") as f:
+        json.dump(batch_info, f, indent=2)
+
     logger.info(f"\n[OK] Done. Batch saved to: {batch_dir}")
     logger.info(f"{len(cache_data)} beneficiaries ready for offline validation.")
     return len(cache_data)
@@ -517,10 +559,16 @@ def download_recent_payments_cache(program_id):
     batch_dir = get_next_batch_dir(base_path, "recent")
     photos_dir = os.path.join(batch_dir, "photos")
 
+    # Resolve the match column ONCE, live from 121, and reuse it for every
+    # record below AND record it in the manifest so the client never has to guess.
+    match_key = resolve_column_to_match(program_id)
+    if not match_key:
+        logger.error("[!] Could not resolve columnToMatch for program %s — "
+                     "offline payments will not be matchable.", program_id)
+
     all_transactions = get_all_transactions(program_id)
     logger.info(f"[INFO] Total transactions fetched: {len(all_transactions)}")
 
-    fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
     filtered = []
 
     counts = {
@@ -529,7 +577,6 @@ def download_recent_payments_cache(program_id):
         "deleted": 0,
         "missing_created": 0,
         "invalid_date": 0,
-        "too_old": 0,
         "valid": 0,
     }
 
@@ -563,10 +610,6 @@ def download_recent_payments_cache(program_id):
         except ValueError:
             counts["invalid_date"] += 1
             logger.info(f"[SKIP] Invalid date: {created}")
-            continue
-
-        if created_dt < fourteen_days_ago:
-            counts["too_old"] += 1
             continue
 
         filtered.append(t)
@@ -626,19 +669,13 @@ def download_recent_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        per_program_columns = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-        match_key = per_program_columns.get(str(PROGRAM_ID)) or config.get(
-            "COLUMN_TO_MATCH"
-        )
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
 
         photo_filename = f"{uuid}.enc"
 
-        is_valid = (
-            status == "waiting" and not deleted and created_dt >= fourteen_days_ago
-        )
+        is_valid = status == "waiting" and not deleted
 
         reason = "ok"
         if not is_valid:
@@ -646,8 +683,6 @@ def download_recent_payments_cache(program_id):
                 reason = f"status={status}"
             elif deleted:
                 reason = "deleted"
-            elif created_dt < fourteen_days_ago:
-                reason = "too_old"
 
         record = {
             "uuid": uuid,
@@ -683,6 +718,7 @@ def download_recent_payments_cache(program_id):
     batch_info = {
         "batchType": "payment-recent",
         "programId": program_id,
+        "columnToMatch": match_key,
         "recordCount": len(cache_data),
         "dataEncrypted": True,
         "encryptionScheme": "fernet-v1",

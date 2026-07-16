@@ -29,12 +29,83 @@ from flask_session import Session
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from openpyxl import load_workbook
+import sys
 from config_loader import load_display_config, save_display_config
 
 # Register a Unicode-safe font
 pdfmetrics.registerFont(
     TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf"))
 )
+
+# ---------------------------------------------------------------------------
+# Arabic (right-to-left) text support for PDF rendering
+#
+# ReportLab's drawString does NOT perform Arabic contextual shaping (joining
+# letters into their initial/medial/final forms) or bidirectional reordering.
+# Without the two steps below, Arabic prints as isolated, reversed letters.
+#   1. arabic_reshaper -> connects the letters into their correct joined forms
+#   2. python-bidi (get_display) -> reorders logical text into visual RTL order
+# Install with:  pip install arabic-reshaper python-bidi
+# ---------------------------------------------------------------------------
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    _HAS_ARABIC_SHAPING = True
+except ImportError:
+    _HAS_ARABIC_SHAPING = False
+
+import re as _re
+
+# Arabic + Arabic Supplement/Extended + Presentation Forms A/B ranges.
+_ARABIC_RE = _re.compile(
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
+)
+
+# DejaVuSans has weak coverage of Arabic *presentation forms* (the joined
+# glyphs arabic_reshaper produces), so joined Arabic can render as boxes.
+# Prefer a proper Arabic font if one is present in static/fonts; otherwise
+# fall back to DejaVu (better than nothing) and log a warning once.
+ARABIC_FONT = "DejaVu"
+for _candidate in (
+    "NotoNaskhArabic-Regular.ttf",
+    "NotoSansArabic-Regular.ttf",
+    "Amiri-Regular.ttf",
+    "Cairo-Regular.ttf",
+):
+    _fp = os.path.join("static", "fonts", _candidate)
+    if os.path.exists(_fp):
+        try:
+            pdfmetrics.registerFont(TTFont("ArabicFont", _fp))
+            ARABIC_FONT = "ArabicFont"
+            break
+        except Exception:
+            pass
+
+
+def _contains_arabic(text):
+    """True if the string contains any Arabic-script character."""
+    return bool(text) and bool(_ARABIC_RE.search(str(text)))
+
+
+def _shape_rtl(text):
+    """Return text ready for ReportLab drawing.
+
+    Arabic runs are reshaped + bidi-reordered so they print correctly;
+    Latin/other text passes through unchanged. Never raises — on any error
+    it returns the original text so a voucher still prints.
+    """
+    text = "" if text is None else str(text)
+    if _HAS_ARABIC_SHAPING and _contains_arabic(text):
+        try:
+            return get_display(arabic_reshaper.reshape(text))
+        except Exception:
+            return text
+    return text
+
+
+def _font_for(text):
+    """Pick the Arabic-capable font for Arabic text, DejaVu otherwise."""
+    return ARABIC_FONT if _contains_arabic(text) else "DejaVu"
 
 
 app = Flask(__name__)
@@ -128,23 +199,30 @@ def _draw_voucher(c, item, static_folder, design=None):
         design.get("logo2"), static_folder
     ) or os.path.join(static_folder, "ns2.png")
 
-    # LEFT LOGO
+    # LEFT LOGO – scale by HEIGHT, derive width from aspect ratio.
+    # We must pass an explicit width: with preserveAspectRatio=True and only a
+    # height, ReportLab has no bounding box and wide images fail to render.
+    left_logo_top = height - margin - 0.5*cm
     try:
         logo1 = ImageReader(left_logo_path)
+        img_w, img_h = logo1.getSize()
+        scale = logo_height / img_h
+        scaled_width = img_w * scale
         c.drawImage(
             logo1,
-            margin,  # <--- as far left as possible
+            margin,                          # as far left as possible
             logo_top_y - logo_height,
-            preserveAspectRatio=True,
+            width=scaled_width,
             height=logo_height,
-            mask="auto",
+            preserveAspectRatio=True,
+            mask='auto'
         )
-        left_logo_bottom = logo_top_y - logo_height
         left_logo_top = logo_top_y
-    except:
-        left_logo_top = height - margin - 0.5 * cm
+    except Exception as e:
+        app.logger.warning("Left voucher logo failed to draw (%s): %s", left_logo_path, e)
 
     # RIGHT LOGO – wide logo, scale by width
+    right_logo_top = height - margin - 0.5*cm
     try:
         logo2 = ImageReader(right_logo_path)
         max_width = (
@@ -165,8 +243,8 @@ def _draw_voucher(c, item, static_folder, design=None):
             mask="auto",
         )
         right_logo_top = logo_top_y
-    except:
-        right_logo_top = height - margin - 0.5 * cm
+    except Exception as e:
+        app.logger.warning("Right voucher logo failed to draw (%s): %s", right_logo_path, e)
 
     # --- CENTER "Project" between logos (vertically aligned to logos) ---
     project_y = min(left_logo_top, right_logo_top) - 0.3 * cm
@@ -185,9 +263,9 @@ def _draw_voucher(c, item, static_folder, design=None):
 
     # --- MAIN TITLE just below "Project" ---
     title_text = design.get("title") or "CASH ON THE MOVE"
-    title_y = project_y - 1.4 * cm
-    c.setFont("DejaVu", 22)
-    c.drawCentredString(width / 2, title_y, title_text)
+    title_y = project_y - 1.4*cm
+    c.setFont(_font_for(title_text), 22)
+    c.drawCentredString(width/2, title_y, _shape_rtl(title_text))
 
     # Subtitle lines (newline-separated; falls back to the original copy)
     subtitle_raw = design.get("subtitle")
@@ -201,32 +279,36 @@ def _draw_voucher(c, item, static_folder, design=None):
             "in vulnerable situations",
         ]
 
-    c.setFont("DejaVu", 11)
-    sub_y = title_y - 1.0 * cm
+    sub_y = title_y - 1.0*cm
     for line in subtitle_lines:
-        c.drawCentredString(width / 2, sub_y, line)
-        sub_y -= 0.6 * cm
+        c.setFont(_font_for(line), 11)
+        c.drawCentredString(width/2, sub_y, _shape_rtl(line))
+        sub_y -= 0.6*cm
     # ---- QR CODE ------------------------------------------------------------
+    show_qr = design.get("show_qr", True)
+    refid = item.get("referenceid", "").strip()
     qr_box_size = 5.0 * cm
     qr_x = margin + 0.6 * cm
     qr_y = margin + 0.6 * cm
 
-    # Outer box
-    c.setLineWidth(0.7)
-    c.rect(
-        qr_x - 0.1 * cm, qr_y - 0.1 * cm, qr_box_size + 0.2 * cm, qr_box_size + 0.2 * cm
-    )
+    if show_qr:
+        # Outer box
+        c.setLineWidth(0.7)
+        c.rect(qr_x - 0.1*cm, qr_y - 0.1*cm, qr_box_size + 0.2*cm, qr_box_size + 0.2*cm)
 
-    # QR image
-    refid = item.get("referenceid", "").strip()
-    qr_img = _make_qr_image(refid, box_cm=3.0)
-    c.drawInlineImage(qr_img, qr_x, qr_y, width=qr_box_size, height=qr_box_size)
+        # QR image
+        qr_img = _make_qr_image(refid, box_cm=3.0)
+        c.drawInlineImage(qr_img, qr_x, qr_y, width=qr_box_size, height=qr_box_size)
 
     # *** Removed “Reference ID below QR” (as you requested) ***
 
     # ---- BENEFICIARY INFORMATION -------------------------------------------
-    info_x = qr_x + qr_box_size + 2.0 * cm
-    info_y = qr_y + qr_box_size - 0.5 * cm
+    if show_qr:
+        info_x = qr_x + qr_box_size + 2.0*cm
+    else:
+        # No QR: start the info block at the left margin instead of leaving a gap.
+        info_x = qr_x
+    info_y = qr_y + qr_box_size - 0.5*cm
     line_height = 0.75 * cm
 
     c.setFont("DejaVu", 12)
@@ -251,8 +333,13 @@ def _draw_voucher(c, item, static_folder, design=None):
     y = info_y
     for key, value in fields_to_print.items():
         label = pretty_label(key)
-        c.setFont("DejaVu", 12)
-        c.drawString(info_x, y, f"{label}: {value}")
+        line = f"{label}: {value}"
+        c.setFont(_font_for(line), 12)
+        if _contains_arabic(value):
+            # RTL row: reshape/reorder and right-align within the voucher body.
+            c.drawRightString(width - margin - 0.4*cm, y, _shape_rtl(line))
+        else:
+            c.drawString(info_x, y, _shape_rtl(line))
         y -= line_height
 
     # ---- SMALL REFERENCE ID AT BOTTOM ------------------------------------
@@ -430,459 +517,588 @@ def _design_for_client(design):
         "logo2_url": _logo_url(design.get("logo2")),
         "logo1_size": _clean_size(design.get("logo1_size")),
         "logo2_size": _clean_size(design.get("logo2_size")),
+        "show_qr": design.get("show_qr", True),
     }
 
 
 translations = {
-    "en": {
-        "title": "Beneficiary Information",
-        "name": "Name",
-        "dob": "Date of Birth",
-        "photo": "Photo",
-        "payment_approved": "Payment Approved",
-        "payment_rejected": "Payment Rejected",
-        "participant_withdraws": "Participant Withdraws",
-        "language": "Language",
-        "login": "Login for Red Cross Staff",
-        "enter_password": "Enter Password",
-        "submit": "Submit",
-        "payment_status": "Payment Status",
-        "confirm_person": "Confirm this is the correct person",
-        "rejection_reason": "Reason for Rejection",
-        "already_scanned": "This person has already been scanned and submitted to 121.",
-        "success_message": "Payment successfully submitted.",
-        "already_submitted_page": "This beneficiary's payment has already been submitted. If you need support, contact support@121.global",
-        "config_title": "Configure Fields to Display",
-        "field_key": "Kobo Photo Field",
-        "label_en": "Label (EN)",
-        "label_fr": "Label (FR)",
-        "label_ar": "Label (AR)",
-        "remove": "Remove",
-        "add_field": "Add Field",
-        "save": "Save",
-        "saved_successfully": "Saved successfully",
-        "failed_to_save": "Failed to save",
-        "logout": "Logout",
-        "config_system": "System Configuration",
-        "config_display": "Configure Fields to Display",
-        "fsp_login": "Login for FSP Admins",
-        "program_select_title": "Select a Program",
-        "back_to_programs": "Back to Programs",
-        "program_select_subtitle": "Choose the program you want to work with",
-        "fsp_sync_title": "Prepare to Scan",
-        "sync_latest": "Sync Latest Records",
-        "syncing": "Syncing...",
-        "sync_error": "❌ Failed to sync. Please try again.",
-        "sync_initial": "Click sync to see how many beneficiaries are ready for offline validation.",
-        "sync_complete": "✅ {count} beneficiaries ready for offline validation.",
-        "step1": "Step 1. Sync with 121",
-        "step2": "Step 2. Save Latest Records",
-        "step3": "Step 3. Scan QR Codes",
-        "online": "Online",
-        "offline": "Offline",
-        "scan_title": "Scan QR",
-        "back_to_dashboard": "Back",
-        "scan_hint": "Point the camera at the QR code.",
-        "start_camera": "Start camera",
-        "waiting_to_start": "Waiting to start…",
-        "requesting_camera": "Requesting camera… If prompted, tap Allow.",
-        "camera_denied": "Camera permission denied or not available.",
-        "scanning": "Scanning…",
-        "starting_camera": "Starting camera…",
-        "footer_dev": "Developed by 510 @ The Netherlands Red Cross",
-        "footer_support": "If you need support contact jharrison@redcross.nl",
-        "kobo_info": "Kobo Information",
-        "kobo_token": "Kobo API Key",
-        "asset_id": "Kobo Asset ID",
-        "fsp_password": "Set Password for FSPs",
-        "password": "Password",
-        "encryption_settings": "Encryption Settings",
-        "encryption_key": "Encryption Key",
-        "encryption_warning": "Used to decrypt encrypted fields. If incorrect, offline validation will stop working.",
-        "encryption_toggle_warning": "I understand changing this may break the system if incorrect.",
-        "info_121": "121 Information",
-        "url121": "121 URL",
-        "username121": "121 Username",
-        "program_id": "Select Program",
-        "payment_id": "Payment ID",
-        "column_to_match": "Field to Match for Payment (e.g., phoneNumber)",
-        "column_to_match_info": "This field is selected in the Field Display Config page.",
-        "use_for_matching": "Use for Matching Payments",
-        "photo_config_title": "Photo Field Configuration",
-        "enable_photo_field": "Enable photo field display",
-        "home_question": "Who are you?",
-        "home_admin": "Red Cross Staff",
-        "home_fsp": "Financial Service Provider",
-        "fsp_login": "Log in for Financial Service Provider",
-        "step_4_generate": "📤 Step 4. Generate Payments to Send to 121",
-        "payments_ready": "🔄 Payments ready to submit to 121:",
-        "generate_csv": "Step 4. Generate Payments CSV",
-        "download_csv": "⬇️ Download CSV",
-        "step_5_send": "✅ Step 5. Send Payments to 121",
-        "send_payments": "Step 5. Send payments to 121",
-        "payment_submit_success": "✅ Payments submitted successfully!",
-        "payment_submit_failed": "❌ Failed to submit",
-        "voucher_generator": "Voucher Generator",
-        "csv_hint": "Upload a CSV or Excel file with referenceId and any extra fields to print",
-        "choose_csv": "Choose CSV or Excel file…",
-        "upload_csv": "Upload CSV or Excel file",
-        "download_vouchers": "Download vouchers (PDF)",
-        "back": "Back to Dashboard",
-        "choose_csv_alert": "Please choose a CSV first.",
-        "upload_failed": "Upload failed",
-        "voucher_ready_singular": "voucher ready to download",
-        "voucher_ready_plural": "vouchers ready to download",
-        "generate_vouchers": "Generate Vouchers",
-        "invalid_qr_title": "Invalid QR Code",
-        "invalid_qr_message": "This QR code cannot be used.",
-        "checking_reason": "Checking reason…",
-        "scan_next": "Scan next beneficiary",
-        "go_home": "Go to homepage",
-        "reason_used": "This QR code has already been used.",
-        "reason_invalid": "The QR code is invalid or unrecognized.",
-        "reason_no_record": "This QR code does not match any stored beneficiary.",
-        "reason_database": "There was a problem reading offline data. Please try again.",
-        "success_title": "Successfully submitted",
-        "success_message": "You may now scan the next beneficiary.",
-        "loading_counter": "Payments ready to push to 121: ...",
-        "payments_ready": "Payments ready to push to 121:",
-        "scan_next": "Scan next beneficiary",
-        "go_home": "Finished scanning? Go to homepage",
-        "payment_prep": "Prepare to Send Payments",
-        "login_error": "Incorrect username or password.",
-        "admin_dashboard_title": "Admin Dashboard",
-        "admin_dashboard_subtitle": "Manage your Scandroid configuration and voucher tools.",
-        "config_system_desc": "Edit API keys, endpoints, and system parameters.",
-        "config_display_desc": "Configure which fields and details are shown to FSPs.",
-        "generate_vouchers_desc": "Generate QR vouchers for printing and distribution.",
-        "program_information": "Program Information",
-        "credentials": "Credentials",
-        "url_121": "121 URL",
-        "username_121": "121 Username",
-        "password_121": "121 Password",
-        "field_name_121": "121 Field Name",
-        "matching_field_title": "121 Field for Matching Payments",
-        "matching_field_desc": "This field contains the unique ID from 121 used to match beneficiaries to payments.",
-        "matching_field_placeholder": "e.g. phoneNumber",
-        "wrong_credentials": "Incorrect username or password.",
-        "api_unreachable": "Unable to reach the login server. Please try again.",
-        "login_failed_generic": "Login failed. Please try again.",
-        "go_back": "Go Back",
-        "program_title": "Program Title",
-        "connected_to": "Connected to form:",
-        "form_owner": "Owner",
-        "no_form_connected": "Unable to load form details",
-        "kobo_connection": "Kobo Connection",
-        "payment_amount": "Payment Amount",
-        "voucher_design": "Voucher Design",
-        "voucher_design_desc": "Customise the title, subtitle and logos printed on each program's vouchers.",
-        "voucher_design_title": "Voucher Design",
-        "voucher_design_settings": "Design settings",
-        "voucher_design_settings_desc": "These replace the values printed on the voucher. Each program keeps its own design.",
-        "voucher_title_label": "Title",
-        "voucher_subtitle_label": "Subtitle",
-        "voucher_logos_label": "Logos",
-        "voucher_left_logo": "Left logo",
-        "voucher_right_logo": "Right logo",
-        "voucher_logo_upload": "Upload",
-        "voucher_logo_remove": "remove",
-        "voucher_no_logo": "No logo",
-        "voucher_live_preview": "Live preview",
-        "voucher_preview_desc": "A5 landscape, matching the printed voucher layout.",
-        "voucher_save_design": "Save design",
-        "voucher_design_saved": "Design saved",
-        "voucher_design_save_failed": "Could not save design",
-        "voucher_design_incomplete_title": "Voucher design not completed",
-        "voucher_design_incomplete_desc": "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers.",
-        "voucher_design_go": "Design this voucher",
-        "voucher_logo_size": "Size",
-        "voucher_size_small": "Small",
-        "voucher_size_medium": "Medium",
-        "voucher_size_large": "Large",
-        "program": "Program",
-    },
-    "fr": {
-        "title": "Informations sur le bénéficiaire",
-        "name": "Nom",
-        "dob": "Date de naissance",
-        "photo": "Photo",
-        "payment_approved": "Paiement approuvé",
-        "payment_rejected": "Paiement refusé",
-        "participant_withdraws": "Le participant se retire",
-        "language": "Langue",
-        "login": "Connexion pour le personnel de la Croix-Rouge",
-        "enter_password": "Entrer le mot de passe",
-        "submit": "Soumettre",
-        "payment_status": "Statut du paiement",
-        "confirm_person": "Confirmez que c'est la bonne personne",
-        "rejection_reason": "Motif du refus",
-        "already_scanned": "Cette personne a déjà été scannée et soumise à 121.",
-        "success_message": "Paiement soumis avec succès.",
-        "already_submitted_page": "Le paiement de ce bénéficiaire a déjà été soumis. Si vous avez besoin d'aide, contactez support@121.global",
-        "config_title": "Configurer les champs à afficher",
-        "field_key": "Clé de champ (depuis Kobo)",
-        "label_en": "Libellé (EN)",
-        "label_fr": "Libellé (FR)",
-        "label_ar": "Libellé (AR)",
-        "remove": "Supprimer",
-        "add_field": "Ajouter un champ",
-        "save": "Enregistrer",
-        "saved_successfully": "Enregistré avec succès",
-        "failed_to_save": "Échec de l'enregistrement",
-        "logout": "Déconnexion",
-        "config_system": "Configurer le système ",
-        "config_display": "Congifuration des champs de vérification",
-        "fsp_login": "Connexion pour les FSP",
-        "program_select_title": "Sélectionner un programme",
-        "back_to_programs": "Retour aux programmes",
-        "program_select_subtitle": "Choisissez le programme avec lequel vous souhaitez travailler",
-        "fsp_sync_title": "Synchroniser les enregistrements hors ligne",
-        "sync_latest": "Synchroniser les derniers enregistrements",
-        "syncing": "Synchronisation...",
-        "sync_error": "❌ Échec de la synchronisation. Veuillez réessayer.",
-        "sync_initial": "Cliquez sur synchroniser pour voir combien de bénéficiaires sont prêts pour la validation hors ligne.",
-        "sync_complete": "✅ {count} bénéficiaires prêts pour la validation hors ligne.",
-        "step1": "Étape 1. Synchroniser les derniers enregistrements",
-        "step2": "Étape 2. Importer le cache hors ligne",
-        "step3": "Étape 3. Scanner les codes QR",
-        "online": "En ligne",
-        "offline": "Hors ligne",
-        "scan_title": "Scanner un QR",
-        "back_to_dashboard": "Retour au tableau de bord",
-        "scan_hint": "Pointez la caméra vers le code QR.",
-        "start_camera": "Démarrer la caméra",
-        "waiting_to_start": "En attente de démarrage…",
-        "requesting_camera": "Demande d’accès à la caméra… Si demandé, touchez Autoriser.",
-        "camera_denied": "Accès à la caméra refusé ou non disponible.",
-        "scanning": "Analyse…",
-        "starting_camera": "Démarrage de la caméra…",
-        "footer_dev": "Développé par 510 @ La Croix-Rouge néerlandaise",
-        "footer_support": "Pour toute assistance, contactez jharrison@redcross.nl",
-        "kobo_info": "Informations Kobo",
-        "kobo_token": "Clé API",
-        "asset_id": "ID d'actif Kobo",
-        "fsp_password": "Définir un mot de passe pour les FSP",
-        "password": "Mot de passe",
-        "encryption_settings": "Paramètres de chiffrement",
-        "encryption_key": "Clé de chiffrement",
-        "encryption_warning": "Utilisée pour déchiffrer les champs. Si elle est incorrecte, la validation hors ligne ne fonctionnera pas.",
-        "encryption_toggle_warning": "Je comprends que changer cela pourrait casser le système si incorrect.",
-        "info_121": "Informations 121",
-        "url121": "URL 121",
-        "username121": "Nom d'utilisateur 121",
-        "program_id": "Sélectionner le programme",
-        "payment_id": "ID de paiement",
-        "column_to_match": "Champ à faire correspondre pour le paiement (ex. : phoneNumber)",
-        "column_to_match_info": "Ce champ est sélectionné dans la page de configuration d'affichage.",
-        "use_for_matching": "Utiliser pour le rapprochement des paiements",
-        "photo_config_title": "Configuration du champ photo",
-        "enable_photo_field": "Activer l'affichage du champ photo",
-        "home_question": "Qui es-tu?",
-        "home_admin": "Personnel de la Croix-Rouge",
-        "home_fsp": "Prestataire de services financiers",
-        "fsp_login": "Connexion pour le prestataire de services financiers",
-        "step_4_generate": "📤 Étape 4. Générer les paiements à envoyer à 121",
-        "payments_ready": "🔄 Paiements prêts à être soumis à 121 :",
-        "generate_csv": "Étape 4. Générer un CSV",
-        "download_csv": "⬇️ Télécharger le CSV",
-        "step_5_send": "✅ Étape 5. Envoyer les paiements à 121",
-        "send_payments": "Étape 5. Envoyer les paiements à 121",
-        "payment_submit_success": "✅ Paiements envoyés avec succès !",
-        "payment_submit_failed": "❌ Échec de l'envoi",
-        "voucher_generator": "Générateur de bons",
-        "csv_hint": "Téléchargez un fichier CSV ou Excel avec referenceId et d’autres champs à imprimer",
-        "choose_csv": "Télécharger un fichier CSV ou Excel",
-        "upload_csv": "Importer le fichier",
-        "download_vouchers": "Télécharger les bons (PDF)",
-        "back": "Retour au tableau de bord",
-        "choose_csv_alert": "Veuillez d'abord choisir un fichier CSV.",
-        "upload_failed": "Échec du téléversement",
-        "voucher_ready_singular": "bon prêt à télécharger",
-        "voucher_ready_plural": "bons prêts à télécharger",
-        "generate_vouchers": "Générer les coupons",
-        "invalid_qr_title": "Code QR invalide",
-        "invalid_qr_message": "Ce code QR ne peut pas être utilisé.",
-        "checking_reason": "Vérification de la raison…",
-        "scan_next": "Scanner le bénéficiaire suivant",
-        "go_home": "Aller à l'accueil",
-        "reason_used": "Ce code QR a déjà été utilisé.",
-        "reason_invalid": "Le code QR est invalide ou non reconnu.",
-        "reason_no_record": "Aucun bénéficiaire correspondant n’a été trouvé.",
-        "reason_database": "Problème de lecture des données hors ligne. Veuillez réessayer.",
-        "success_title": "Soumis avec succès",
-        "success_subtitle": "Vous pouvez maintenant scanner le bénéficiaire suivant.",
-        "counter_loading": "Paiements prêts à envoyer à 121 : ...",
-        "counter_label": "Paiements prêts à envoyer à 121 :",
-        "scan_next": "Scanner le bénéficiaire suivant",
-        "go_home": "Terminé le scan ? Aller à la page d’accueil",
-        "payment_prep": "Préparer l'envoi des paiements",
-        "login_error": "Nom d’utilisateur ou mot de passe incorrect.",
-        "admin_dashboard_title": "Tableau de bord Admin",
-        "admin_dashboard_subtitle": "Gérez la configuration de Scandroid et les outils de bons.",
-        "config_system_desc": "Modifier les clés API, les points d'accès et les paramètres du système.",
-        "config_display_desc": "Configurer les champs et informations affichés aux FSP.",
-        "generate_vouchers_desc": "Générer des bons QR pour impression et distribution.",
-        "program_information": "Informations du programme",
-        "credentials": "Identifiants",
-        "url_121": "URL 121",
-        "username_121": "Nom d’utilisateur 121",
-        "password_121": "Mot de passe 121",
-        "field_name_121": "Nom du champ 121",
-        "matching_field_title": "Champ 121 pour l’appariement des paiements",
-        "matching_field_desc": "Ce champ contient l’identifiant unique de 121 utilisé pour faire correspondre les bénéficiaires aux paiements.",
-        "matching_field_placeholder": "ex. phoneNumber",
-        "wrong_credentials": "Nom d’utilisateur ou mot de passe incorrect.",
-        "api_unreachable": "Impossible de joindre le serveur. Veuillez réessayer.",
-        "login_failed_generic": "Échec de connexion. Veuillez réessayer.",
-        "go_back": "Retour",
-        "program_title": "Titre du programme",
-        "connected_to": "Connecté au formulaire :",
-        "form_owner": "Propriétaire",
-        "no_form_connected": "Impossible de charger les détails du formulaire",
-        "kobo_connection": "Connexion Kobo",
-        "payment_amount": "Montant du paiement",
-    },
-    "ar": {
-        "title": "معلومات المستفيد",
-        "name": "الاسم",
-        "dob": "تاريخ الميلاد",
-        "photo": "صورة",
-        "payment_approved": "تمت الموافقة على الدفع",
-        "payment_rejected": "تم رفض الدفع",
-        "participant_withdraws": "انسحب المستفيد",
-        "language": "اللغة",
-        "login": "تسجيل دخول لموظفي الهلال الأحمر",
-        "enter_password": "أدخل كلمة المرور",
-        "submit": "إرسال",
-        "payment_status": "حالة الدفع",
-        "confirm_person": "تأكيد أن هذه هي الشخص الصحيح",
-        "rejection_reason": "سبب الرفض",
-        "already_scanned": "تم بالفعل مسح هذا الشخص وإرساله إلى 121.",
-        "success_message": "تم إرسال الدفع بنجاح.",
-        "already_submitted_page": "تم بالفعل إرسال دفعة هذا المستفيد. إذا كنت بحاجة إلى الدعم، فاتصل بـ support@121.global",
-        "config_title": "تكوين الحقول المعروضة",
-        "field_key": "مفتاح الحقل (من كوبا)",
-        "label_en": "التسمية (EN)",
-        "label_fr": "التسمية (FR)",
-        "label_ar": "التسمية (AR)",
-        "remove": "إزالة",
-        "add_field": "إضافة حقل",
-        "save": "حفظ",
-        "saved_successfully": "تم الحفظ بنجاح",
-        "failed_to_save": "فشل الحفظ",
-        "logout": "تسجيل الخروج",
-        "config_system": "إعدادات النظام",
-        "config_display": "تكوين الحقول المعروضة",
-        "fsp_login": "تسجيل الدخول لمزودي الخدمات المالية",
-        "program_select_title": "اختر برنامجاً",
-        "back_to_programs": "العودة إلى البرامج",
-        "program_select_subtitle": "اختر البرنامج الذي تريد العمل معه",
-        "fsp_sync_title": "📥 مزوّد الخدمة: مزامنة السجلات غير المتصلة",
-        "sync_latest": "مزامنة أحدث السجلات",
-        "syncing": "جارٍ المزامنة...",
-        "sync_error": "❌ فشلت عملية المزامنة. يرجى المحاولة مرة أخرى.",
-        "sync_initial": "انقر على المزامنة لمعرفة عدد المستفيدين الجاهزين للتحقق دون اتصال.",
-        "sync_complete": "✅ {count} مستفيدين جاهزين للتحقق دون اتصال.",
-        "step1": "الخطوة 1. مزامنة أحدث السجلات",
-        "step2": "الخطوة 2. استيراد ذاكرة التخزين المؤقت دون اتصال",
-        "step3": "الخطوة 3. مسح رموز QR",
-        "online": "متصل",
-        "offline": "غير متصل",
-        "scan_title": "مسح رمز QR",
-        "back_to_dashboard": "العودة إلى لوحة التحكم",
-        "scan_hint": "وجّه الكاميرا نحو رمز QR.",
-        "start_camera": "بدء تشغيل الكاميرا",
-        "waiting_to_start": "بانتظار البدء…",
-        "requesting_camera": "جارٍ طلب تشغيل الكاميرا… إذا طُلِب منك ذلك، اضغط سماح.",
-        "camera_denied": "تم رفض إذن الكاميرا أو أنها غير متاحة.",
-        "scanning": "جارٍ المسح…",
-        "starting_camera": "جارٍ بدء تشغيل الكاميرا…",
-        "footer_dev": "تم التطوير بواسطة 510 @ الصليب الأحمر الهولندي",
-        "footer_support": "إذا كنت بحاجة إلى الدعم، تواصل مع jharrison@redcross.nl",
-        "kobo_info": "معلومات كوبا",
-        "kobo_token": "رمز كوبا",
-        "asset_id": "معرف الأصول في كوبا",
-        "fsp_password": "تعيين كلمة مرور لـ FSP",
-        "password": "كلمة المرور",
-        "encryption_settings": "إعدادات التشفير",
-        "encryption_key": "مفتاح التشفير",
-        "encryption_warning": "يُستخدم لفك تشفير الحقول المشفرة. إذا كان غير صحيح، فلن تعمل التحقق بدون اتصال.",
-        "encryption_toggle_warning": "أفهم أن التغيير هنا قد يؤدي إلى تعطل النظام إذا كان غير صحيح.",
-        "info_121": "معلومات 121",
-        "url121": "رابط 121",
-        "username121": "اسم مستخدم 121",
-        "payment_id": "معرف الدفع",
-        "column_to_match": "الحقل المطابق للدفع (مثل رقم الهاتف)",
-        "column_to_match_info": "يتم تحديد هذا الحقل في صفحة إعداد عرض الحقول.",
-        "use_for_matching": "استخدم لمطابقة المدفوعات",
-        "photo_config_title": "إعدادات حقل الصورة",
-        "enable_photo_field": "تفعيل عرض حقل الصورة",
-        "home_question": "من أنت؟",
-        "home_admin": "موظفو الصليب الأحمر",
-        "home_fsp": "مزود خدمات مالية",
-        "fsp_login": "تسجيل الدخول لمزود الخدمة المالية",
-        "step_4_generate": "📤 الخطوة 4. إنشاء الدفعات لإرسالها إلى 121",
-        "payments_ready": "🔄 الدفعات الجاهزة للإرسال إلى 121:",
-        "generate_csv": "إنشاء ملف CSV",
-        "download_csv": "⬇️ تحميل ملف CSV",
-        "step_5_send": "✅ الخطوة 5. إرسال الدفعات إلى 121",
-        "send_payments": "إرسال الدفعات",
-        "payment_submit_success": "✅ تم إرسال المدفوعات بنجاح!",
-        "payment_submit_failed": "❌ فشل الإرسال",
-        "voucher_generator": "مولّد القسائم",
-        "csv_hint": "قم بتحميل ملف CSV يحتوي على referenceId وأي حقول إضافية للطباعة",
-        "choose_csv": "اختر ملف CSV/Excel…",
-        "upload_csv": "تحميل ملف Excel/CSV",
-        "download_vouchers": "تنزيل القسائم (PDF)",
-        "back": "العودة إلى لوحة التحكم",
-        "choose_csv_alert": "يرجى اختيار ملف CSV أولاً.",
-        "upload_failed": "فشل الرفع",
-        "voucher_ready_singular": "قسيمة جاهزة للتنزيل",
-        "voucher_ready_plural": "قسائم جاهزة للتنزيل",
-        "generate_vouchers": "إصدار القسائم",
-        "invalid_qr_title": "رمز QR غير صالح",
-        "invalid_qr_message": "لا يمكن استخدام رمز QR هذا.",
-        "checking_reason": "جارٍ التحقق من السبب…",
-        "scan_next": "مسح المستفيد التالي",
-        "go_home": "العودة إلى الصفحة الرئيسية",
-        "reason_used": "تم استخدام رمز QR هذا سابقًا.",
-        "reason_invalid": "رمز QR غير صالح أو غير معروف.",
-        "reason_no_record": "لا يوجد أي مستفيد مطابق لهذا الرمز.",
-        "reason_database": "حدثت مشكلة في قراءة البيانات دون اتصال. حاول مرة أخرى.",
-        "success_title": "تم الإرسال بنجاح",
-        "success_subtitle": "يمكنك الآن مسح المستفيد التالي.",
-        "counter_loading": "المدفوعات الجاهزة للإرسال إلى 121: ...",
-        "counter_label": "المدفوعات الجاهزة للإرسال إلى 121:",
-        "scan_next": "مسح المستفيد التالي",
-        "go_home": "هل انتهيت من المسح؟ اذهب إلى الصفحة الرئيسية",
-        "payment_prep": "Prepare to send payments",
-        "login_error": "اسم المستخدم أو كلمة المرور غير صحيحة.",
-        "admin_dashboard_title": "لوحة تحكم المسؤول",
-        "admin_dashboard_subtitle": "إدارة إعدادات Scandroid وأدوات القسائم",
-        "config_system_desc": "تعديل مفاتيح API ونقاط النهاية ومعلمات النظام.",
-        "config_display_desc": "تكوين الحقول والمعلومات التي يتم عرضها لمقدمي الخدمات المالية.",
-        "generate_vouchers_desc": "إنشاء قسائم QR للطباعة والتوزيع.",
-        "program_information": "معلومات البرنامج",
-        "credentials": "بيانات تسجيل الدخول",
-        "url_121": "رابط 121",
-        "program_id": "اختر البرنامج",
-        "username_121": "اسم المستخدم 121",
-        "password_121": "كلمة مرور 121",
-        "field_name_121": "اسم الحقل في 121",
-        "matching_field_title": "حقل 121 لمطابقة الدفعات",
-        "matching_field_desc": "يحتوي هذا الحقل على المعرّف الفريد من نظام 121 المستخدم لمطابقة المستفيدين مع الدفعات.",
-        "matching_field_placeholder": "مثال: phoneNumber",
-        "wrong_credentials": "اسم المستخدم أو كلمة المرور غير صحيحة.",
-        "api_unreachable": "تعذّر الاتصال بالخادم. يرجى المحاولة مرة أخرى.",
-        "login_failed_generic": "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.",
-        "go_back": "عودة",
-        "program_title": "عنوان البرنامج",
-        "connected_to": "متصل بالنموذج:",
-        "form_owner": "المالك",
-        "no_form_connected": "تعذّر تحميل تفاصيل النموذج",
-        "kobo_connection": "اتصال كوبا",
-        "payment_amount": "مبلغ الدفع",
-    },
+"en": {
+    "title": "Beneficiary Information",
+    "name": "Name",
+    "dob": "Date of Birth",
+    "photo": "Photo",
+    "payment_approved": "Payment Approved",
+    "payment_rejected": "Payment Rejected",
+    "participant_withdraws": "Participant Withdraws",
+    "language": "Language",
+    "login": "Login for Red Cross Staff",
+    "enter_password": "Enter Password",
+    "submit": "Submit",
+    "payment_status": "Payment Status",
+    "confirm_person": "Confirm this is the correct person",
+    "rejection_reason": "Reason for Rejection",
+    "already_scanned": "This person has already been scanned and submitted to 121.",
+    "success_message": "Payment successfully submitted.",
+    "already_submitted_page": "This beneficiary's payment has already been submitted. If you need support, contact support@121.global",
+    "config_title": "Configure Fields to Display",
+    "field_key": "Kobo Photo Field",
+    "label_en": "Label (EN)",
+    "label_fr": "Label (FR)",
+    "label_ar": "Label (AR)",
+    "remove": "Remove",
+    "add_field": "Add Field",
+    "save": "Save",
+    "saved_successfully": "Saved successfully",
+    "failed_to_save": "Failed to save",
+    "logout": "Logout",
+    "config_system": "System Configuration",
+    "config_display": "Configure Fields to Display",
+    "fsp_login": "Login for FSP Admins",
+    "program_select_title": "Select a Program",
+    "back_to_programs": "Back to Programs",
+    "program_select_subtitle": "Choose the program you want to work with",
+    "fsp_sync_title": "Prepare to Scan",
+    "sync_latest": "Sync Latest Records",
+    "syncing": "Syncing...",
+    "sync_error": "❌ Failed to sync. Please try again.",
+    "sync_initial": "Click sync to see how many beneficiaries are ready for offline validation.",
+    "sync_complete": "✅ {count} beneficiaries ready for offline validation.",
+    "step1": "Step 1. Sync with 121",
+    "step2": "Step 2. Save Latest Records",
+    "step3": "Step 3. Scan QR Codes",
+    "online": "Online",
+    "offline": "Offline",
+    "scan_title": "Scan QR",
+    "code_entry_title": "Enter code",
+    "back_to_dashboard": "Back",
+    "scan_hint": "Point the camera at the QR code.",
+    "code_entry_hint": "Enter the beneficiary's unique code below.",
+    "no_qr_btn": "Can't scan QR?",
+    "manual_code_label": "Enter code manually",
+    "manual_code_placeholder": "Type or paste the code…",
+    "manual_submit": "Go",
+    "start_camera": "Start camera",
+    "waiting_to_start": "Waiting to start…",
+    "requesting_camera": "Requesting camera… If prompted, tap Allow.",
+    "camera_denied": "Camera permission denied or not available.",
+    "scanning": "Scanning…",
+    "starting_camera": "Starting camera…",
+    "footer_dev": "Developed by 510 @ The Netherlands Red Cross",
+    "footer_support": "If you need support contact jharrison@redcross.nl",
+    "kobo_info": "Kobo Information",
+    "kobo_token": "Kobo API Key",
+    "asset_id": "Kobo Asset ID",
+    "fsp_password": "Set Password for FSPs",
+    "password": "Password",
+    "encryption_settings": "Encryption Settings",
+    "encryption_key": "Encryption Key",
+    "encryption_warning": "Used to decrypt encrypted fields. If incorrect, offline validation will stop working.",
+    "encryption_toggle_warning": "I understand changing this may break the system if incorrect.",
+    "info_121": "121 Information",
+    "url121": "121 URL",
+    "username121": "121 Username",
+    "program_id": "Select Program",
+    "payment_id": "Payment ID",
+    "column_to_match": "Field to Match for Payment (e.g., phoneNumber)",
+    "column_to_match_info": "This field is selected in the Field Display Config page.",
+    "use_for_matching": "Use for Matching Payments",
+    "photo_config_title": "Photo Field Configuration",
+    "enable_photo_field": "Enable photo field display",
+    "scan_config_title": "Scan Method",
+    "enable_qr_scan": "Enable QR code scanning",
+    "enable_qr_scan_hint": "When off, this program uses manual code entry only (no QR camera).",
+    "home_question": "Who are you?",
+    "home_admin": "Red Cross Staff",
+    "home_fsp": "Financial Service Provider",
+    "fsp_login": "Log in for Financial Service Provider",
+    "payment_submit_success": "✅ Payments submitted successfully!",
+    "payment_submit_failed": "❌ Failed to submit",
+    "voucher_generator": "Voucher Generator",
+    "csv_hint": "Upload a CSV or Excel file with referenceId and any extra fields to print",
+    "choose_csv": "Choose CSV or Excel file…",
+    "upload_csv": "Upload CSV or Excel file",
+    "download_vouchers": "Download vouchers (PDF)",
+    "back": "Back to Dashboard",
+    "choose_csv_alert": "Please choose a CSV first.",
+    "upload_failed": "Upload failed",
+    "voucher_ready_singular": "voucher ready to download",
+    "voucher_ready_plural": "vouchers ready to download",
+    "generate_vouchers": "Generate Vouchers",
+    "invalid_qr_title": "Invalid QR Code",
+    "invalid_qr_message": "This QR code cannot be used.",
+    "checking_reason": "Checking reason…",
+    "scan_next": "Scan next beneficiary",
+    "go_home": "Go to homepage",
+    "reason_used": "This QR code has already been used.",
+    "reason_invalid": "The QR code is invalid or unrecognized.",
+    "reason_no_record": "This QR code does not match any stored beneficiary.",
+    "reason_database": "There was a problem reading offline data. Please try again.",
+    "success_title": "Successfully submitted",
+    "success_message": "You may now scan the next beneficiary.",
+    "loading_counter": "Payments ready to push to 121: ...",
+    "payments_ready": "Payments ready to push to 121:",
+    "scan_next": "Scan next beneficiary",
+    "go_home": "Finished scanning? Go to homepage",
+    "payment_prep": "Prepare to Send Payments",
+    "login_error": "Incorrect username or password.",
+    "admin_dashboard_title": "Admin Dashboard",
+    "admin_dashboard_subtitle": "Manage your 121 Scan configuration and voucher tools.",
+    "config_system_desc": "Edit API keys, endpoints, and system parameters.",
+    "config_display_desc": "Configure which fields and details are shown to FSPs.",
+    "generate_vouchers_desc": "Generate QR vouchers for printing and distribution.",
+    "program_information": "Program Information",
+    "credentials": "Credentials",
+    "url_121": "121 URL",
+    "username_121": "121 Username",
+    "password_121": "121 Password",
+    "field_name_121": "121 Field Name",
+    "matching_field_title": "121 Field for Matching Payments",
+    "matching_field_desc": "This field contains the unique ID from 121 used to match beneficiaries to payments.",
+    "matching_field_placeholder": "e.g. phoneNumber",
+    "wrong_credentials": "Incorrect username or password.",
+    "api_unreachable": "Unable to reach the login server. Please try again.",
+    "login_failed_generic": "Login failed. Please try again.",
+    "go_back": "Go Back",
+    "program_title": "Program Title",
+    "connected_to": "Connected to form:",
+    "form_owner": "Owner",
+    "no_form_connected": "Unable to load form details",
+    "kobo_connection": "Kobo Connection",
+    "payment_amount": "Payment Amount",
+    "voucher_design": "Voucher Design",
+    "voucher_design_desc": "Customise the title, subtitle and logos printed on each program's vouchers.",
+    "voucher_design_title": "Voucher Design",
+    "voucher_design_settings": "Design settings",
+    "voucher_design_settings_desc": "These replace the values printed on the voucher. Each program keeps its own design.",
+    "voucher_title_label": "Title",
+    "voucher_subtitle_label": "Subtitle",
+    "voucher_logos_label": "Logos",
+    "voucher_left_logo": "Left logo",
+    "voucher_right_logo": "Right logo",
+    "voucher_logo_upload": "Upload",
+    "voucher_logo_remove": "remove",
+    "voucher_no_logo": "No logo",
+    "voucher_live_preview": "Live preview",
+    "voucher_preview_desc": "A5 landscape, matching the printed voucher layout.",
+    "voucher_save_design": "Save design",
+    "voucher_design_saved": "Design saved",
+    "voucher_design_save_failed": "Could not save design",
+    "voucher_design_incomplete_title": "Voucher design not completed",
+    "voucher_design_incomplete_desc": "This program doesn't have a voucher design yet. Set the title, subtitle and logos before generating vouchers.",
+    "voucher_design_go": "Design this voucher",
+    "voucher_logo_size": "Size",
+    "voucher_show_qr": "Show QR code",
+    "voucher_show_qr_hint": "Turn off if this program's vouchers don't need a QR code.",
+    "voucher_size_small": "Small",
+    "voucher_size_medium": "Medium",
+    "voucher_size_large": "Large",
+    "program": "Program",
+    "home_title": "Welcome",
+    "current_program": "Program",
+    "people_scanned": "People scanned:",
+    "beneficiaries_ready_to_scan": "Ready to scan:",
+    "last_synced": "Last synced:",
+    "total_amount": "Total amount:",
+    "payments_ready_send": "Payments ready to send",
+    "last_payments_submit": "Last submission:",
+    "cannot_sync_offline": "Cannot sync while offline",
+    "cannot_send_offline": "Cannot send while offline",
+    "loading_photo": "Loading photo…",
+    "decryption_enabled": "Decryption enabled",
+    "select_field_121": "Select field",
+    "select_option": "Select...",
+    "success_subtitle": "You can now scan the next beneficiary.",
+    "counter_loading": "Payments ready to push to 121: ...",
+    "counter_label": "Payments ready to push to 121:",
+}
+,
+"fr": {
+    "title": "Informations sur le bénéficiaire",
+    "name": "Nom",
+    "dob": "Date de naissance",
+    "photo": "Photo",
+    "payment_approved": "Paiement approuvé",
+    "payment_rejected": "Paiement refusé",
+    "participant_withdraws": "Le participant se retire",
+    "language": "Langue",
+    "login": "Connexion pour le personnel de la Croix-Rouge",
+    "enter_password": "Entrer le mot de passe",
+    "submit": "Soumettre",
+    "payment_status": "Statut du paiement",
+    "confirm_person": "Confirmez que c'est la bonne personne",
+    "rejection_reason": "Motif du refus",
+    "already_scanned": "Cette personne a déjà été scannée et soumise à 121.",
+    "success_message": "Paiement soumis avec succès.",
+    "already_submitted_page": "Le paiement de ce bénéficiaire a déjà été soumis. Si vous avez besoin d'aide, contactez support@121.global",
+    "config_title": "Configurer les champs à afficher",
+    "field_key": "Clé de champ (depuis Kobo)",
+    "label_en": "Libellé (EN)",
+    "label_fr": "Libellé (FR)",
+    "label_ar": "Libellé (AR)",
+    "remove": "Supprimer",
+    "add_field": "Ajouter un champ",
+    "save": "Enregistrer",
+    "saved_successfully": "Enregistré avec succès",
+    "failed_to_save": "Échec de l'enregistrement",
+    "logout": "Déconnexion",
+    "config_system": "Configurer le système ",
+    "config_display": "Congifuration des champs de vérification",
+    "fsp_login": "Connexion pour les FSP",
+    "program_select_title": "Sélectionner un programme",
+    "back_to_programs": "Retour aux programmes",
+    "program_select_subtitle": "Choisissez le programme avec lequel vous souhaitez travailler",
+    "fsp_sync_title": "Synchroniser les enregistrements hors ligne",
+    "sync_latest": "Synchroniser les derniers enregistrements",
+    "syncing": "Synchronisation...",
+    "sync_error": "❌ Échec de la synchronisation. Veuillez réessayer.",
+    "sync_initial": "Cliquez sur synchroniser pour voir combien de bénéficiaires sont prêts pour la validation hors ligne.",
+    "sync_complete": "✅ {count} bénéficiaires prêts pour la validation hors ligne.",
+    "step1": "Étape 1. Synchroniser les derniers enregistrements",
+    "step2": "Étape 2. Importer le cache hors ligne",
+    "step3": "Étape 3. Scanner les codes QR",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "scan_title": "Scanner un QR",
+    "code_entry_title": "Saisir le code",
+    "back_to_dashboard": "Retour au tableau de bord",
+    "scan_hint": "Pointez la caméra vers le code QR.",
+    "code_entry_hint": "Saisissez ci-dessous le code unique du bénéficiaire.",
+    "no_qr_btn": "Impossible de scanner le QR ?",
+    "manual_code_label": "Saisir le code manuellement",
+    "manual_code_placeholder": "Tapez ou collez le code…",
+    "manual_submit": "Valider",
+    "start_camera": "Démarrer la caméra",
+    "waiting_to_start": "En attente de démarrage…",
+    "requesting_camera": "Demande d’accès à la caméra… Si demandé, touchez Autoriser.",
+    "camera_denied": "Accès à la caméra refusé ou non disponible.",
+    "scanning": "Analyse…",
+    "starting_camera": "Démarrage de la caméra…",
+    "footer_dev": "Développé par 510 @ La Croix-Rouge néerlandaise",
+    "footer_support": "Pour toute assistance, contactez jharrison@redcross.nl",
+    "kobo_info": "Informations Kobo",
+    "kobo_token": "Clé API",
+    "asset_id": "ID d'actif Kobo",
+    "fsp_password": "Définir un mot de passe pour les FSP",
+    "password": "Mot de passe",
+    "encryption_settings": "Paramètres de chiffrement",
+    "encryption_key": "Clé de chiffrement",
+    "encryption_warning": "Utilisée pour déchiffrer les champs. Si elle est incorrecte, la validation hors ligne ne fonctionnera pas.",
+    "encryption_toggle_warning": "Je comprends que changer cela pourrait casser le système si incorrect.",
+    "info_121": "Informations 121",
+    "url121": "URL 121",
+    "username121": "Nom d'utilisateur 121",
+    "program_id": "Sélectionner le programme",
+    "payment_id": "ID de paiement",
+    "column_to_match": "Champ à faire correspondre pour le paiement (ex. : phoneNumber)",
+    "column_to_match_info": "Ce champ est sélectionné dans la page de configuration d'affichage.",
+    "use_for_matching": "Utiliser pour le rapprochement des paiements",
+    "photo_config_title": "Configuration du champ photo",
+    "enable_photo_field": "Activer l'affichage du champ photo",
+    "scan_config_title": "Méthode de scan",
+    "enable_qr_scan": "Activer le scan de code QR",
+    "enable_qr_scan_hint": "Désactivé, ce programme utilise uniquement la saisie manuelle du code (pas de caméra QR).",
+    "home_question": "Qui es-tu?",
+    "home_admin": "Personnel de la Croix-Rouge",
+    "home_fsp": "Prestataire de services financiers",
+    "fsp_login": "Connexion pour le prestataire de services financiers",
+    "step_4_generate": "📤 Étape 4. Générer les paiements à envoyer à 121",
+    "payments_ready": "🔄 Paiements prêts à être soumis à 121 :",
+    "generate_csv": "Étape 4. Générer un CSV",
+    "download_csv": "⬇️ Télécharger le CSV",
+    "step_5_send": "✅ Étape 5. Envoyer les paiements à 121",
+    "send_payments": "Étape 5. Envoyer les paiements à 121",
+    "payment_submit_success": "✅ Paiements envoyés avec succès !",
+    "payment_submit_failed": "❌ Échec de l'envoi",
+    "voucher_generator": "Générateur de bons",
+    "csv_hint": "Téléchargez un fichier CSV ou Excel avec referenceId et d’autres champs à imprimer",
+    "choose_csv": "Télécharger un fichier CSV ou Excel",
+    "upload_csv": "Importer le fichier",
+    "download_vouchers": "Télécharger les bons (PDF)",
+    "back": "Retour au tableau de bord",
+    "choose_csv_alert": "Veuillez d'abord choisir un fichier CSV.",
+    "upload_failed": "Échec du téléversement",
+    "voucher_ready_singular": "bon prêt à télécharger",
+    "voucher_ready_plural": "bons prêts à télécharger",
+    "generate_vouchers": "Générer les coupons",
+    "invalid_qr_title": "Code QR invalide",
+    "invalid_qr_message": "Ce code QR ne peut pas être utilisé.",
+    "checking_reason": "Vérification de la raison…",
+    "scan_next": "Scanner le bénéficiaire suivant",
+    "go_home": "Aller à l'accueil",
+    "reason_used": "Ce code QR a déjà été utilisé.",
+    "reason_invalid": "Le code QR est invalide ou non reconnu.",
+    "reason_no_record": "Aucun bénéficiaire correspondant n’a été trouvé.",
+    "reason_database": "Problème de lecture des données hors ligne. Veuillez réessayer.",
+    "success_title": "Soumis avec succès",
+    "success_subtitle": "Vous pouvez maintenant scanner le bénéficiaire suivant.",
+    "counter_loading": "Paiements prêts à envoyer à 121 : ...",
+    "counter_label": "Paiements prêts à envoyer à 121 :",
+    "scan_next": "Scanner le bénéficiaire suivant",
+    "go_home": "Terminé le scan ? Aller à la page d’accueil",
+    "payment_prep": "Préparer l'envoi des paiements",
+    "login_error": "Nom d’utilisateur ou mot de passe incorrect.",
+    "admin_dashboard_title": "Tableau de bord Admin",
+    "admin_dashboard_subtitle": "Gérez la configuration de 121 Scan et les outils de bons.",
+    "config_system_desc": "Modifier les clés API, les points d'accès et les paramètres du système.",
+    "config_display_desc": "Configurer les champs et informations affichés aux FSP.",
+    "generate_vouchers_desc": "Générer des bons QR pour impression et distribution.",
+    "program_information": "Informations du programme",
+    "credentials": "Identifiants",
+    "url_121": "URL 121",
+    "username_121": "Nom d’utilisateur 121",
+    "password_121": "Mot de passe 121",
+    "field_name_121": "Nom du champ 121",
+    "matching_field_title": "Champ 121 pour l’appariement des paiements",
+    "matching_field_desc": "Ce champ contient l’identifiant unique de 121 utilisé pour faire correspondre les bénéficiaires aux paiements.",
+    "matching_field_placeholder": "ex. phoneNumber",
+    "wrong_credentials": "Nom d’utilisateur ou mot de passe incorrect.",
+    "api_unreachable": "Impossible de joindre le serveur. Veuillez réessayer.",
+    "login_failed_generic": "Échec de connexion. Veuillez réessayer.",
+    "go_back": "Retour",
+    "program_title": "Titre du programme",
+    "connected_to": "Connecté au formulaire :",
+    "form_owner": "Propriétaire",
+    "no_form_connected": "Impossible de charger les détails du formulaire",
+    "kobo_connection": "Connexion Kobo",
+    "payment_amount": "Montant du paiement",
+    "program": "Programme",
+    "loading_counter": "Paiements prêts à envoyer à 121 : ...",
+    "home_title": "Bienvenue",
+    "current_program": "Programme",
+    "people_scanned": "Personnes scannées :",
+    "beneficiaries_ready_to_scan": "Prêts à scanner :",
+    "last_synced": "Dernière synchronisation :",
+    "total_amount": "Montant total :",
+    "payments_ready_send": "Paiements prêts à envoyer ",
+    "last_payments_submit": "Dernier envoi :",
+    "cannot_sync_offline": "Impossible de synchroniser hors ligne",
+    "cannot_send_offline": "Impossible d'envoyer hors ligne",
+    "loading_photo": "Chargement de la photo…",
+    "decryption_enabled": "Déchiffrement activé",
+    "select_field_121": "Sélectionner un champ",
+    "select_option": "Sélectionner...",
+    "voucher_design": "Conception du bon",
+    "voucher_design_title": "Conception du bon",
+    "voucher_design_desc": "Personnalisez le titre, le sous-titre et les logos imprimés sur les bons de chaque programme.",
+    "voucher_design_settings": "Paramètres de conception",
+    "voucher_design_settings_desc": "Ceux-ci remplacent les valeurs imprimées sur le bon. Chaque programme conserve sa propre conception.",
+    "voucher_title_label": "Titre",
+    "voucher_subtitle_label": "Sous-titre",
+    "voucher_logos_label": "Logos",
+    "voucher_left_logo": "Logo de gauche",
+    "voucher_right_logo": "Logo de droite",
+    "voucher_logo_upload": "Téléverser",
+    "voucher_logo_remove": "supprimer",
+    "voucher_no_logo": "Aucun logo",
+    "voucher_live_preview": "Aperçu en direct",
+    "voucher_preview_desc": "A5 paysage, correspondant à la mise en page du bon imprimé.",
+    "voucher_save_design": "Enregistrer la conception",
+    "voucher_design_saved": "Conception enregistrée",
+    "voucher_design_save_failed": "Impossible d'enregistrer la conception",
+    "voucher_design_incomplete_title": "Conception du bon non terminée",
+    "voucher_design_incomplete_desc": "Ce programme n'a pas encore de conception de bon. Définissez le titre, le sous-titre et les logos avant de générer les bons.",
+    "voucher_design_go": "Concevoir ce bon",
+    "voucher_logo_size": "Taille",
+    "voucher_show_qr": "Afficher le code QR",
+    "voucher_show_qr_hint": "Désactivez si les bons de ce programme n'ont pas besoin d'un code QR.",
+    "voucher_size_small": "Petit",
+    "voucher_size_medium": "Moyen",
+    "voucher_size_large": "Grand",
+}
+,
+"ar": {
+    "title": "معلومات المستفيد",
+    "name": "الاسم",
+    "dob": "تاريخ الميلاد",
+    "photo": "صورة",
+    "payment_approved": "تمت الموافقة على الدفع",
+    "payment_rejected": "تم رفض الدفع",
+    "participant_withdraws": "انسحب المستفيد",
+    "language": "اللغة",
+    "login": "تسجيل دخول لموظفي الهلال الأحمر",
+    "enter_password": "أدخل كلمة المرور",
+    "submit": "إرسال",
+    "payment_status": "حالة الدفع",
+    "confirm_person": "تأكيد أن هذه هي الشخص الصحيح",
+    "rejection_reason": "سبب الرفض",
+    "already_scanned": "تم بالفعل مسح هذا الشخص وإرساله إلى 121.",
+    "success_message": "تم إرسال الدفع بنجاح.",
+    "already_submitted_page": "تم بالفعل إرسال دفعة هذا المستفيد. إذا كنت بحاجة إلى الدعم، فاتصل بـ support@121.global",
+    "config_title": "تكوين الحقول المعروضة",
+    "field_key": "مفتاح الحقل (من كوبا)",
+    "label_en": "التسمية (EN)",
+    "label_fr": "التسمية (FR)",
+    "label_ar": "التسمية (AR)",
+    "remove": "إزالة",
+    "add_field": "إضافة حقل",
+    "save": "حفظ",
+    "saved_successfully": "تم الحفظ بنجاح",
+    "failed_to_save": "فشل الحفظ",
+    "logout": "تسجيل الخروج",
+    "config_system": "إعدادات النظام",
+    "config_display": "تكوين الحقول المعروضة",
+    "fsp_login": "تسجيل الدخول لمزودي الخدمات المالية",
+    "program_select_title": "اختر برنامجاً",
+    "back_to_programs": "العودة إلى البرامج",
+    "program_select_subtitle": "اختر البرنامج الذي تريد العمل معه",
+    "fsp_sync_title": "📥 مزوّد الخدمة: مزامنة السجلات غير المتصلة",
+    "sync_latest": "مزامنة أحدث السجلات",
+    "syncing": "جارٍ المزامنة...",
+    "sync_error": "❌ فشلت عملية المزامنة. يرجى المحاولة مرة أخرى.",
+    "sync_initial": "انقر على المزامنة لمعرفة عدد المستفيدين الجاهزين للتحقق دون اتصال.",
+    "sync_complete": "✅ {count} مستفيدين جاهزين للتحقق دون اتصال.",
+    "step1": "الخطوة 1. مزامنة أحدث السجلات",
+    "step2": "الخطوة 2. استيراد ذاكرة التخزين المؤقت دون اتصال",
+    "step3": "الخطوة 3. مسح رموز QR",
+    "online": "متصل",
+    "offline": "غير متصل",
+    "scan_title": "مسح رمز QR",
+    "code_entry_title": "إدخال الرمز",
+    "back_to_dashboard": "العودة إلى لوحة التحكم",
+    "scan_hint": "وجّه الكاميرا نحو رمز QR.",
+    "code_entry_hint": "أدخل الرمز الفريد للمستفيد أدناه.",
+    "no_qr_btn": "تعذّر مسح رمز QR؟",
+    "manual_code_label": "أدخل الرمز يدويًا",
+    "manual_code_placeholder": "اكتب أو الصق الرمز…",
+    "manual_submit": "تأكيد",
+    "start_camera": "بدء تشغيل الكاميرا",
+    "waiting_to_start": "بانتظار البدء…",
+    "requesting_camera": "جارٍ طلب تشغيل الكاميرا… إذا طُلِب منك ذلك، اضغط سماح.",
+    "camera_denied": "تم رفض إذن الكاميرا أو أنها غير متاحة.",
+    "scanning": "جارٍ المسح…",
+    "starting_camera": "جارٍ بدء تشغيل الكاميرا…",
+    "footer_dev": "تم التطوير بواسطة 510 @ الصليب الأحمر الهولندي",
+    "footer_support": "إذا كنت بحاجة إلى الدعم، تواصل مع jharrison@redcross.nl",
+    "kobo_info": "معلومات كوبا",
+    "kobo_token": "رمز كوبا",
+    "asset_id": "معرف الأصول في كوبا",
+    "fsp_password": "تعيين كلمة مرور لـ FSP",
+    "password": "كلمة المرور",
+    "encryption_settings": "إعدادات التشفير",
+    "encryption_key": "مفتاح التشفير",
+    "encryption_warning": "يُستخدم لفك تشفير الحقول المشفرة. إذا كان غير صحيح، فلن تعمل التحقق بدون اتصال.",
+    "encryption_toggle_warning": "أفهم أن التغيير هنا قد يؤدي إلى تعطل النظام إذا كان غير صحيح.",
+    "info_121": "معلومات 121",
+    "url121": "رابط 121",
+    "username121": "اسم مستخدم 121",
+    "payment_id": "معرف الدفع",
+    "column_to_match": "الحقل المطابق للدفع (مثل رقم الهاتف)",
+    "column_to_match_info": "يتم تحديد هذا الحقل في صفحة إعداد عرض الحقول.",
+    "use_for_matching": "استخدم لمطابقة المدفوعات",
+    "photo_config_title": "إعدادات حقل الصورة",
+    "enable_photo_field": "تفعيل عرض حقل الصورة",
+    "scan_config_title": "طريقة المسح",
+    "enable_qr_scan": "تفعيل مسح رمز QR",
+    "enable_qr_scan_hint": "عند الإيقاف، يستخدم هذا البرنامج إدخال الرمز يدويًا فقط (بدون كاميرا QR).",
+    "home_question": "من أنت؟",
+    "home_admin": "موظفو الصليب الأحمر",
+    "home_fsp": "مزود خدمات مالية",
+    "fsp_login": "تسجيل الدخول لمزود الخدمة المالية",
+    "step_4_generate": "📤 الخطوة 4. إنشاء الدفعات لإرسالها إلى 121",
+    "payments_ready": "🔄 الدفعات الجاهزة للإرسال إلى 121:",
+    "generate_csv": "إنشاء ملف CSV",
+    "download_csv": "⬇️ تحميل ملف CSV",
+    "step_5_send": "✅ الخطوة 5. إرسال الدفعات إلى 121",
+    "send_payments": "إرسال الدفعات",
+    "payment_submit_success": "✅ تم إرسال المدفوعات بنجاح!",
+    "payment_submit_failed": "❌ فشل الإرسال",
+    "voucher_generator": "مولّد القسائم",
+    "csv_hint": "قم بتحميل ملف CSV يحتوي على referenceId وأي حقول إضافية للطباعة",
+    "choose_csv": "اختر ملف CSV/Excel…",
+    "upload_csv": "تحميل ملف Excel/CSV",
+    "download_vouchers": "تنزيل القسائم (PDF)",
+    "back": "العودة إلى لوحة التحكم",
+    "choose_csv_alert": "يرجى اختيار ملف CSV أولاً.",
+    "upload_failed": "فشل الرفع",
+    "voucher_ready_singular": "قسيمة جاهزة للتنزيل",
+    "voucher_ready_plural": "قسائم جاهزة للتنزيل",
+    "generate_vouchers": "إصدار القسائم",
+    "invalid_qr_title": "رمز QR غير صالح",
+    "invalid_qr_message": "لا يمكن استخدام رمز QR هذا.",
+    "checking_reason": "جارٍ التحقق من السبب…",
+    "scan_next": "مسح المستفيد التالي",
+    "go_home": "العودة إلى الصفحة الرئيسية",
+    "reason_used": "تم استخدام رمز QR هذا سابقًا.",
+    "reason_invalid": "رمز QR غير صالح أو غير معروف.",
+    "reason_no_record": "لا يوجد أي مستفيد مطابق لهذا الرمز.",
+    "reason_database": "حدثت مشكلة في قراءة البيانات دون اتصال. حاول مرة أخرى.",
+    "success_title": "تم الإرسال بنجاح",
+    "success_subtitle": "يمكنك الآن مسح المستفيد التالي.",
+    "counter_loading": "المدفوعات الجاهزة للإرسال إلى 121: ...",
+    "counter_label": "المدفوعات الجاهزة للإرسال إلى 121:",
+    "scan_next": "مسح المستفيد التالي",
+    "go_home": "هل انتهيت من المسح؟ اذهب إلى الصفحة الرئيسية",
+    "payment_prep": "Prepare to send payments",
+    "login_error": "اسم المستخدم أو كلمة المرور غير صحيحة.",
+    "admin_dashboard_title": "لوحة تحكم المسؤول",
+    "admin_dashboard_subtitle": "إدارة إعدادات 121 Scan وأدوات القسائم",
+    "config_system_desc": "تعديل مفاتيح API ونقاط النهاية ومعلمات النظام.",
+    "config_display_desc":"تكوين الحقول والمعلومات التي يتم عرضها لمقدمي الخدمات المالية.",
+    "generate_vouchers_desc": "إنشاء قسائم QR للطباعة والتوزيع.",
+    "program_information": "معلومات البرنامج",
+    "credentials": "بيانات تسجيل الدخول",
+    "url_121": "رابط 121",
+    "program_id": "اختر البرنامج",
+    "username_121": "اسم المستخدم 121",
+    "password_121": "كلمة مرور 121",
+    "field_name_121": "اسم الحقل في 121",
+    "matching_field_title": "حقل 121 لمطابقة الدفعات",
+    "matching_field_desc": "يحتوي هذا الحقل على المعرّف الفريد من نظام 121 المستخدم لمطابقة المستفيدين مع الدفعات.",
+    "matching_field_placeholder": "مثال: phoneNumber",
+    "wrong_credentials": "اسم المستخدم أو كلمة المرور غير صحيحة.",
+    "api_unreachable": "تعذّر الاتصال بالخادم. يرجى المحاولة مرة أخرى.",
+    "login_failed_generic": "فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.",
+    "go_back": "عودة",
+    "program_title": "عنوان البرنامج",
+    "connected_to": "متصل بالنموذج:",
+    "form_owner": "المالك",
+    "no_form_connected": "تعذّر تحميل تفاصيل النموذج",
+    "kobo_connection": "اتصال كوبا",
+    "payment_amount": "مبلغ الدفع",
+    "program": "البرنامج",
+    "loading_counter": "المدفوعات الجاهزة للإرسال إلى 121: ...",
+    "home_title": "مرحبًا",
+    "current_program": "البرنامج",
+    "people_scanned": "الأشخاص الذين تم مسحهم:",
+    "beneficiaries_ready_to_scan": "جاهزون للمسح:",
+    "last_synced": "آخر مزامنة:",
+    "total_amount": "المبلغ الإجمالي:",
+    "payments_ready_send": "المدفوعات الجاهزة للإرسال",
+    "last_payments_submit": "آخر إرسال:",
+    "cannot_sync_offline": "لا يمكن المزامنة دون اتصال",
+    "cannot_send_offline": "لا يمكن الإرسال دون اتصال",
+    "loading_photo": "جارٍ تحميل الصورة…",
+    "decryption_enabled": "فك التشفير مُفعَّل",
+    "select_field_121": "اختر حقلاً",
+    "select_option": "اختر...",
+    "voucher_design": "تصميم القسيمة",
+    "voucher_design_title": "تصميم القسيمة",
+    "voucher_design_desc": "خصّص العنوان والعنوان الفرعي والشعارات المطبوعة على قسائم كل برنامج.",
+    "voucher_design_settings": "إعدادات التصميم",
+    "voucher_design_settings_desc": "تحل هذه محل القيم المطبوعة على القسيمة. يحتفظ كل برنامج بتصميمه الخاص.",
+    "voucher_title_label": "العنوان",
+    "voucher_subtitle_label": "العنوان الفرعي",
+    "voucher_logos_label": "الشعارات",
+    "voucher_left_logo": "الشعار الأيسر",
+    "voucher_right_logo": "الشعار الأيمن",
+    "voucher_logo_upload": "رفع",
+    "voucher_logo_remove": "إزالة",
+    "voucher_no_logo": "لا يوجد شعار",
+    "voucher_live_preview": "معاينة مباشرة",
+    "voucher_preview_desc": "A5 أفقي، مطابق لتخطيط القسيمة المطبوعة.",
+    "voucher_save_design": "حفظ التصميم",
+    "voucher_design_saved": "تم حفظ التصميم",
+    "voucher_design_save_failed": "تعذّر حفظ التصميم",
+    "voucher_design_incomplete_title": "لم يكتمل تصميم القسيمة",
+    "voucher_design_incomplete_desc": "لا يحتوي هذا البرنامج على تصميم قسيمة بعد. حدّد العنوان والعنوان الفرعي والشعارات قبل إنشاء القسائم.",
+    "voucher_design_go": "تصميم هذه القسيمة",
+    "voucher_logo_size": "الحجم",
+    "voucher_show_qr": "إظهار رمز QR",
+    "voucher_show_qr_hint": "أوقف التشغيل إذا كانت قسائم هذا البرنامج لا تحتاج إلى رمز QR.",
+    "voucher_size_small": "صغير",
+    "voucher_size_medium": "متوسط",
+    "voucher_size_large": "كبير",
+    }
 }
 
 
@@ -894,10 +1110,17 @@ def instance_static(filename):
     # Azure instance-specific logos
     instance_file = os.path.join(azure_path, filename)
     if os.path.exists(instance_file):
-        return send_from_directory(azure_path, filename)
+        resp = send_from_directory(azure_path, filename)
+    else:
+        # Local fallback for development
+        resp = send_from_directory("static", filename)
 
-    # Local fallback for development
-    return send_from_directory("static", filename)
+    # These files (e.g. voucher logos) are overwritten in place on re-upload,
+    # so the browser must revalidate rather than serve a cached copy. The URL
+    # also carries a ?v=<mtime> cache-buster, but we set no-cache here as a
+    # second line of defence against stale logos after an upload.
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
 
 
 @app.route("/")
@@ -1783,7 +2006,7 @@ def sync_fsp():
 
     try:
         result = subprocess.run(
-            ["python", "offline_sync.py"],
+            [sys.executable, "offline_sync.py"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1829,6 +2052,19 @@ def scan():
     username = session.get("fsp_username", "User")
     program_id = session.get("fsp_program_id")
 
+    # Per-program scan method: QR enabled by default unless explicitly disabled
+    qr_enabled = True
+    try:
+        full_display = load_display_config() or {}
+        programs_map = full_display.get("programs", {}) or {}
+        program_config = programs_map.get(str(program_id), {}) if program_id else {}
+        qr_cfg = program_config.get("qr", {})
+        # Default ON: only False when explicitly set to disabled
+        qr_enabled = qr_cfg.get("enabled", True) if isinstance(qr_cfg, dict) else True
+    except Exception as e:
+        print(f"[scan] Failed to load qr config: {e}")
+        qr_enabled = True
+
     # Fetch 121 program title
     program_title = ""
     if program_id:
@@ -1866,6 +2102,7 @@ def scan():
         username=username,
         program_title=program_title,
         program_id=program_id or "",
+        qr_enabled=qr_enabled
     )
 
 
@@ -2415,12 +2652,9 @@ def voucher_design():
             "subtitle": (request.form.get("subtitle") or "").strip(),
             "logo1": existing.get("logo1"),
             "logo2": existing.get("logo2"),
-            "logo1_size": _clean_size(
-                request.form.get("logo1_size") or existing.get("logo1_size")
-            ),
-            "logo2_size": _clean_size(
-                request.form.get("logo2_size") or existing.get("logo2_size")
-            ),
+            "logo1_size": _clean_size(request.form.get("logo1_size") or existing.get("logo1_size")),
+            "logo2_size": _clean_size(request.form.get("logo2_size") or existing.get("logo2_size")),
+            "show_qr": (request.form.get("show_qr", "1") != "0"),
         }
 
         # Explicit clears
