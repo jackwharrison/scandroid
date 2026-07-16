@@ -694,6 +694,15 @@ translations = {
     "success_subtitle": "You can now scan the next beneficiary.",
     "counter_loading": "Payments ready to push to 121: ...",
     "counter_label": "Payments ready to push to 121:",
+    "kobo_api_token": "API token",
+    "verify_token": "Verify token",
+    "verifying": "Verifying…",
+    "token_linked_to": "Token linked to",
+    "kobo_token_hint": "Found in KoboToolbox under Account settings → Security → API token.",
+    "enter_token_first": "Enter a new token above, then verify.",
+    "token_invalid": "Token not valid for this server.",
+    "verify_unreachable": "Could not reach the server.",
+    "program_map_hint": "Each 121 program is matched to the KoboToolbox form that collects its data."
 }
 ,
 "fr": {
@@ -888,6 +897,15 @@ translations = {
     "voucher_size_small": "Petit",
     "voucher_size_medium": "Moyen",
     "voucher_size_large": "Grand",
+    "kobo_api_token": "Jeton API",
+    "verify_token": "Vérifier le jeton",
+    "verifying": "Vérification…",
+    "token_linked_to": "Jeton associé à",
+    "kobo_token_hint": "Disponible dans KoboToolbox sous Paramètres du compte → Sécurité → Jeton API.",
+    "enter_token_first": "Saisissez un nouveau jeton ci-dessus, puis vérifiez.",
+    "token_invalid": "Jeton non valide pour ce serveur.",
+    "verify_unreachable": "Impossible de joindre le serveur.",
+    "program_map_hint": "Chaque programme 121 est associé au formulaire KoboToolbox qui collecte ses données."
 }
 ,
 "ar": {
@@ -1082,6 +1100,15 @@ translations = {
     "voucher_size_small": "صغير",
     "voucher_size_medium": "متوسط",
     "voucher_size_large": "كبير",
+    "kobo_api_token": "رمز API",
+    "verify_token": "التحقق من الرمز",
+    "verifying": "جارٍ التحقق…",
+    "token_linked_to": "الرمز مرتبط بـ",
+    "kobo_token_hint": "يوجد في KoboToolbox ضمن إعدادات الحساب ← الأمان ← رمز API.",
+    "enter_token_first": "أدخل رمزًا جديدًا أعلاه ثم تحقق.",
+    "token_invalid": "الرمز غير صالح لهذا الخادم.",
+    "verify_unreachable": "تعذّر الوصول إلى الخادم.",
+    "program_map_hint": "يُربط كل برنامج 121 بالنموذج في KoboToolbox الذي يجمع بياناته."
     }
 }
 
