@@ -2,7 +2,7 @@
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 # More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
 
-name: Build and deploy Python app to Azure Web App - scandroid-mauritania
+name: Build and deploy Python app to Azure Web App - scandroid-sudan
 
 on:
   push:
@@ -61,6 +61,6 @@ jobs:
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
-          app-name: 'scandroid-mauritania'
+          app-name: 'scandroid-sudan'
           slot-name: 'Production'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_808A4EA3C29A4D529CE1FE345B00BCA1 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_4D61DDD2F8A94D8EBE3005EF45398CDF }}

@@ -1,4 +1,15 @@
-from flask import Flask, render_template, request, send_file, redirect, session, url_for, flash, jsonify, send_from_directory
+from flask import (
+    Flask,
+    render_template,
+    request,
+    send_file,
+    redirect,
+    session,
+    url_for,
+    flash,
+    jsonify,
+    send_from_directory,
+)
 import requests
 from io import BytesIO
 from config_loader import load_config, save_config
@@ -21,10 +32,10 @@ from openpyxl import load_workbook
 import sys
 from config_loader import load_display_config, save_display_config
 
-
-
 # Register a Unicode-safe font
-pdfmetrics.registerFont(TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf")))
+pdfmetrics.registerFont(
+    TTFont("DejaVu", os.path.join("static", "fonts", "DejaVuSans.ttf"))
+)
 
 # ---------------------------------------------------------------------------
 # Arabic (right-to-left) text support for PDF rendering
@@ -98,21 +109,25 @@ def _font_for(text):
 
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = "your_secret_key"
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
 Session(app)
+
 
 @app.context_processor
 def inject_national_society():
     config = load_config()
     return {"national_society": config.get("nationalSociety", "")}
 
+
 def _make_qr_image(data, box_cm=3.0):
     """Return a Pillow image for the QR sized to box_cm × box_cm at 300dpi."""
     qr = qrcode.QRCode(
-        version=None, error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10, border=4
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=4,
     )
     qr.add_data(data)
     qr.make(fit=True)
@@ -170,19 +185,19 @@ def _draw_voucher(c, item, static_folder, design=None):
     # ---- BORDER -------------------------------------------------------------
     c.setLineWidth(0.8)
     c.rect(margin, margin, inner_w, inner_h)
-    logo_top_y = height - margin - 1.0*cm   # move logos DOWN slightly (was -0.0)
+    logo_top_y = height - margin - 1.0 * cm  # move logos DOWN slightly (was -0.0)
 
     # Per-program design (title / subtitle / logos / sizes), with hardcoded fallbacks
     design = design or {}
-    logo_height = LEFT_LOGO_HEIGHT_CM.get(_clean_size(design.get("logo1_size")), 2.5) * cm
-    left_logo_path = (
-        _resolve_logo_path(design.get("logo1"), static_folder)
-        or os.path.join(static_folder, "ns1.png")
+    logo_height = (
+        LEFT_LOGO_HEIGHT_CM.get(_clean_size(design.get("logo1_size")), 2.5) * cm
     )
-    right_logo_path = (
-        _resolve_logo_path(design.get("logo2"), static_folder)
-        or os.path.join(static_folder, "ns2.png")
-    )
+    left_logo_path = _resolve_logo_path(
+        design.get("logo1"), static_folder
+    ) or os.path.join(static_folder, "ns1.png")
+    right_logo_path = _resolve_logo_path(
+        design.get("logo2"), static_folder
+    ) or os.path.join(static_folder, "ns2.png")
 
     # LEFT LOGO – scale by HEIGHT, derive width from aspect ratio.
     # We must pass an explicit width: with preserveAspectRatio=True and only a
@@ -210,7 +225,9 @@ def _draw_voucher(c, item, static_folder, design=None):
     right_logo_top = height - margin - 0.5*cm
     try:
         logo2 = ImageReader(right_logo_path)
-        max_width = RIGHT_LOGO_WIDTH_CM.get(_clean_size(design.get("logo2_size")), 5.0) * cm
+        max_width = (
+            RIGHT_LOGO_WIDTH_CM.get(_clean_size(design.get("logo2_size")), 5.0) * cm
+        )
 
         img_w, img_h = logo2.getSize()
         scale = max_width / img_w
@@ -223,25 +240,25 @@ def _draw_voucher(c, item, static_folder, design=None):
             width=max_width,
             height=scaled_height,
             preserveAspectRatio=True,
-            mask='auto'
+            mask="auto",
         )
         right_logo_top = logo_top_y
     except Exception as e:
         app.logger.warning("Right voucher logo failed to draw (%s): %s", right_logo_path, e)
 
     # --- CENTER "Project" between logos (vertically aligned to logos) ---
-    project_y = min(left_logo_top, right_logo_top) - 0.3*cm
+    project_y = min(left_logo_top, right_logo_top) - 0.3 * cm
 
     c.setFont("DejaVu", 16)
-    c.drawCentredString(width/2, project_y, "Project")
+    c.drawCentredString(width / 2, project_y, "Project")
 
     # underline "Project"
     text_width = c.stringWidth("Project", "DejaVu", 16)
     c.line(
-        (width/2 - text_width/2),
-        project_y - 0.08*cm,
-        (width/2 + text_width/2),
-        project_y - 0.08*cm
+        (width / 2 - text_width / 2),
+        project_y - 0.08 * cm,
+        (width / 2 + text_width / 2),
+        project_y - 0.08 * cm,
     )
 
     # --- MAIN TITLE just below "Project" ---
@@ -253,7 +270,9 @@ def _draw_voucher(c, item, static_folder, design=None):
     # Subtitle lines (newline-separated; falls back to the original copy)
     subtitle_raw = design.get("subtitle")
     if subtitle_raw:
-        subtitle_lines = [ln.strip() for ln in str(subtitle_raw).splitlines() if ln.strip()]
+        subtitle_lines = [
+            ln.strip() for ln in str(subtitle_raw).splitlines() if ln.strip()
+        ]
     else:
         subtitle_lines = [
             "Supporting people on the move especially those",
@@ -269,8 +288,8 @@ def _draw_voucher(c, item, static_folder, design=None):
     show_qr = design.get("show_qr", True)
     refid = item.get("referenceid", "").strip()
     qr_box_size = 5.0 * cm
-    qr_x = margin + 0.6*cm
-    qr_y = margin + 0.6*cm
+    qr_x = margin + 0.6 * cm
+    qr_y = margin + 0.6 * cm
 
     if show_qr:
         # Outer box
@@ -297,22 +316,19 @@ def _draw_voucher(c, item, static_folder, design=None):
     # Formatting for dynamic keys
     def pretty_label(raw):
         raw = raw.replace("_", " ")
-        raw = ''.join([' ' + ch if ch.isupper() else ch for ch in raw])
-        raw = ' '.join(raw.split())
+        raw = "".join([" " + ch if ch.isupper() else ch for ch in raw])
+        raw = " ".join(raw.split())
         return raw.title()
 
     # All dynamic fields except referenceId
     def is_reference_id(key: str) -> bool:
         k = key.strip().lower().replace("_", "").replace(" ", "")
-        return ("ref" in k and "id" in k)
-        
+        return "ref" in k and "id" in k
 
     # All dynamic fields except the reference ID (robust detection)
     fields_to_print = {
-        k: v for k, v in item.items()
-        if not is_reference_id(k) and v not in (None, "")
+        k: v for k, v in item.items() if not is_reference_id(k) and v not in (None, "")
     }
-
 
     y = info_y
     for key, value in fields_to_print.items():
@@ -330,11 +346,7 @@ def _draw_voucher(c, item, static_folder, design=None):
     refid = item.get("referenceid", "").strip()
     if refid:
         c.setFont("DejaVu", 8)
-        c.drawString(
-            margin + 0.1*cm,
-            margin + 0.2*cm,
-            f"Reference ID: {refid}"
-        )
+        c.drawString(margin + 0.1 * cm, margin + 0.2 * cm, f"Reference ID: {refid}")
 
 
 def generate_vouchers_pdf(rows, static_folder, design=None):
@@ -344,6 +356,7 @@ def generate_vouchers_pdf(rows, static_folder, design=None):
     returns BytesIO of PDF
     """
     from io import BytesIO
+
     pdf_io = BytesIO()
 
     # Create a landscape A5 page
@@ -404,7 +417,9 @@ def resolve_programs(system_config=None):
                         )
                         if r.status_code == 200:
                             titles = r.json().get("titlePortal", {}) or {}
-                            title = titles.get("en") or next(iter(titles.values()), title)
+                            title = titles.get("en") or next(
+                                iter(titles.values()), title
+                            )
                     except Exception:
                         pass
                     programs.append({"id": str(pid), "title": title})
@@ -1086,6 +1101,7 @@ translations = {
     }
 }
 
+
 @app.route("/instance-static/<filename>")
 def instance_static(filename):
     context = os.getenv("SCANDROID_CONTEXT", "local")
@@ -1106,15 +1122,23 @@ def instance_static(filename):
     resp.headers["Cache-Control"] = "no-cache, must-revalidate"
     return resp
 
+
 @app.route("/")
 def landing_page():
     lang = request.args.get("lang", "en")
-    return render_template("home.html", lang=lang, t=translations.get(lang, translations["en"]))
+    return render_template(
+        "home.html", lang=lang, t=translations.get(lang, translations["en"])
+    )
+
 
 @app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
     # language handling
-    lang = request.args.get("lang") or request.form.get("lang") or session.get("lang", "en")
+    lang = (
+        request.args.get("lang")
+        or request.form.get("lang")
+        or session.get("lang", "en")
+    )
     session["lang"] = lang
     t = translations.get(lang, translations["en"])
 
@@ -1131,8 +1155,9 @@ def admin_login():
     if not base_url:
         return render_template(
             "admin_login.html",
-            lang=lang, t=t,
-            error="❌ Missing url121 in system configuration."
+            lang=lang,
+            t=t,
+            error="❌ Missing url121 in system configuration.",
         )
 
     login_url = f"{base_url}/api/users/login"
@@ -1145,8 +1170,9 @@ def admin_login():
         # API unreachable
         return render_template(
             "admin_login.html",
-            lang=lang, t=t,
-            error=t.get("api_unreachable", "Unable to reach login server.")
+            lang=lang,
+            t=t,
+            error=t.get("api_unreachable", "Unable to reach login server."),
         )
 
     # ✔ Success
@@ -1161,17 +1187,13 @@ def admin_login():
             "admin_login.html",
             lang=lang,
             t=t,
-            error=t.get("wrong_credentials", "Incorrect username or password.")
+            error=t.get("wrong_credentials", "Incorrect username or password."),
         )
 
     # ❌ Any other response
     return render_template(
-        "admin_login.html",
-        lang=lang,
-        t=t,
-        error=f"Login failed ({res.status_code})."
+        "admin_login.html", lang=lang, t=t, error=f"Login failed ({res.status_code})."
     )
-
 
 
 @app.route("/admin-dashboard")
@@ -1182,13 +1204,10 @@ def admin_dashboard():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
 
-
     return render_template(
-        "admin_dashboard.html",
-        lang=lang,
-        t=t,
-        username=session.get("admin_username")
+        "admin_dashboard.html", lang=lang, t=t, username=session.get("admin_username")
     )
+
 
 @app.route("/admin-logout")
 def admin_logout():
@@ -1201,6 +1220,7 @@ from flask import request, session, redirect, url_for, flash, render_template, j
 import requests
 from requests.auth import HTTPBasicAuth
 import json
+
 
 @app.route("/system-config", methods=["GET", "POST"])
 def system_config():
@@ -1241,17 +1261,14 @@ def system_config():
             if not pid or not asset_id:
                 continue
 
-            entry = {
-                "programId": int(pid),
-                "koboAssetId": asset_id.strip()
-            }
+            entry = {"programId": int(pid), "koboAssetId": asset_id.strip()}
 
             # ---- Validate Kobo asset ----
             try:
                 r = requests.get(
                     f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
                     headers={"Authorization": f"Token {kobo_token}"},
-                    timeout=10
+                    timeout=10,
                 )
                 if r.status_code == 200:
                     j = r.json()
@@ -1284,7 +1301,7 @@ def system_config():
         try:
             r = requests.post(
                 f"{url121}/api/users/login",
-                json={"username": username121, "password": password121}
+                json={"username": username121, "password": password121},
             )
             if r.status_code == 201:
                 j = r.json()
@@ -1299,12 +1316,14 @@ def system_config():
             try:
                 r = requests.get(
                     f"{url121}/api/programs/{pid}",
-                    cookies={"access_token_general": token}
+                    cookies={"access_token_general": token},
                 )
                 if r.status_code == 200:
                     pdata = r.json()
                     titles = pdata.get("titlePortal", {})
-                    title = titles.get(lang) or next(iter(titles.values()), f"Program {pid}")
+                    title = titles.get(lang) or next(
+                        iter(titles.values()), f"Program {pid}"
+                    )
                     program_options.append({"id": pid, "title": title})
             except Exception as e:
                 print(f"Program load failed ({pid}):", e)
@@ -1319,9 +1338,8 @@ def system_config():
         program_mappings=program_mappings,
         username=session.get("admin_username"),
         lang=lang,
-        t=t
+        t=t,
     )
-
 
 
 @app.route("/api/program-attributes/<int:program_id>")
@@ -1343,9 +1361,9 @@ def api_program_attributes(program_id):
             f"{url121}/api/users/login",
             json={
                 "username": system_config.get("username121", ""),
-                "password": system_config.get("password121", "")
+                "password": system_config.get("password121", ""),
             },
-            timeout=10
+            timeout=10,
         )
 
         if login_resp.status_code == 201:
@@ -1354,9 +1372,7 @@ def api_program_attributes(program_id):
 
             # Registration attributes
             r = requests.get(
-                f"{url121}/api/programs/{program_id}",
-                cookies=cookies,
-                timeout=10
+                f"{url121}/api/programs/{program_id}", cookies=cookies, timeout=10
             )
             if r.status_code == 200:
                 for attr in r.json().get("programRegistrationAttributes", []):
@@ -1373,7 +1389,9 @@ def api_program_attributes(program_id):
     # Kobo image fields for this program
     try:
         programs = system_config.get("PROGRAMS", [])
-        program = next((p for p in programs if str(p.get("programId")) == str(program_id)), None)
+        program = next(
+            (p for p in programs if str(p.get("programId")) == str(program_id)), None
+        )
         if program:
             asset_id = program.get("koboAssetId")
             kobo_token = system_config.get("KOBO_TOKEN")
@@ -1383,7 +1401,7 @@ def api_program_attributes(program_id):
                 r = requests.get(
                     f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
                     headers={"Authorization": f"Token {kobo_token}"},
-                    timeout=10
+                    timeout=10,
                 )
                 if r.status_code == 200:
                     survey = r.json().get("content", {}).get("survey", [])
@@ -1392,12 +1410,23 @@ def api_program_attributes(program_id):
                             continue
                         raw_label = item.get("label")
                         if isinstance(raw_label, list) and raw_label:
-                            label = raw_label[0] if isinstance(raw_label[0], str) else next(iter(raw_label[0].values()), "")
+                            label = (
+                                raw_label[0]
+                                if isinstance(raw_label[0], str)
+                                else next(iter(raw_label[0].values()), "")
+                            )
                         elif isinstance(raw_label, dict):
-                            label = raw_label.get("en") or next(iter(raw_label.values()), "")
+                            label = raw_label.get("en") or next(
+                                iter(raw_label.values()), ""
+                            )
                         else:
                             label = str(raw_label or "")
-                        xpath = item.get("$xpath", "").replace("/data/", "").replace("data/", "").strip("/")
+                        xpath = (
+                            item.get("$xpath", "")
+                            .replace("/data/", "")
+                            .replace("data/", "")
+                            .strip("/")
+                        )
                         name = xpath or item.get("name", "")
                         if name:
                             kobo_image_fields.append({"name": name, "label": label})
@@ -1405,6 +1434,7 @@ def api_program_attributes(program_id):
         print(f"[api_program_attributes] Kobo error: {e}")
 
     return jsonify({"attributes": attributes, "kobo_image_fields": kobo_image_fields})
+
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
@@ -1452,8 +1482,8 @@ def config_page():
         system_config = {}
 
     programs_raw = system_config.get("PROGRAMS", [])
-    programs = []          # UI list (id + title)
-    program_lookup = {}    # Logic lookup (full object)
+    programs = []  # UI list (id + title)
+    program_lookup = {}  # Logic lookup (full object)
 
     url121 = system_config.get("url121")
 
@@ -1466,8 +1496,8 @@ def config_page():
                 f"{url121}/api/users/login",
                 json={
                     "username": system_config.get("username121", ""),
-                    "password": system_config.get("password121", "")
-                }
+                    "password": system_config.get("password121", ""),
+                },
             )
 
             if login_resp.status_code == 201:
@@ -1480,20 +1510,17 @@ def config_page():
 
                     try:
                         r = requests.get(
-                            f"{url121}/api/programs/{pid}",
-                            cookies=cookies,
-                            timeout=10
+                            f"{url121}/api/programs/{pid}", cookies=cookies, timeout=10
                         )
                         if r.status_code == 200:
                             titles = r.json().get("titlePortal", {})
-                            title = titles.get("en") or next(iter(titles.values()), title)
+                            title = titles.get("en") or next(
+                                iter(titles.values()), title
+                            )
                     except Exception:
                         pass
 
-                    programs.append({
-                        "id": str(pid),
-                        "title": title
-                    })
+                    programs.append({"id": str(pid), "title": title})
                     program_lookup[str(pid)] = p
 
         except Exception as e:
@@ -1527,9 +1554,9 @@ def config_page():
                         "photo",
                         {
                             "enabled": True,
-                            "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"}
-                        }
-                    )
+                            "labels": {"en": "Photo", "fr": "Photo", "ar": "صورة"},
+                        },
+                    ),
                 }
             }
         }
@@ -1560,8 +1587,8 @@ def config_page():
                 f"{url121}/api/users/login",
                 json={
                     "username": system_config.get("username121", ""),
-                    "password": system_config.get("password121", "")
-                }
+                    "password": system_config.get("password121", ""),
+                },
             )
 
             if login_resp.status_code == 201:
@@ -1573,7 +1600,7 @@ def config_page():
                     r = requests.get(
                         f"{url121}/api/programs/{program_id}/fsp-configurations",
                         cookies=cookies,
-                        timeout=10
+                        timeout=10,
                     )
                     if r.status_code == 200:
                         for fsp in r.json():
@@ -1589,7 +1616,7 @@ def config_page():
                     r = requests.get(
                         f"{url121}/api/programs/{program_id}",
                         cookies=cookies,
-                        timeout=10
+                        timeout=10,
                     )
                     if r.status_code == 200:
                         for attr in r.json().get("programRegistrationAttributes", []):
@@ -1598,12 +1625,11 @@ def config_page():
                                 continue
 
                             labels = attr.get("label") or {}
-                            label = labels.get("en") or next(iter(labels.values()), name)
+                            label = labels.get("en") or next(
+                                iter(labels.values()), name
+                            )
 
-                            allowed_attributes.append({
-                                "name": name,
-                                "label": label
-                            })
+                            allowed_attributes.append({"name": name, "label": label})
                 except Exception:
                     pass
 
@@ -1618,9 +1644,9 @@ def config_page():
         pdata = config_data.get("programs", {}).get(active_program_id)
         if pdata:
             pdata["fields"] = [
-                f for f in pdata.get("fields", [])
-                if f.get("key") in allowed_names
+                f for f in pdata.get("fields", []) if f.get("key") in allowed_names
             ]
+
     # ------------------------------------------------------
     # Kobo image fields
     # ------------------------------------------------------
@@ -1648,7 +1674,7 @@ def config_page():
             r = requests.get(
                 f"{kobo_server}/api/v2/assets/{asset_id}/?format=json",
                 headers={"Authorization": f"Token {token}"},
-                timeout=10
+                timeout=10,
             )
 
             if r.status_code == 200:
@@ -1664,7 +1690,9 @@ def config_page():
                             label = (
                                 raw_label.get("English")
                                 or raw_label.get("en")
-                                or next(iter(raw_label.values()), get_full_kobo_path(item))
+                                or next(
+                                    iter(raw_label.values()), get_full_kobo_path(item)
+                                )
                             )
 
                         elif isinstance(raw_label, list) and raw_label:
@@ -1673,7 +1701,9 @@ def config_page():
                                 label = (
                                     first.get("English")
                                     or first.get("en")
-                                    or next(iter(first.values()), get_full_kobo_path(item))
+                                    or next(
+                                        iter(first.values()), get_full_kobo_path(item)
+                                    )
                                 )
                             else:
                                 label = str(first)
@@ -1683,10 +1713,7 @@ def config_page():
 
                         path = get_full_kobo_path(item)
                         if path:
-                            kobo_image_fields.append({
-                                "name": path,
-                                "label": label
-                            })
+                            kobo_image_fields.append({"name": path, "label": label})
     except Exception as e:
         print("Kobo lookup failed:", e)
 
@@ -1745,7 +1772,9 @@ def fsp_login():
     config = load_config()
     base_url = config.get("url121")
     if not base_url:
-        return render_template("fsp_login.html", lang=lang, t=t, error="❌ Missing url121")
+        return render_template(
+            "fsp_login.html", lang=lang, t=t, error="❌ Missing url121"
+        )
 
     login_url = f"{base_url}/api/users/login"
 
@@ -1755,9 +1784,7 @@ def fsp_login():
 
         try:
             res = requests.post(
-                login_url,
-                json={"username": username, "password": password},
-                timeout=8
+                login_url, json={"username": username, "password": password}, timeout=8
             )
 
             if res.status_code == 201:
@@ -1775,6 +1802,7 @@ def fsp_login():
             error = t["login_error"]
 
     return render_template("fsp_login.html", lang=lang, t=t, error=error)
+
 
 @app.route("/fsp-programs")
 def fsp_program_selector():
@@ -1816,9 +1844,9 @@ def fsp_program_selector():
                 f"{url121}/api/users/login",
                 json={
                     "username": system_config.get("username121", ""),
-                    "password": system_config.get("password121", "")
+                    "password": system_config.get("password121", ""),
                 },
-                timeout=10
+                timeout=10,
             )
 
             if login_resp.status_code == 201:
@@ -1831,20 +1859,17 @@ def fsp_program_selector():
 
                     try:
                         r = requests.get(
-                            f"{url121}/api/programs/{pid}",
-                            cookies=cookies,
-                            timeout=10
+                            f"{url121}/api/programs/{pid}", cookies=cookies, timeout=10
                         )
                         if r.status_code == 200:
                             titles = r.json().get("titlePortal", {})
-                            title = titles.get("en") or next(iter(titles.values()), title)
+                            title = titles.get("en") or next(
+                                iter(titles.values()), title
+                            )
                     except Exception:
                         pass
 
-                    programs.append({
-                        "id": str(pid),
-                        "title": title
-                    })
+                    programs.append({"id": str(pid), "title": title})
 
         except Exception as e:
             print("Program lookup failed:", e)
@@ -1854,10 +1879,7 @@ def fsp_program_selector():
     # ------------------------------------------------------
     if not programs:
         programs = [
-            {
-                "id": str(p.get("programId")),
-                "title": str(p.get("programId"))
-            }
+            {"id": str(p.get("programId")), "title": str(p.get("programId"))}
             for p in programs_raw
         ]
 
@@ -1870,8 +1892,10 @@ def fsp_program_selector():
         lang=lang,
         t=t,
         username=username,
-        program_title="Program Selector"
+        program_title="Program Selector",
     )
+
+
 @app.route("/select-program/<program_id>")
 def select_program(program_id):
     if not session.get("fsp_logged_in"):
@@ -1885,6 +1909,7 @@ def select_program(program_id):
 
     # redirect into the admin page WITH query param
     return redirect(url_for("fsp_admin", program_id=str(program_id), lang=lang))
+
 
 @app.route("/fsp-admin")
 def fsp_admin():
@@ -1909,14 +1934,13 @@ def fsp_admin():
     # Pass full display config to template so it can be stored in IndexedDB
     display_config = _full_display
 
-    column_to_match = get_column_to_match(program_id) or system_config.get("COLUMN_TO_MATCH")
+    column_to_match = get_column_to_match(program_id) or system_config.get(
+        "COLUMN_TO_MATCH"
+    )
     programs = system_config.get("PROGRAMS", [])
 
     # --- resolve program ---
-    program = next(
-        (p for p in programs if str(p.get("programId")) == program_id),
-        None
-    )
+    program = next((p for p in programs if str(p.get("programId")) == program_id), None)
 
     if not program:
         return redirect(url_for("fsp_program_selector", lang=lang))
@@ -1930,20 +1954,22 @@ def fsp_admin():
                 f"{url121}/api/users/login",
                 json={
                     "username": system_config.get("username121", ""),
-                    "password": system_config.get("password121", "")
+                    "password": system_config.get("password121", ""),
                 },
-                timeout=8
+                timeout=8,
             )
             if login_resp.status_code == 201:
                 token = login_resp.json().get("access_token_general")
                 r = requests.get(
                     f"{url121}/api/programs/{program_id}",
                     cookies={"access_token_general": token},
-                    timeout=8
+                    timeout=8,
                 )
                 if r.status_code == 200:
                     titles = r.json().get("titlePortal", {})
-                    program_title = titles.get(lang) or next(iter(titles.values()), program_title)
+                    program_title = titles.get(lang) or next(
+                        iter(titles.values()), program_title
+                    )
         except Exception as e:
             print(f"[fsp_admin] Failed to fetch 121 program title: {e}")
 
@@ -1960,8 +1986,8 @@ def fsp_admin():
         t=t,
         config=system_config,
         program_title=program_title,
-        program_id=program_id,   # ✅ this feeds ACTIVE_PROGRAM_ID in JS
-        username=username
+        program_id=program_id,  # ✅ this feeds ACTIVE_PROGRAM_ID in JS
+        username=username,
     )
 
 
@@ -1973,13 +1999,10 @@ def sync_fsp():
     # 🔴 get selected program from session
     program_id = session.get("fsp_program_id")
     if not program_id:
-        return jsonify({
-            "success": False,
-            "message": "❌ No program selected"
-        })
+        return jsonify({"success": False, "message": "❌ No program selected"})
 
     env = os.environ.copy()
-    env["PROGRAM_ID"] = str(program_id)   # 🔑 THIS IS THE FIX
+    env["PROGRAM_ID"] = str(program_id)  # 🔑 THIS IS THE FIX
 
     try:
         result = subprocess.run(
@@ -1988,35 +2011,29 @@ def sync_fsp():
             text=True,
             encoding="utf-8",
             errors="replace",
-            env=env                      # 🔑 PASS ENV
+            env=env,  # 🔑 PASS ENV
         )
 
         print("\n[DEBUG] STDOUT:\n", result.stdout)
         print("\n[DEBUG] STDERR:\n", result.stderr)
 
         if result.returncode != 0:
-            return jsonify({
-                "success": False,
-                "message": f"❌ Script failed:\n{result.stderr or result.stdout}"
-            })
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"❌ Script failed:\n{result.stderr or result.stdout}",
+                }
+            )
 
         for line in result.stdout.splitlines():
             if "beneficiaries" in line.lower():
-                return jsonify({
-                    "success": True,
-                    "message": f"✅ {line.strip()}"
-                })
+                return jsonify({"success": True, "message": f"✅ {line.strip()}"})
 
-        return jsonify({
-            "success": True,
-            "message": "✅ Sync completed"
-        })
+        return jsonify({"success": True, "message": "✅ Sync completed"})
 
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"❌ Error running sync: {e}"
-        })
+        return jsonify({"success": False, "message": f"❌ Error running sync: {e}"})
+
 
 @app.route("/fsp-logout")
 def fsp_logout():
@@ -2059,20 +2076,22 @@ def scan():
                     f"{url121}/api/users/login",
                     json={
                         "username": system_config.get("username121", ""),
-                        "password": system_config.get("password121", "")
+                        "password": system_config.get("password121", ""),
                     },
-                    timeout=8
+                    timeout=8,
                 )
                 if login_resp.status_code == 201:
                     token = login_resp.json().get("access_token_general")
                     r = requests.get(
                         f"{url121}/api/programs/{program_id}",
                         cookies={"access_token_general": token},
-                        timeout=8
+                        timeout=8,
                     )
                     if r.status_code == 200:
                         titles = r.json().get("titlePortal", {})
-                        program_title = titles.get(lang) or next(iter(titles.values()), "")
+                        program_title = titles.get(lang) or next(
+                            iter(titles.values()), ""
+                        )
             except Exception as e:
                 print(f"[scan] Failed to fetch 121 program title: {e}")
 
@@ -2087,17 +2106,22 @@ def scan():
     )
 
 
-@app.route('/service-worker.js')
+@app.route("/service-worker.js")
 def sw():
-    return send_from_directory('static', 'service-worker.js', mimetype='application/javascript')
+    return send_from_directory(
+        "static", "service-worker.js", mimetype="application/javascript"
+    )
 
-@app.route('/manifest.webmanifest')
+
+@app.route("/manifest.webmanifest")
 def manifest():
-    return send_from_directory('static', 'manifest.webmanifest', mimetype='application/manifest+json')
-
+    return send_from_directory(
+        "static", "manifest.webmanifest", mimetype="application/manifest+json"
+    )
 
 
 from io import BytesIO
+
 
 @app.route("/api/offline/latest.zip")
 def api_offline_latest_zip():
@@ -2137,7 +2161,9 @@ def api_offline_latest_zip():
         for root, _, files in os.walk(latest):
             for fname in files:
                 full_path = os.path.join(root, fname)
-                arcname = os.path.relpath(full_path, latest)  # keep paths relative to batch root
+                arcname = os.path.relpath(
+                    full_path, latest
+                )  # keep paths relative to batch root
                 zf.write(full_path, arcname)
     mem.seek(0)
 
@@ -2148,7 +2174,8 @@ def api_offline_latest_zip():
         download_name="latest_offline_cache.zip",
     )
 
-@app.route('/ping')
+
+@app.route("/ping")
 def ping():
     return "ok", 200
 
@@ -2181,7 +2208,9 @@ def beneficiary_offline():
 
     config = load_config()
     enc_key = config.get("ENCRYPTION_KEY", "")
-    column_to_match = get_column_to_match(program_id) or config.get("COLUMN_TO_MATCH", "")
+    column_to_match = get_column_to_match(program_id) or config.get(
+        "COLUMN_TO_MATCH", ""
+    )
 
     return render_template(
         "beneficiary_offline.html",
@@ -2196,12 +2225,16 @@ def beneficiary_offline():
         program_currency=config.get("programCurrency", ""),
     )
 
+
 @app.route("/success-offline")
 def success_offline():
     lang = request.args.get("lang", "en")
     t = translations.get(lang, translations["en"])
     program_id = request.args.get("program_id") or session.get("fsp_program_id", "")
-    return render_template("success_offline.html", lang=lang, t=t, program_id=program_id)
+    return render_template(
+        "success_offline.html", lang=lang, t=t, program_id=program_id
+    )
+
 
 @app.route("/system-config.json")
 def system_config_json():
@@ -2228,7 +2261,6 @@ def api_column_to_match(program_id):
     return jsonify({"programId": str(program_id), "columnToMatch": column})
 
 
-
 def get_column_to_match(program_id):
     """Fetch columnToMatch for a program from the 121 API.
     Falls back to system_config COLUMN_TO_MATCH if API unavailable."""
@@ -2242,7 +2274,7 @@ def get_column_to_match(program_id):
                 r = requests.get(
                     f"{url121}/api/programs/{program_id}/fsp-configurations",
                     cookies={"access_token_general": token},
-                    timeout=10
+                    timeout=10,
                 )
                 if r.status_code == 200:
                     for fsp in r.json():
@@ -2259,6 +2291,7 @@ def get_column_to_match(program_id):
 
 def get_121_token():
     import requests
+
     config = load_config()
     username = config.get("username121")
     password = config.get("password121")
@@ -2272,9 +2305,7 @@ def get_121_token():
 
     try:
         resp = requests.post(
-            login_url,
-            json={"username": username, "password": password},
-            timeout=8
+            login_url, json={"username": username, "password": password}, timeout=8
         )
 
         if resp.status_code != 201:
@@ -2294,7 +2325,7 @@ def get_121_token():
         return None
 
 
-@app.route('/submit-payments', methods=['POST'])
+@app.route("/submit-payments", methods=["POST"])
 def submit_payments():
     import csv
     import io
@@ -2302,7 +2333,7 @@ def submit_payments():
     import json
     import traceback
     from datetime import datetime
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet, InvalidToken
 
     try:
         # Load config
@@ -2312,13 +2343,19 @@ def submit_payments():
         fernet_key = config.get("ENCRYPTION_KEY")
 
         if not program_id:
-            return "❌ No active program selected. Please go back and select a program.", 400
+            return (
+                "❌ No active program selected. Please go back and select a program.",
+                400,
+            )
 
         # Fetch column_to_match from 121 API for this specific program
         column_to_match = get_column_to_match(program_id)
 
         if not column_to_match:
-            return f"❌ Could not determine columnToMatch for program {program_id}. Check 121 FSP configuration.", 400
+            return (
+                f"❌ Could not determine columnToMatch for program {program_id}. Check 121 FSP configuration.",
+                400,
+            )
 
         if not fernet_key:
             return "❌ Missing ENCRYPTION_KEY in system_config.json", 400
@@ -2326,15 +2363,15 @@ def submit_payments():
         # Fernet decryptor
         try:
             fernet = Fernet(fernet_key.encode())
-        except Exception as e:
+        except ValueError as e:
             return f"❌ Invalid Fernet key: {e}", 400
 
         # Get uploaded CSV file
-        if 'csv' not in request.files:
+        if "csv" not in request.files:
             return "❌ No CSV file provided", 400
 
-        file = request.files['csv']
-        if file.filename == '':
+        file = request.files["csv"]
+        if file.filename == "":
             return "❌ Empty filename", 400
 
         try:
@@ -2354,6 +2391,7 @@ def submit_payments():
         cache_base = "offline-cache"
 
         import re
+
         def extract_batch_number(name):
             match = re.search(r"payment-recent-batch-(\d+)", name)
             return int(match.group(1)) if match else -1
@@ -2367,7 +2405,9 @@ def submit_payments():
             )
 
         # Filter batch dirs to only those belonging to the active program
-        all_dirs = [d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")]
+        all_dirs = [
+            d for d in os.listdir(cache_base) if d.startswith("payment-recent-batch-")
+        ]
         program_dirs = []
         for d in all_dirs:
             batch_info_path = os.path.join(cache_base, d, "batch_info.json")
@@ -2385,12 +2425,31 @@ def submit_payments():
         batch_dirs = sorted(program_dirs, key=extract_batch_number)
 
         if not batch_dirs:
-            return "❌ No recent payment batches found for this program — run sync first.", 400
+            return (
+                "❌ No recent payment batches found for this program — run sync first.",
+                400,
+            )
 
         latest_batch = batch_dirs[-1]
         print(f"[DEBUG] Using batch folder: {latest_batch}")
 
-        reg_cache_path = os.path.join(cache_base, latest_batch, "registrations_cache.json")
+        latest_batch_info = {}
+        latest_batch_info_path = os.path.join(
+            cache_base, latest_batch, "batch_info.json"
+        )
+        if os.path.exists(latest_batch_info_path):
+            try:
+                with open(latest_batch_info_path, "r", encoding="utf-8") as f:
+                    latest_batch_info = json.load(f)
+            except Exception:
+                latest_batch_info = {}
+
+        # Legacy batches (without metadata) are assumed encrypted.
+        cache_data_encrypted = bool(latest_batch_info.get("dataEncrypted", True))
+
+        reg_cache_path = os.path.join(
+            cache_base, latest_batch, "registrations_cache.json"
+        )
         if not os.path.exists(reg_cache_path):
             return "❌ registrations_cache.json missing — run sync again.", 400
 
@@ -2410,13 +2469,23 @@ def submit_payments():
             payment_id = record.get("paymentId")
 
             encrypted_value = record.get("data", {}).get(column_to_match, "")
+            record_data_encrypted = record.get("dataEncrypted")
+            if record_data_encrypted is None:
+                record_data_encrypted = cache_data_encrypted
 
             if encrypted_value and payment_id:
-                try:
-                    decrypted_value = fernet.decrypt(encrypted_value.encode()).decode().strip()
-                    match_to_pid[decrypted_value] = payment_id
-                except Exception as e:
-                    print(f"[!] Failed to decrypt value for UUID {uuid}: {e}")
+                if record_data_encrypted:
+                    try:
+                        decrypted_value = (
+                            fernet.decrypt(encrypted_value.encode()).decode().strip()
+                        )
+                        match_to_pid[decrypted_value] = payment_id
+                    except InvalidToken as e:
+                        print(
+                            f"[!] Failed to decrypt value for UUID {uuid} — invalid token: {e}"
+                        )
+                else:
+                    match_to_pid[str(encrypted_value).strip()] = payment_id
 
         # -------------------------------
         # GROUP CSV ROWS BY paymentId
@@ -2427,12 +2496,21 @@ def submit_payments():
             raw_value = row.get(column_to_match, "").strip()
             status = row.get("status", "").strip()
 
-            # If incoming value is still encrypted (rare)
-            if raw_value.startswith("gAAAA"):
+            # Only decrypt CSV values when explicitly marked as encrypted.
+            row_value_encrypted = str(
+                row.get("_scandroid_encrypted", "")
+            ).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }  # permissive “truthy” markers so different CSV exporters/users can flag encrypted rows without exact casing/format
+            if row_value_encrypted:
                 try:
                     raw_value = fernet.decrypt(raw_value.encode()).decode().strip()
-                except Exception as e:
-                    print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
+                except InvalidToken as e:
+                    print(
+                        f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — invalid token: {e}"
+                    )
                     continue
 
             payment_id = match_to_pid.get(raw_value)
@@ -2441,10 +2519,9 @@ def submit_payments():
                 print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
-            grouped.setdefault(payment_id, []).append({
-                column_to_match: raw_value,
-                "status": status
-            })
+            grouped.setdefault(payment_id, []).append(
+                {column_to_match: raw_value, "status": status}
+            )
 
         if not grouped:
             return (
@@ -2467,18 +2544,21 @@ def submit_payments():
 
         for pid, items in grouped.items():
             output_buffer = io.StringIO()
-            writer = csv.DictWriter(output_buffer, fieldnames=[column_to_match, "status"])
+            writer = csv.DictWriter(
+                output_buffer, fieldnames=[column_to_match, "status"]
+            )
             writer.writeheader()
 
             for item in items:
-                writer.writerow({
-                    column_to_match: item[column_to_match],
-                    "status": item["status"]
-                })
+                writer.writerow(
+                    {column_to_match: item[column_to_match], "status": item["status"]}
+                )
 
             upload_url = f"{config['url121']}/api/programs/{program_id}/payments/{pid}/excel-reconciliation"
 
-            files = {"file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")}
+            files = {
+                "file": ("reconciliation.csv", output_buffer.getvalue(), "text/csv")
+            }
 
             try:
                 upload_resp = requests.post(
@@ -2502,7 +2582,9 @@ def submit_payments():
                 failure_details.append(
                     f"paymentId {pid}: HTTP {upload_resp.status_code} — {snippet}"
                 )
-                print(f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}")
+                print(
+                    f"[ERROR] Failed to submit to paymentId {pid}: {upload_resp.status_code} — {upload_resp.text}"
+                )
 
         # -------------------------------
         # FINAL RESPONSE
@@ -2513,7 +2595,11 @@ def submit_payments():
                 msg += f" ❌ {fail_count} failed: " + " | ".join(failure_details)
             return msg, 200
         else:
-            detail = " | ".join(failure_details) if failure_details else "no details available"
+            detail = (
+                " | ".join(failure_details)
+                if failure_details
+                else "no details available"
+            )
             return f"❌ All submissions failed. {detail}", 502
 
     except Exception as e:
@@ -2539,7 +2625,7 @@ def invalid_qr():
         reason=reason,
         lang=lang,
         t=translations.get(lang, translations["en"]),
-        program_id=program_id
+        program_id=program_id,
     )
 
 
@@ -2648,7 +2734,9 @@ def vouchers_page():
     username = session.get("admin_username", "")
 
     # Program title from session OR fallback to system_config
-    program_title = session.get("program_title") or system_config.get("programTitle", "")
+    program_title = session.get("program_title") or system_config.get(
+        "programTitle", ""
+    )
 
     # Program dropdown + which programs already have a saved voucher design
     programs, _ = resolve_programs(system_config)
@@ -2670,7 +2758,6 @@ def vouchers_page():
         designs_status=designs_status,
         active_program_id=active_program_id,
     )
-
 
 
 @app.route("/vouchers/upload", methods=["POST"])
@@ -2704,7 +2791,9 @@ def vouchers_upload():
                         if key is None:
                             continue
                         clean_key = key.strip().replace("\ufeff", "").lower()
-                        clean_row[clean_key] = value.strip() if isinstance(value, str) else value
+                        clean_row[clean_key] = (
+                            value.strip() if isinstance(value, str) else value
+                        )
 
                     ref = (
                         clean_row.get("referenceid")
@@ -2723,6 +2812,7 @@ def vouchers_upload():
         # ---------------------------------------------------------------------
         elif filename.endswith(".xlsx"):
             from openpyxl import load_workbook
+
             wb = load_workbook(upload_path, read_only=True, data_only=True)
             ws = wb.active
 
@@ -2763,6 +2853,7 @@ def vouchers_upload():
         # ---------------------------------------------------------------------
         elif filename.endswith(".xls"):
             import xlrd
+
             wb = xlrd.open_workbook(upload_path)
             sh = wb.sheet_by_index(0)
 
@@ -2803,6 +2894,7 @@ def vouchers_upload():
     except Exception as e:
         return jsonify({"success": False, "message": f"Failed to parse file: {e}"}), 400
 
+
 @app.route("/vouchers/download", methods=["GET"])
 def vouchers_download():
     if not session.get("admin_logged_in"):
@@ -2823,8 +2915,11 @@ def vouchers_download():
         with open(file_path, "r", encoding="utf-8", errors="replace") as infile:
             reader = csv.DictReader(infile.read().splitlines())
             for row in reader:
-                clean_row = {k.strip().lower(): (v.strip() if isinstance(v, str) else v)
-                             for k, v in row.items() if k}
+                clean_row = {
+                    k.strip().lower(): (v.strip() if isinstance(v, str) else v)
+                    for k, v in row.items()
+                    if k
+                }
 
                 ref = (
                     clean_row.get("referenceid")
@@ -2876,12 +2971,12 @@ def vouchers_download():
             clean_row["referenceid"] = str(ref).strip()
             rows.append(clean_row)
 
-
     # -----------------------------
     # CASE 3: XLS
     # -----------------------------
     elif filename.endswith(".xls"):
         import xlrd
+
         wb = xlrd.open_workbook(upload_path)
         sh = wb.sheet_by_index(0)
 
@@ -2889,12 +2984,17 @@ def vouchers_download():
         header_row_index = None
         for i in range(sh.nrows):
             row = sh.row_values(i)
-            if any(str(c).strip() for c in row):   # Row contains at least 1 non-empty cell
+            if any(
+                str(c).strip() for c in row
+            ):  # Row contains at least 1 non-empty cell
                 header_row_index = i
                 break
 
         if header_row_index is None:
-            return jsonify({"success": False, "message": "No valid header row found"}), 400
+            return (
+                jsonify({"success": False, "message": "No valid header row found"}),
+                400,
+            )
 
         # Extract header names
         headers = [
@@ -2950,5 +3050,5 @@ def vouchers_download():
         pdf_io,
         mimetype="application/pdf",
         as_attachment=True,
-        download_name="vouchers.pdf"
+        download_name="vouchers.pdf",
     )
