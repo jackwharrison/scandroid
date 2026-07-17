@@ -406,6 +406,81 @@
         content: "⚠";
         font-size: 0.95rem;
       }
+
+      /* Prominent connectivity control (top of main).
+         Large, colour + icon driven, minimal text — built for low-literacy /
+         low-experience users. Status banner + one big toggle button. */
+      .conn-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 0 0 20px;
+      }
+      .conn-banner {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 18px;
+        border-radius: 14px;
+      }
+      .conn-banner-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        color: #ffffff;
+      }
+      .conn-banner-icon svg { width: 30px; height: 30px; }
+      .conn-banner-title { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
+      .conn-banner-sub   { font-size: 0.95rem; font-weight: 500; margin-top: 3px; }
+
+      /* Status colours (whole card driven by a state class on .conn-card) */
+      .conn-card.is-online  .conn-banner      { background: #dcfce7; }
+      .conn-card.is-online  .conn-banner-icon { background: #16a34a; }
+      .conn-card.is-online  .conn-banner-title,
+      .conn-card.is-online  .conn-banner-sub  { color: #166534; }
+
+      .conn-card.is-forced  .conn-banner      { background: #dbeafe; }
+      .conn-card.is-forced  .conn-banner-icon { background: #2563eb; }
+      .conn-card.is-forced  .conn-banner-title,
+      .conn-card.is-forced  .conn-banner-sub  { color: #1e40af; }
+
+      .conn-card.is-offline .conn-banner      { background: #fee2e2; }
+      .conn-card.is-offline .conn-banner-icon { background: #dc2626; }
+      .conn-card.is-offline .conn-banner-title,
+      .conn-card.is-offline .conn-banner-sub  { color: #991b1b; }
+
+      /* The one big toggle button */
+      .conn-toggle-big {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        min-height: 64px;
+        padding: 0 20px;
+        border-radius: 14px;
+        border: 2px solid #cbd5e1;
+        background: #ffffff;
+        color: #111827;
+        font-size: 1.2rem;
+        font-weight: 700;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .conn-toggle-big svg { width: 26px; height: 26px; flex: 0 0 auto; }
+      .conn-toggle-big:active { transform: scale(0.99); }
+      .conn-toggle-big:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+      /* When offline mode is ON, the button becomes the green "go back online" action */
+      .conn-card.is-forced .conn-toggle-big {
+        background: #dcfce7;
+        border-color: #16a34a;
+        color: #166534;
+      }
+
       .back-btn {
         display: inline-flex;
         align-items: center;
@@ -520,6 +595,21 @@
     <span>{{ t.current_program or "Program" }}: <strong>{{ program_title }}</strong></span>
   </div>
   {% endif %}
+
+  <!-- CONNECTIVITY CONTROL (prominent, top of screen) -->
+  <div id="connCard" class="conn-card is-online">
+    <div class="conn-banner">
+      <span class="conn-banner-icon" id="connIcon" aria-hidden="true"></span>
+      <div>
+        <div class="conn-banner-title" id="connTitle">{{ t.status_online or "Online" }}</div>
+        <div class="conn-banner-sub" id="connSub">{{ t.status_online_sub or "You have internet" }}</div>
+      </div>
+    </div>
+    <button id="connToggleBig" type="button" class="conn-toggle-big" role="switch" aria-checked="false">
+      <span id="connToggleIcon" aria-hidden="true"></span>
+      <span id="connToggleText">{{ t.work_offline or "Work offline" }}</span>
+    </button>
+  </div>
 
   <!-- SYNC BLOCK -->
   <div class="row-box">
@@ -639,13 +729,74 @@ document.addEventListener('click', function(e) {
 
 <script>
   // -----------------------------
+  // OFFLINE STATE MODEL
+  // Effective offline = user forced it OR the device has no network.
+  // navigator.onLine is trusted only when false (device genuinely offline).
+  // Server reachability is verified on demand at action time, never polled.
+  // -----------------------------
+  let offlineModeForced =
+    localStorage.getItem(`scandroid_offline_mode_${ACTIVE_PROGRAM_ID}`) === '1';
+
+  function isEffectivelyOffline() {
+    return offlineModeForced || !navigator.onLine;
+  }
+
+  // One-shot reachability probe. Only meaningful when we THINK we're online;
+  // catches the "connected to wifi but server/internet unreachable" case.
+  async function serverReachable(timeoutMs = 4000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`/ping?t=${Date.now()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      return res.ok;
+    } catch (e) {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Inline SVG icons (no external icon dependency needed).
+  const ICON_WIFI =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>';
+  const ICON_WIFI_OFF =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>';
+  const ICON_CLOUD_OFF =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+  const connToggleBig = document.getElementById('connToggleBig');
+  if (connToggleBig) {
+    connToggleBig.addEventListener('click', () => {
+      offlineModeForced = !offlineModeForced;
+      localStorage.setItem(
+        `scandroid_offline_mode_${ACTIVE_PROGRAM_ID}`,
+        offlineModeForced ? '1' : '0'
+      );
+      applyConnectivityState();
+    });
+  }
+
+  // -----------------------------
   // UPDATED SYNC BUTTON HANDLER
   // -----------------------------
   document.getElementById("syncBtn").addEventListener("click", async function () {
-    if (!navigator.onLine) return;
+    if (isEffectivelyOffline()) return;
 
     const btn = this;
     const statusDiv = document.getElementById("statusMessage");
+
+    // We think we're online — confirm the server is actually reachable before
+    // starting, so a flaky/captive connection fails once, cleanly, up front.
+    if (!(await serverReachable())) {
+      if (statusDiv) statusDiv.textContent =
+        (t.cannot_sync_offline || "Cannot sync while offline") +
+        " — " + (t.server_unreachable || "server not reachable");
+      return;
+    }
 
     // Store original button content (SVG + text)
     const originalHTML = btn.innerHTML;
@@ -738,15 +889,51 @@ document.addEventListener('click', function(e) {
     });
   }
 
-  // Connectivity: the status pill and its ping-based polling were removed
-  // because they misreported state. Sync/Send are guarded at click time
-  // (navigator.onLine checks in their handlers); here we keep the buttons'
-  // enabled state and offline hints in sync with the browser's native
-  // online/offline events, which are reliable for this purpose.
+  // Connectivity: single source of truth is isEffectivelyOffline(), driven by
+  // the browser's native online/offline events (reliable) plus the user's
+  // manual "Work offline" toggle. No polling — the old ping-based pill was
+  // removed because timer polling misreported state. The pill below reflects
+  // the combined state; Sync/Send are guarded at click time.
   function applyConnectivityState() {
+    const off = isEffectivelyOffline();
+
     if (typeof updateOnlineButtonState === 'function') {
-      updateOnlineButtonState(navigator.onLine);
+      updateOnlineButtonState(!off);
     }
+
+    const card = document.getElementById('connCard');
+    if (!card) return;
+
+    const state = !off ? 'is-online' : (offlineModeForced ? 'is-forced' : 'is-offline');
+    card.className = 'conn-card ' + state;
+
+    const icon  = document.getElementById('connIcon');
+    const title = document.getElementById('connTitle');
+    const sub   = document.getElementById('connSub');
+
+    if (!off) {
+      if (icon) icon.innerHTML = ICON_WIFI;
+      if (title) title.textContent = (t.status_online || 'Online');
+      if (sub) sub.textContent = (t.status_online_sub || 'You have internet');
+    } else if (offlineModeForced) {
+      if (icon) icon.innerHTML = ICON_WIFI_OFF;
+      if (title) title.textContent = (t.status_offline_mode || 'Offline mode');
+      if (sub) sub.textContent = (t.status_offline_mode_sub || 'The app will not use the internet');
+    } else {
+      if (icon) icon.innerHTML = ICON_WIFI_OFF;
+      if (title) title.textContent = (t.status_offline || 'No connection');
+      if (sub) sub.textContent = (t.status_offline_sub || 'Check your signal');
+    }
+
+    // The one big button: "Work offline" when online, "Go back online" when forced.
+    const tgl = document.getElementById('connToggleBig');
+    const tglIcon = document.getElementById('connToggleIcon');
+    const tglText = document.getElementById('connToggleText');
+    if (tgl) tgl.setAttribute('aria-checked', offlineModeForced ? 'true' : 'false');
+    if (tglIcon) tglIcon.innerHTML = offlineModeForced ? ICON_WIFI : ICON_CLOUD_OFF;
+    if (tglText) tglText.textContent = offlineModeForced
+      ? (t.go_back_online || 'Go back online')
+      : (t.work_offline || 'Work offline');
   }
 
   applyConnectivityState();
@@ -813,7 +1000,7 @@ function scopedUUID(uuid) {
   // UPDATED importLatestCache() SUPPORTS SILENT MODE + RETURNS COUNTS
   // -----------------------------------------------------
   async function importLatestCache(silent = false) {
-    if (!navigator.onLine) {
+    if (isEffectivelyOffline()) {
       if (!silent) showOfflineWarningTemporarily();
       return { written: 0, photosWritten: 0 };
     }
@@ -1022,11 +1209,18 @@ function scopedUUID(uuid) {
   });
 
   if (submitCsvBtn) submitCsvBtn.addEventListener('click', async () => {
-    if (!navigator.onLine) {
+    if (isEffectivelyOffline()) {
       return;
     }
     if (!cachedCsvBlob) {
       alert("No CSV generated yet.");
+      return;
+    }
+
+    if (!(await serverReachable())) {
+      submitStatus.textContent =
+        (t.cannot_send_offline || "Cannot send while offline") +
+        " — " + (t.server_unreachable || "server not reachable");
       return;
     }
 
@@ -1237,10 +1431,19 @@ async function buildCsvFromPayments(payments) {
 document.getElementById("sendBtn").addEventListener("click", async function () {
   const btn = this;
 
-  if (!navigator.onLine) return;
+  if (isEffectivelyOffline()) return;
 
   const errorBox = document.getElementById("sendError");
   errorBox.style.display = "none";
+
+  // Confirm the server is actually reachable before attempting to send.
+  if (!(await serverReachable())) {
+    errorBox.textContent =
+      (t.cannot_send_offline || "Cannot send while offline") +
+      " — " + (t.server_unreachable || "server not reachable");
+    errorBox.style.display = "block";
+    return;
+  }
 
   // Save original HTML (SVG + “Send”)
   const originalHTML = btn.innerHTML;
@@ -1396,6 +1599,13 @@ function updateOnlineButtonState(isOnline) {
         if (syncHint) syncHint.classList.add("visible");
         if (sendHint) sendHint.classList.add("visible");
     }
+}
+
+// updateOnlineButtonState is now defined; re-run once so a persisted
+// "Work offline" state (or being offline at load) is reflected on the
+// buttons and pill on first paint, not just after an online/offline event.
+if (typeof applyConnectivityState === 'function') {
+  applyConnectivityState();
 }
 </script>
 

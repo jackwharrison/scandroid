@@ -1,4 +1,4 @@
-/* Scandroid PWA service worker — v8 */
+/* Scandroid PWA service worker — v28 */
 const CACHE_VERSION = 'v28'; // bump on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
