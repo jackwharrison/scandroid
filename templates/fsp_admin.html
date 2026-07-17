@@ -760,8 +760,10 @@ document.addEventListener('click', function(e) {
         cache: 'no-store',
         signal: controller.signal,
       });
+      console.debug('[conn] /ping status', res.status, 'ok', res.ok);
       return res.ok;
     } catch (e) {
+      console.debug('[conn] /ping failed', e && e.name);
       return false;
     } finally {
       clearTimeout(timer);
