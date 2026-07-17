@@ -730,15 +730,22 @@ document.addEventListener('click', function(e) {
 <script>
   // -----------------------------
   // OFFLINE STATE MODEL
-  // Effective offline = user forced it OR the device has no network.
-  // navigator.onLine is trusted only when false (device genuinely offline).
-  // Server reachability is verified on demand at action time, never polled.
+  // Effective offline = user forced it, OR the device reports no network,
+  // OR the server was not reachable at the last check.
+  // navigator.onLine is trusted only when FALSE. When it is true it is
+  // unreliable on mobile (e.g. it can stay true in flight mode and never fire
+  // the 'offline' event), so we verify with a lightweight probe and use that
+  // result to drive the status.
   // -----------------------------
   let offlineModeForced =
     localStorage.getItem(`scandroid_offline_mode_${ACTIVE_PROGRAM_ID}`) === '1';
 
+  // Result of the most recent reachability probe. Start optimistic so a page
+  // loaded online paints "Online" immediately; the first probe corrects it.
+  let lastReachable = navigator.onLine;
+
   function isEffectivelyOffline() {
-    return offlineModeForced || !navigator.onLine;
+    return offlineModeForced || !navigator.onLine || !lastReachable;
   }
 
   // One-shot reachability probe. Only meaningful when we THINK we're online;
@@ -776,7 +783,7 @@ document.addEventListener('click', function(e) {
         `scandroid_offline_mode_${ACTIVE_PROGRAM_ID}`,
         offlineModeForced ? '1' : '0'
       );
-      applyConnectivityState();
+      refreshConnectivity();
     });
   }
 
@@ -936,9 +943,49 @@ document.addEventListener('click', function(e) {
       : (t.work_offline || 'Work offline');
   }
 
+  // Re-evaluate connectivity and repaint. navigator.onLine === false is trusted
+  // instantly; when it claims online we verify with a probe because that claim
+  // is unreliable on mobile.
+  let connChecking = false;
+  async function refreshConnectivity() {
+    if (offlineModeForced) { applyConnectivityState(); return; }
+    if (!navigator.onLine) { lastReachable = false; applyConnectivityState(); return; }
+    if (connChecking) return;            // don't stack probes
+    connChecking = true;
+    try {
+      lastReachable = await serverReachable(4000);
+    } finally {
+      connChecking = false;
+    }
+    applyConnectivityState();
+  }
+
+  // Initial paint, then an immediate real check.
   applyConnectivityState();
-  window.addEventListener('online', applyConnectivityState);
-  window.addEventListener('offline', applyConnectivityState);
+  refreshConnectivity();
+
+  // On devices where these events DO fire, react instantly.
+  window.addEventListener('online', refreshConnectivity);
+  window.addEventListener('offline', refreshConnectivity);
+
+  // Backstop for devices where those events DON'T fire (e.g. flight mode not
+  // emitting 'offline'): poll while the screen is visible. Paused when hidden
+  // to save battery. This is the reliable path — pure event detection can't be
+  // trusted on mobile.
+  let connPollTimer = null;
+  function startConnPoll() {
+    if (connPollTimer) return;
+    connPollTimer = setInterval(refreshConnectivity, 5000);
+  }
+  function stopConnPoll() {
+    if (connPollTimer) { clearInterval(connPollTimer); connPollTimer = null; }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { refreshConnectivity(); startConnPoll(); }
+    else { stopConnPoll(); }
+  });
+  if (document.visibilityState === 'visible') startConnPoll();
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistration().then(reg => reg && reg.update());
   }
