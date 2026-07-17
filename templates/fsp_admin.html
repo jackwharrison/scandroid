@@ -748,9 +748,10 @@ document.addEventListener('click', function(e) {
     return offlineModeForced || !navigator.onLine || !lastReachable;
   }
 
-  // One-shot reachability probe. Only meaningful when we THINK we're online;
-  // catches the "connected to wifi but server/internet unreachable" case.
-  async function serverReachable(timeoutMs = 4000) {
+  // One-shot reachability probe. Returns true only if /ping answered within the
+  // timeout. A single false is NOT trusted on its own (see refreshConnectivity's
+  // debounce) — mobile networks drop individual requests even with full signal.
+  async function serverReachable(timeoutMs = 8000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -795,15 +796,6 @@ document.addEventListener('click', function(e) {
 
     const btn = this;
     const statusDiv = document.getElementById("statusMessage");
-
-    // We think we're online — confirm the server is actually reachable before
-    // starting, so a flaky/captive connection fails once, cleanly, up front.
-    if (!(await serverReachable())) {
-      if (statusDiv) statusDiv.textContent =
-        (t.cannot_sync_offline || "Cannot sync while offline") +
-        " — " + (t.server_unreachable || "server not reachable");
-      return;
-    }
 
     // Store original button content (SVG + text)
     const originalHTML = btn.innerHTML;
@@ -943,19 +935,42 @@ document.addEventListener('click', function(e) {
       : (t.work_offline || 'Work offline');
   }
 
-  // Re-evaluate connectivity and repaint. navigator.onLine === false is trusted
-  // instantly; when it claims online we verify with a probe because that claim
-  // is unreliable on mobile.
+  // Re-evaluate connectivity and repaint.
+  //  - navigator.onLine === false is reliable -> offline instantly.
+  //  - navigator.onLine === true is UNRELIABLE -> verify with a probe, but treat
+  //    the status as online until the probe fails several times in a row. This
+  //    is the key: one dropped /ping (normal on mobile) must NOT show offline.
+  const CONN_FAIL_THRESHOLD = 3;   // consecutive failed probes before showing offline
+  let connFailStreak = 0;
   let connChecking = false;
+
   async function refreshConnectivity() {
     if (offlineModeForced) { applyConnectivityState(); return; }
-    if (!navigator.onLine) { lastReachable = false; applyConnectivityState(); return; }
-    if (connChecking) return;            // don't stack probes
+
+    if (!navigator.onLine) {          // reliable signal: definitely offline
+      lastReachable = false;
+      connFailStreak = CONN_FAIL_THRESHOLD;
+      applyConnectivityState();
+      return;
+    }
+
+    if (connChecking) return;         // don't stack probes
     connChecking = true;
+    let ok = false;
     try {
-      lastReachable = await serverReachable(4000);
+      ok = await serverReachable(8000);
     } finally {
       connChecking = false;
+    }
+
+    if (ok) {
+      connFailStreak = 0;
+      lastReachable = true;           // recover immediately on any success
+    } else {
+      connFailStreak++;
+      // Only flip to offline once we've missed several in a row. Below the
+      // threshold we keep the previous state (assume still online).
+      if (connFailStreak >= CONN_FAIL_THRESHOLD) lastReachable = false;
     }
     applyConnectivityState();
   }
@@ -1264,13 +1279,6 @@ function scopedUUID(uuid) {
       return;
     }
 
-    if (!(await serverReachable())) {
-      submitStatus.textContent =
-        (t.cannot_send_offline || "Cannot send while offline") +
-        " — " + (t.server_unreachable || "server not reachable");
-      return;
-    }
-
     const formData = new FormData();
     formData.append('csv', cachedCsvBlob, 'payments.csv');
 
@@ -1482,15 +1490,6 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
 
   const errorBox = document.getElementById("sendError");
   errorBox.style.display = "none";
-
-  // Confirm the server is actually reachable before attempting to send.
-  if (!(await serverReachable())) {
-    errorBox.textContent =
-      (t.cannot_send_offline || "Cannot send while offline") +
-      " — " + (t.server_unreachable || "server not reachable");
-    errorBox.style.display = "block";
-    return;
-  }
 
   // Save original HTML (SVG + “Send”)
   const originalHTML = btn.innerHTML;
