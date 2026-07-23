@@ -2622,6 +2622,91 @@ def submit_payments():
         )
 
 
+@app.route('/submit-registration-updates', methods=['POST'])
+def submit_registration_updates():
+    """Push editable-field updates (e.g. prepaid card numbers) captured during
+    an offline distribution back to 121 via the bulk-update endpoint:
+
+        PATCH /api/programs/{programId}/registrations   (multipart/form-data)
+
+    The CSV must have a `referenceId` column plus one column per attribute to
+    update. Empty cells are treated by 121 as "set to empty", so the frontend
+    only emits cells that actually carry a value. This is separate from
+    /submit-payments so the payment reconciliation flow stays untouched.
+    """
+    import io
+    import csv as _csv
+    import traceback
+
+    try:
+        config = load_config()
+        program_id = session.get("fsp_program_id") or config.get("programId")
+        if not program_id:
+            return "❌ No active program selected. Please go back and select a program.", 400
+
+        url121 = config.get("url121")
+        if not url121:
+            return "❌ Missing url121 in system_config.json", 400
+
+        if 'csv' not in request.files:
+            return "❌ No CSV file provided", 400
+
+        file = request.files['csv']
+        if file.filename == '':
+            return "❌ Empty filename", 400
+
+        try:
+            csv_bytes = file.stream.read()
+            csv_text = csv_bytes.decode("utf-8")
+        except Exception as e:
+            return f"❌ Failed to read CSV: {e}", 400
+
+        # Light validation: must be non-empty and contain a referenceId column.
+        reader = _csv.DictReader(io.StringIO(csv_text))
+        headers = reader.fieldnames or []
+        rows = list(reader)
+        if not rows:
+            return "❌ CSV is empty — nothing to update.", 400
+        if "referenceId" not in headers:
+            return "❌ CSV is missing the required 'referenceId' column.", 400
+        if len(rows) > 100000:
+            return "❌ Too many rows — 121 supports at most 100k rows per update.", 400
+
+        token = get_121_token()
+        if not token:
+            return "❌ Login to 121 failed", 401
+
+        update_url = f"{url121}/api/programs/{program_id}/registrations"
+        files = {"file": ("registration_updates.csv", csv_bytes, "text/csv")}
+        # 121 requires a `reason` on every bulk update (stored in the audit log).
+        data = {"reason": "Updated during offline distribution (121 Scan)"}
+
+        try:
+            resp = requests.patch(
+                update_url,
+                files=files,
+                data=data,
+                cookies={"access_token_general": token},
+                timeout=60,
+            )
+        except requests.RequestException as e:
+            return f"❌ Network error updating registrations: {e}", 502
+
+        if resp.status_code in (200, 201, 202, 204):
+            return f"✅ Updated {len(rows)} registration(s) in 121.", 200
+
+        snippet = (resp.text or "")[:400]
+        return (
+            f"❌ 121 rejected the registration update (HTTP {resp.status_code}): {snippet}",
+            502,
+        )
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[FATAL] /submit-registration-updates crashed: {e}\n{tb}")
+        return f"❌ Server error in /submit-registration-updates: {type(e).__name__}: {e}", 500
+
+
 @app.route("/invalid-qr")
 def invalid_qr():
     # keep previously-selected language

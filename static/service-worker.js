@@ -1,5 +1,5 @@
-/* Scandroid PWA service worker — v29 */
-const CACHE_VERSION = 'v29'; // bump on every deploy
+/* Scandroid PWA service worker — v30 */
+const CACHE_VERSION = 'v30'; // bump on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 // NOTE: We deliberately do NOT precache /scan, /fsp-admin, /fsp-login here

@@ -5,10 +5,20 @@
 import os
 import sys
 import logging
-from azure.monitor.opentelemetry import configure_azure_monitor
 
+# Azure Monitor telemetry is only used in the cloud deployment, where the
+# connection string is provided via env var. Import it lazily and only when
+# that string is present, so local dev runs (which don't have
+# azure-monitor-opentelemetry installed) don't crash the sync subprocess at
+# import time. If you *do* want telemetry locally: pip install azure-monitor-opentelemetry
 if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-    configure_azure_monitor()
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor
+        configure_azure_monitor()
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "azure-monitor-opentelemetry not installed; skipping telemetry."
+        )
 
 # Log to stdout with a bare "message only" format so the parent process
 # (app.py /sync-fsp) can keep scanning this script's stdout for its status

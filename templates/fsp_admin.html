@@ -1485,6 +1485,72 @@ async function buildCsvFromPayments(payments) {
   return rows.map(r => r.join(",")).join("\n");
 }
 
+// Which fields did the admin mark "Editable" for this program (config page)?
+// These map 1:1 to 121 registration attribute names. phoneNumber / referenceId
+// are excluded because 121 does not allow updating them via bulk PATCH.
+function getEditableKeys() {
+  try {
+    const pc = (DISPLAY_CONFIG && DISPLAY_CONFIG.programs &&
+                DISPLAY_CONFIG.programs[ACTIVE_PROGRAM_ID]) || {};
+    const fields = Array.isArray(pc.fields) ? pc.fields : [];
+    return fields
+      .filter(f => f && f.editable && (f.key || f.name || f.field))
+      .map(f => f.key || f.name || f.field)
+      .filter(k => k !== 'phoneNumber' && k !== 'referenceId');
+  } catch (e) {
+    return [];
+  }
+}
+
+// Build the second CSV: registration updates for the 121 bulk-PATCH endpoint.
+// Header is [referenceId, ...editable attribute keys]. One row per beneficiary
+// (deduped by referenceId — a person may have several payment tranches but one
+// registration). Only columns/rows that actually carry a value are emitted, so
+// we never blank out existing 121 data (an empty CSV cell = "set to empty").
+// Returns null when there is nothing to update.
+function buildRegistrationUpdateCsv(payments) {
+  const editableKeys = getEditableKeys();
+  if (!editableKeys.length) return null;
+
+  const byRef = new Map();
+  for (const p of payments) {
+    const ref = p.reference_id;
+    const edits = p.edits || {};
+    if (!ref) continue;
+    const kept = {};
+    let any = false;
+    for (const k of editableKeys) {
+      const val = edits[k];
+      if (val != null && String(val).trim() !== '') { kept[k] = String(val).trim(); any = true; }
+    }
+    if (!any) continue;
+    byRef.set(ref, { ...(byRef.get(ref) || {}), ...kept }); // last non-empty wins
+  }
+  if (!byRef.size) return null;
+
+  // Only keep columns that at least one beneficiary filled in.
+  const usedKeys = editableKeys.filter(k =>
+    [...byRef.values()].some(v => v[k] != null && v[k] !== ''));
+  if (!usedKeys.length) return null;
+
+  const esc = (val) => {
+    const s = String(val == null ? '' : val);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+
+  const header = ['referenceId', ...usedKeys];
+  const lines = [header.map(esc).join(',')];
+  for (const [ref, vals] of byRef) {
+    // Skip anyone missing a value for a used column, so a partial fill in a
+    // multi-field batch can never wipe another field. (With a single editable
+    // field — the card-number case — nothing is ever skipped.)
+    if (usedKeys.some(k => vals[k] == null || vals[k] === '')) continue;
+    lines.push([ref, ...usedKeys.map(k => vals[k])].map(esc).join(','));
+  }
+  if (lines.length < 2) return null;
+  return lines.join('\n');
+}
+
 document.getElementById("sendBtn").addEventListener("click", async function () {
   const btn = this;
 
@@ -1530,6 +1596,28 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
     const text = await res.text();
     if (!res.ok) throw new Error(text || "Failed submitting payments");
 
+    // --- SECOND CSV: push editable-field updates (e.g. prepaid card numbers)
+    // back to 121 via the bulk registrations PATCH. Non-fatal: if this fails,
+    // the payments above have already gone through, so we surface a warning but
+    // still mark the payments as submitted below. Built from `payments` before
+    // the status mutation loop (it only reads reference_id / edits). ---
+    let regUpdateWarning = "";
+    try {
+      const regCsv = buildRegistrationUpdateCsv(payments);
+      if (regCsv) {
+        const regForm = new FormData();
+        regForm.append("csv", new Blob([regCsv], { type: "text/csv" }), "registration_updates.csv");
+        const regRes = await fetch("/submit-registration-updates", { method: "POST", body: regForm });
+        const regText = await regRes.text();
+        if (!regRes.ok) {
+          regUpdateWarning = (regText || ("HTTP " + regRes.status)).trim();
+        }
+      }
+    } catch (regErr) {
+      console.error("Registration update send failed:", regErr);
+      regUpdateWarning = (regErr && regErr.message) ? String(regErr.message) : String(regErr);
+    }
+
     // SUCCESS → mark each submitted record in place.
     // NOTE: p.uuid is ALREADY scoped (records are stored with scopedUUID), and
     // the store key is ['uuid','paymentId']. Re-scoping here would change the key
@@ -1567,6 +1655,15 @@ document.getElementById("sendBtn").addEventListener("click", async function () {
 
     localStorage.setItem("scandroid_last_payment_submission", formatted);
     document.getElementById("lastSubmissionText").textContent = formatted;
+
+    // Payments succeeded; if the registration (card number) update failed,
+    // warn without treating the whole send as failed.
+    if (regUpdateWarning) {
+      let w = regUpdateWarning;
+      if (w.length > 500) w = w.slice(0, 500) + "…";
+      errorBox.textContent = "⚠️ Payments sent, but registration updates failed: " + w;
+      errorBox.style.display = "block";
+    }
 
   } catch (err) {
     console.error(err);

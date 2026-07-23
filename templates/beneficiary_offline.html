@@ -34,6 +34,9 @@
     .field-row { display:grid; grid-template-columns:160px 1fr; gap:12px; align-items:baseline; }
     .field-label { color:var(--muted); font-size:14px; }
     .field-value { font-weight:600; word-break:break-word; font-size:14px; }
+    .field-edit { width:100%; padding:10px 12px; font-size:14px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; color:var(--ink); font-family:inherit; font-weight:600; }
+    .field-edit:focus { outline:none; border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,0.15); }
+    .field-edit::placeholder { color:#9ca3af; font-weight:400; }
     .note { font-size:12px; color:var(--muted); }
     .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .btn { padding:13px 14px; border-radius:12px; border:1px solid var(--line); background:#f9fafb; cursor:pointer; font-weight:700; font-size:15px; transition:opacity 0.15s; }
@@ -202,6 +205,7 @@
     const SERVER_FERNET_KEY="{{ fernet_key or '' }}";
     const COLUMN_TO_MATCH="{{ column_to_match }}";
     const PROGRAM_CURRENCY="{{ program_currency or '' }}";
+    const t_enter_value="{{ t.enter_value or 'Enter value' }}";
 
     function renderFields(container,data,keyB64){
       container.innerHTML="";
@@ -214,6 +218,21 @@
         const raw=hasVal?data[fk]:"";
         const row=document.createElement('div'); row.className='field-row';
         const lab=document.createElement('div'); lab.className='field-label'; lab.setAttribute('dir','auto'); lab.textContent=label;
+
+        if(f.editable){
+          // Editable field: render an input. Blank when the beneficiary has no
+          // value yet (e.g. a prepaid card number), prefilled with the current
+          // (decrypted) value when one already exists so staff can correct it.
+          // The typed value is collected on approval and sent back to 121.
+          const inp=document.createElement('input');
+          inp.type='text'; inp.className='field-edit'; inp.setAttribute('dir','auto');
+          inp.dataset.key=fk; inp.name='edit_'+fk;
+          inp.placeholder=(t_enter_value||'Enter value')+'…';
+          (async()=>{ try{ if(hasVal&&raw!==""&&raw!=null){ inp.value=looksEncrypted(String(raw))?(keyB64?await fernetDecryptString(String(raw),keyB64):''):String(raw); } }catch{ /* leave blank on decrypt failure */ } })();
+          row.appendChild(lab); row.appendChild(inp); container.appendChild(row);
+          continue;
+        }
+
         const v=document.createElement('div'); v.className='field-value'; v.setAttribute('dir','auto');
         (async()=>{ try{ if(!hasVal||raw===""||raw==null){v.innerHTML='<span class="note">(not available)</span>';} else if(looksEncrypted(String(raw))){ v.textContent=keyB64?await fernetDecryptString(String(raw),keyB64):'(encrypted)'; } else{v.textContent=String(raw);} }catch{v.innerHTML='<span class="note">(decryption failed)</span>';} })();
         row.appendChild(lab); row.appendChild(v); container.appendChild(row);
@@ -388,6 +407,22 @@
           alert(`Cannot find value for column "${MATCH_COL}". Please re-sync from the FSP admin page and try again.`);
           return;
         }
+        // Collect any editable field values the FSP typed in. Only non-empty
+        // values are captured so we never overwrite existing 121 data with a
+        // blank on Send. Keyed by the 121 attribute name (the field's key).
+        const edits={};
+        document.querySelectorAll('#fields .field-edit').forEach(inp=>{
+          const k=inp.dataset.key; const val=(inp.value||'').trim();
+          if(k && val!=='') edits[k]=val;
+        });
+
+        // referenceId for the 121 registrations update = the record's unscoped
+        // uuid (records are stored scoped as "<programId>:<referenceId>").
+        let referenceId=rec.uuid;
+        if(ACTIVE_PROGRAM_ID && referenceId.startsWith(ACTIVE_PROGRAM_ID+':')){
+          referenceId=referenceId.slice(ACTIVE_PROGRAM_ID.length+1);
+        }
+
         const tx=db.transaction("payments","readwrite");
         tx.objectStore("payments").put({
           uuid: rec.uuid,
@@ -396,6 +431,8 @@
           status: decisionValue,
           column_to_match: MATCH_COL,
           match_value: MATCH_VALUE,
+          reference_id: referenceId,
+          edits: edits,
           timestamp: new Date().toISOString()
         });
         tx.oncomplete=()=>{ note.textContent=`✅ Saved`; setTimeout(()=>{window.location.href=`/success-offline?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;},600); };

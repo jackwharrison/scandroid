@@ -137,7 +137,16 @@
 
     /* ---------- FIELD TABLE ---------- */
     .tbl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
-    table { width: 100%; border-collapse: collapse; background: #fff; min-width: 820px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    /* Fixed layout so columns fit the container (no horizontal scroll) and the
+       121 field name gets more room than the label columns. */
+    #fieldTable { table-layout: fixed; }
+    #fieldTable th:nth-child(1), #fieldTable td:nth-child(1) { width: 22%; }
+    #fieldTable th:nth-child(2), #fieldTable td:nth-child(2),
+    #fieldTable th:nth-child(3), #fieldTable td:nth-child(3),
+    #fieldTable th:nth-child(4), #fieldTable td:nth-child(4) { width: 18%; }
+    #fieldTable th:nth-child(5), #fieldTable td:nth-child(5) { width: 16%; }
+    #fieldTable th:nth-child(6), #fieldTable td:nth-child(6) { width: 8%; }
     thead th {
       background: #f9fafb; padding: 11px 12px; font-weight: 600; font-size: 0.85rem; color: var(--muted);
       border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap;
@@ -150,8 +159,8 @@
       background: #fff; color: var(--ink); font-family: inherit;
     }
     input:focus, select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
-    td select { min-width: 210px; cursor: pointer; }
-    .col-lang input { min-width: 210px; }
+    td select { min-width: 0; cursor: pointer; }
+    .col-lang input { min-width: 0; }
 
     .row-del {
       height: 38px; width: 38px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
@@ -198,6 +207,23 @@
     .toggle input:checked + .toggle-slider { background-color: var(--violet); }
     .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
     [dir="rtl"] .toggle input:checked + .toggle-slider:before { transform: translateX(-20px); }
+
+    /* ---------- EDITABLE COLUMN EMPHASIS ---------- */
+    thead th.col-editable {
+      text-align: center; color: var(--violet); background: #f7f2ff;
+      border-bottom: 2px solid #e6dbff;
+    }
+    td.col-editable-cell { text-align: center; }
+    .edit-toggle-wrap { display: inline-flex; align-items: center; gap: 10px; }
+    .edit-state {
+      font-size: 0.8rem; font-weight: 700; letter-spacing: 0.2px; white-space: nowrap; min-width: 62px; text-align: left;
+    }
+    .edit-state.on  { color: var(--violet); }
+    .edit-state.off { color: var(--muted); font-weight: 600; }
+    /* Highlight the whole row when its field is editable */
+    tr.editable-on td { background: #faf5ff; }
+    tr.editable-on td:first-child { box-shadow: inset 4px 0 0 var(--violet); }
+    [dir="rtl"] tr.editable-on td:first-child { box-shadow: inset -4px 0 0 var(--violet); }
 
     .photo-grid { margin-top: 16px; transition: opacity 0.2s ease; }
     .photo-grid.disabled { opacity: 0.45; pointer-events: none; }
@@ -335,12 +361,14 @@
                   <th>{{ t.label_en }}</th>
                   <th>{{ t.label_fr }}</th>
                   <th>{{ t.label_ar }}</th>
+                  <th class="col-editable">✏️ {{ t.editable or "Editable" }}</th>
                   <th>{{ t.remove }}</th>
                 </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
+          <p class="sub" style="margin:12px 0 0;">{{ t.editable_hint or "Turn on “Editable” to let distribution staff type a value for this field during a scan (e.g. a prepaid card number). Saved values are sent back to 121 to update the registration. Note: phone number and reference ID cannot be updated this way." }}</p>
           <button type="button" class="btn-add" onclick="addRow()">＋ {{ t.add_field }}</button>
         </div>
       </section>
@@ -621,7 +649,7 @@ function createFieldSelect(selectedKey) {
   return select;
 }
 
-function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
+function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''}, editable:false }) {
   const row = document.createElement('tr');
 
   const keyCell = document.createElement('td');
@@ -641,6 +669,48 @@ function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
     cell.appendChild(input);
     row.appendChild(cell);
   });
+
+  // Editable toggle: when on, this field is shown as an input on the
+  // beneficiary scan page and its value is sent back to 121 on Send.
+  // Rendered with an explicit state label + row highlight so it's obvious
+  // at a glance which fields staff can type into.
+  const editCell = document.createElement('td');
+  editCell.className = 'col-editable-cell';
+
+  const editWrap = document.createElement('div');
+  editWrap.className = 'edit-toggle-wrap';
+
+  const editLabel = document.createElement('label');
+  editLabel.className = 'toggle';
+  const editInput = document.createElement('input');
+  editInput.type = 'checkbox';
+  editInput.name = 'editable';
+  editInput.checked = !!item.editable;
+  const editSlider = document.createElement('span');
+  editSlider.className = 'toggle-slider';
+  editLabel.appendChild(editInput);
+  editLabel.appendChild(editSlider);
+
+  const editState = document.createElement('span');
+  editState.className = 'edit-state';
+
+  const syncEditableState = () => {
+    const on = editInput.checked;
+    row.classList.toggle('editable-on', on);
+    editState.classList.toggle('on', on);
+    editState.classList.toggle('off', !on);
+    editState.textContent = on
+      ? "{{ t.editable_on or 'Editable' }}"
+      : "{{ t.editable_off or 'Read-only' }}";
+  };
+  editInput.addEventListener('change', syncEditableState);
+
+  editWrap.appendChild(editLabel);
+  editWrap.appendChild(editState);
+  editCell.appendChild(editWrap);
+  row.appendChild(editCell);
+
+  syncEditableState();
 
   const removeCell = document.createElement('td');
   const btn = document.createElement('button');
@@ -743,7 +813,8 @@ document.getElementById('configForm').addEventListener('submit', async e => {
         en: row.querySelector('[name="label_en"]').value,
         fr: row.querySelector('[name="label_fr"]').value,
         ar: row.querySelector('[name="label_ar"]').value
-      }
+      },
+      editable: !!(row.querySelector('[name="editable"]') || {}).checked
     });
   }
 
