@@ -61,7 +61,7 @@
   <div class="header-controls">
     <div class="lang-select">
       <form method="get" action="/success-offline">
-        <input type="hidden" name="program_id" value="{{ program_id }}">
+        <input type="hidden" name="program_id" id="langProgramId" value="{{ program_id }}">
         <select name="lang" onchange="this.form.submit()">
           <option value="en" {% if lang == 'en' %}selected{% endif %}>English</option>
           <option value="fr" {% if lang == 'fr' %}selected{% endif %}>Français</option>
@@ -85,10 +85,10 @@
         <span id="counter" class="count-num">…</span>
       </div>
       <div class="actions">
-        <button class="btn btn-scan" onclick="window.location.href='/scan?lang={{ lang }}'">
+        <button id="scanNextBtn" class="btn btn-scan">
           {{ t["scan_next"] }}
         </button>
-        <button class="btn btn-home" onclick="window.location.href='/fsp-admin?program_id={{ program_id }}&lang={{ lang }}'">
+        <button id="goHomeBtn" class="btn btn-home">
           {{ t["go_home"] }}
         </button>
       </div>
@@ -102,8 +102,26 @@
 </footer>
 
 <script>
-  const ACTIVE_PROGRAM_ID = "{{ program_id or '' }}";
+  // This page is served cacheFirst with ignoreSearch, so the server-baked
+  // "{{ program_id }}" is usually empty (it comes from the precached shell).
+  // Read the live URL first — exactly like beneficiary_offline.html — so the
+  // count filter and the navigation buttons always know which program this
+  // session belongs to.
+  const _params = new URLSearchParams(location.search);
+  const ACTIVE_PROGRAM_ID = _params.get('program_id') || "{{ program_id or '' }}";
+  const LANG = _params.get('lang') || "{{ lang or 'en' }}";
+
   window.addEventListener("DOMContentLoaded", async () => {
+    // Wire navigation from the resolved values, never the baked-empty ones.
+    const homeBtn = document.getElementById("goHomeBtn");
+    if (homeBtn) homeBtn.onclick = () =>
+      window.location.href = `/fsp-admin?program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}&lang=${encodeURIComponent(LANG)}`;
+    const scanBtn = document.getElementById("scanNextBtn");
+    if (scanBtn) scanBtn.onclick = () =>
+      window.location.href = `/scan?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;
+    const langPid = document.getElementById("langProgramId");
+    if (langPid) langPid.value = ACTIVE_PROGRAM_ID;
+
     const setCount = (n) => { document.getElementById("counter").textContent = n; };
     try {
       const dbReq = indexedDB.open("scandroid");

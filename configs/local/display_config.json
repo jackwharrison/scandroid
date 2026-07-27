@@ -156,7 +156,8 @@
             "en": "Year of Birth",
             "fr": "Year of Birth",
             "ar": "Year of Birth"
-          }
+          },
+          "editable": false
         },
         {
           "key": "gender",
@@ -164,7 +165,17 @@
             "en": "Gender",
             "fr": "Gender",
             "ar": "Gender"
-          }
+          },
+          "editable": false
+        },
+        {
+          "key": "cardNumber",
+          "labels": {
+            "en": "cardNumber",
+            "fr": "cardNumber",
+            "ar": "cardNumber"
+          },
+          "editable": true
         }
       ],
       "qr": {
@@ -179,6 +190,17 @@
           "ar": ""
         }
       }
+    }
+  },
+  "voucher_designs": {
+    "4": {
+      "title": "CASH ON THE MOVE",
+      "subtitle": "Supporting people on the move especially those\r\nin vulnerable situations",
+      "logo1": null,
+      "logo2": null,
+      "logo1_size": "medium",
+      "logo2_size": "medium",
+      "show_qr": true
     }
   }
 }

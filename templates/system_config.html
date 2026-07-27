@@ -10,21 +10,24 @@
     :root {
       --pad: 16px;
       --gap: 12px;
-      --radius: 16px;
+      --radius: 18px;
       --card: #fff;
       --ink: #111827;
       --muted: #6b7280;
       --line: #e5e7eb;
       --bg: #f3f4f6;
       --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --shadow-hi: 0 18px 44px rgba(0,0,0,0.10);
       --navy: #002855;
       --violet: #7c3aed;
+      --kobo: #2f9be8;
+      --ok: #16a34a;
+      --ok-bg: #ecfdf5;
+      --bad: #dc2626;
     }
 
-    html, body {
-      height: 100%;
-      margin: 0;
-    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
 
     body {
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
@@ -32,7 +35,9 @@
       color: var(--ink);
       display: flex;
       flex-direction: column;
+      -webkit-font-smoothing: antialiased;
     }
+    @media (prefers-reduced-motion: reduce){ * { transition: none !important; animation: none !important; } }
 
     /* ---------- HEADER (121 STYLE) ---------- */
     header {
@@ -45,319 +50,178 @@
       position: relative;
       z-index: 3000;
     }
-
-    /* Logo area */
-    .header-left {
-      display: flex;
-      align-items: center;
-    }
-
-    .header-left img {
-      height: 32px;
-      width: auto;
-      object-fit: contain;
-    }
-
-    /* Title */
+    .header-left { display: flex; align-items: center; }
+    .header-left img { height: 32px; width: auto; object-fit: contain; }
     .header-title {
-      flex: 1;
-      text-align: left;
-      padding-left: 20px;
-      font-size: 1.1rem;
-      color: #ffffff;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      flex: 1; text-align: left; padding-left: 20px; font-size: 1.1rem; color: #fff;
+      display: flex; align-items: center; gap: 6px;
     }
+    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; opacity: 0.95; }
 
-    .title-bold {
-      font-weight: 800;
-      letter-spacing: 0.3px;
-    }
-
-    .title-divider {
-      opacity: 0.8;
-    }
-
-    .title-program {
-      font-weight: 300;
-      opacity: 0.95;
-    }
-
-    /* Account button */
-    .account-icon-svg {
-      width: 16px;
-      height: 16px;
-      filter: invert(100%);
-    }
-
-    .account-arrow-svg {
-      width: 12px;
-      height: 12px;
-      filter: invert(100%);
-      margin-left: 4px;
-      transition: transform 0.15s ease;
-    }
-
+    .account-icon-svg { width: 16px; height: 16px; filter: invert(100%); }
+    .account-arrow-svg { width: 12px; height: 12px; filter: invert(100%); margin-left: 4px; transition: transform 0.15s ease; }
     .account-btn {
-      background: transparent;
-      border: none;
-      color: #ffffff;
-      padding: 6px 10px;
-      border-radius: 18px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: border 0.2s ease;
+      background: transparent; border: none; color: #fff; padding: 6px 10px; border-radius: 18px;
+      cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px;
+      transition: border 0.2s ease; border: 1px solid transparent;
     }
-
-    .account-btn:hover {
-      border: 1px solid rgba(255,255,255,0.9);
-    }
-
-    /* Rotate arrow when open */
-    .account-btn.active .account-arrow-svg {
-      transform: rotate(180deg);
-    }
-
-    /* Wrapper */
-    .header-account-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      position: relative;
-    }
-
+    .account-btn:hover { border: 1px solid rgba(255,255,255,0.9); }
+    .account-btn.active .account-arrow-svg { transform: rotate(180deg); }
+    .header-account-wrapper { display: flex; align-items: center; gap: 16px; position: relative; }
     .lang-select select {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      font-weight: 600;
-      cursor: pointer;
+      padding: 6px 10px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff;
+      font-weight: 600; cursor: pointer; font-family: inherit;
     }
-
-    /* Dropdown */
     .account-menu {
-      position: absolute;
-      background: #ffffff;
-      top: 48px;
-      right: 0;
-      min-width: 220px;
-      border-radius: 8px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
-      z-index: 3001;
-      padding: 10px 0;
+      position: absolute; background: #fff; top: 48px; right: 0; min-width: 220px; border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15); z-index: 3001; padding: 10px 0;
     }
-
-    .hidden {
-      display: none;
-    }
-
-    .account-menu-item {
-      padding: 10px 16px;
-      font-size: 14px;
-      text-decoration: none;
-      color: #000;
-      display: block;
-    }
-
-    .account-menu-item:hover {
-      background: #f2f2f2;
-    }
-
-    .account-menu-divider {
-      border-top: 1px solid #e5e7eb;
-      margin: 6px 0;
-    }
-
-    .user-info {
-      font-size: 13px;
-    }
+    .hidden { display: none; }
+    .account-menu-item { padding: 10px 16px; font-size: 14px; text-decoration: none; color: #000; display: block; }
+    .account-menu-item:hover { background: #f2f2f2; }
+    .account-menu-divider { border-top: 1px solid #e5e7eb; margin: 6px 0; }
+    .user-info { font-size: 13px; }
 
     /* ---------- FOOTER ---------- */
     footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 18px;
-      font-size: 0.9rem;
-      background-color: #002855;
-      border-top: 1px solid rgba(255,255,255,0.15);
-      color: #ffffff;
-      flex-wrap: wrap;
+      display: flex; justify-content: space-between; align-items: center; padding: 12px 18px;
+      font-size: 0.9rem; background-color: #002855; border-top: 1px solid rgba(255,255,255,0.15);
+      color: #fff; flex-wrap: wrap;
     }
 
-    /* ---------- MOBILE ---------- */
-    @media (max-width: 576px) {
-      header {
-        flex-direction: column;
-        gap: 8px;
-        padding: 12px;
-      }
-
-      .header-title {
-        padding-left: 0;
-        text-align: center;
-      }
-
-      .header-account-wrapper {
-        flex-direction: column;
-        gap: 8px;
-      }
-    }
-
-    /* ---------- EXTRA STYLES FOR SYSTEM CONFIG LAYOUT ---------- */
-
+    /* ---------- SHELL ---------- */
     .wrapper {
-      width: 100%;
-      max-width: 980px;
-      margin: 24px auto 40px auto;
-      padding: 0 20px;
-      box-sizing: border-box;
-      flex: 1;
+      width: 100%; max-width: 900px; margin: 28px auto 48px auto; padding: 0 20px;
+      box-sizing: border-box; flex: 1;
     }
-
     .page-back-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--navy);
-      text-decoration: none;
-      padding: 8px 14px;
-      background: #ffffff;
-      border-radius: 999px;
-      border: 2px solid var(--navy);
-      transition: 0.2s ease;
+      display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.95rem;
+      font-weight: 600; color: var(--navy); text-decoration: none; padding: 8px 14px; background: #fff;
+      border-radius: 999px; border: 2px solid var(--navy); transition: 0.2s ease;
     }
+    .page-back-btn:hover { background: #e3e8ef; }
+    .page-back-btn img { width: 14px; height: 14px; }
 
-    .page-back-btn:hover {
-      background: #e3e8ef;
+    h1 { margin: 22px 0 6px 0; font-size: 1.7rem; letter-spacing: -0.015em; font-weight: 800; text-align: center; }
+    .subtitle { margin: 0 auto 26px auto; text-align: center; color: var(--muted); font-size: 1rem; max-width: 60ch; line-height: 1.5; }
+
+    /* ---------- INTEGRATION CARDS ---------- */
+    .cards { display: flex; flex-direction: column; gap: 20px; }
+
+    .intg {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow-soft); overflow: hidden; transition: box-shadow 0.2s ease;
     }
+    .intg.open { box-shadow: var(--shadow-hi); }
 
-    .page-back-btn img {
-      width: 14px;
-      height: 14px;
+    /* header row: text LEFT, logo + chevron RIGHT */
+    .intg-head {
+      display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 20px;
+      padding: 22px 24px; cursor: pointer; user-select: none; width: 100%; background: none; border: 0;
+      text-align: left; font: inherit; color: inherit;
     }
+    .intg-head:focus-visible { outline: 3px solid #93c5fd; outline-offset: -3px; }
 
-    h1 {
-      margin: 0 0 12px 0;
-      font-size: 1.6rem;
-      text-align: center;
+    .intg-meta { min-width: 0; }
+    .intg-meta .name { font-size: 1.14rem; font-weight: 700; margin: 0 0 5px; letter-spacing: -0.01em; }
+    .intg-meta .status { font-size: 0.92rem; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+    .status .dot { height: 8px; width: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--muted); }
+    .status.ok  { color: var(--ok); }  .status.ok  .dot { background: var(--ok); }
+    .status.bad { color: var(--bad); } .status.bad .dot { background: var(--bad); }
+    .status .acctname { color: var(--ink); font-weight: 600; }
+
+    .logo-tile {
+      position: relative; height: 62px; width: 62px; flex: 0 0 auto; display: flex; align-items: center;
+      justify-content: center; border-radius: 15px; background: #f8fafc; border: 1px solid var(--line);
     }
-
-    .subtitle {
-      margin: 0 0 24px 0;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.95rem;
+    .logo-tile img { display: block; }
+    .logo-tile.kobo img { height: 40px; width: auto; }
+    .logo-tile.k121 img { height: 58px; width: 58px; border-radius: 50%; }
+    .badge {
+      position: absolute; top: -8px; right: -8px; height: 24px; width: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;
+      color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2); border: 2px solid #fff;
     }
+    .badge.ok { background: var(--ok); }
+    .badge.bad { background: var(--bad); }
 
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 24px;
-      align-items: start;
-      width: 100%;
+    .chev { color: #9ca3af; transition: transform 0.22s ease; }
+    .intg.open .chev { transform: rotate(180deg); }
+
+    /* expanding panel */
+    .panel { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .intg.open .panel { max-height: 1200px; }
+    .panel-inner { padding: 2px 24px 24px; border-top: 1px solid var(--line); }
+
+    label { display: block; font-weight: 600; font-size: 0.9rem; margin: 18px 0 6px; }
+    input[type="text"], input[type="password"], select {
+      width: 100%; padding: 11px 13px; font-size: 0.95rem; border: 1px solid #d1d5db; border-radius: 11px;
+      background: #fff; color: var(--ink); font-family: inherit;
     }
+    input:focus, select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+    .hint { font-size: 0.82rem; color: var(--muted); margin-top: 6px; line-height: 1.45; }
 
-    @media (max-width: 900px) {
-      .cards-grid {
-        grid-template-columns: 1fr;
-      }
+    .field-row { display: flex; gap: 10px; align-items: flex-end; }
+    .field-row .grow { flex: 1; }
+    .verify-btn {
+      flex: 0 0 auto; height: 44px; padding: 0 18px; border-radius: 11px; border: 2px solid var(--kobo);
+      background: #fff; color: var(--kobo); font-weight: 700; cursor: pointer; font-size: 0.9rem; font-family: inherit;
     }
+    .verify-btn:hover { background: #eaf5fd; }
+    .verify-btn:disabled { opacity: 0.6; cursor: default; }
 
-    .card {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: var(--pad);
-      box-shadow: var(--shadow-soft);
-      border: 1px solid var(--line);
-      box-sizing: border-box;
+    .linked { display: none; align-items: center; gap: 11px; margin-top: 15px; padding: 12px 14px; border-radius: 12px; font-size: 0.9rem; }
+    .linked.show { display: flex; }
+    .linked.ok  { background: var(--ok-bg); border: 1px solid #a7f3d0; }
+    .linked.bad { background: #fef2f2; border: 1px solid #fecaca; }
+    .linked .check { height: 22px; width: 22px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto; }
+    .linked.ok .check { background: var(--ok); } .linked.ok .lbl { color: #065f46; } .linked .who { font-weight: 700; }
+    .linked.bad .check { background: var(--bad); } .linked.bad .lbl { color: #991b1b; }
+
+    .program-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; margin-bottom: 14px; }
+    .program-row .remove-row {
+      height: 44px; width: 44px; border-radius: 11px; border: 1px solid var(--line); background: #fff;
+      cursor: pointer; font-size: 15px; color: var(--muted); font-family: inherit;
     }
-
-    .card h2 {
-      margin: 0 0 16px 0;
-      font-size: 1.2rem;
+    .program-row .remove-row:hover { border-color: var(--bad); color: var(--bad); }
+    .kobo-status { grid-column: 1 / -1; margin: -6px 0 0 0; font-size: 0.83rem; color: var(--ok); }
+    #add-program-row {
+      margin-top: 2px; padding: 8px 15px; border-radius: 999px; border: 2px dashed var(--violet);
+      background: #fff; color: var(--violet); font-weight: 600; cursor: pointer; font-size: 0.9rem; font-family: inherit;
     }
+    #add-program-row:hover { background: #f5f0ff; }
 
-    label {
-      font-weight: 600;
-      margin-top: 14px;
-      display: block;
-      font-size: 0.95rem;
-    }
-
-    input[type="text"],
-    input[type="password"],
-    select {
-      width: 100%;
-      padding: 10px 12px;
-      font-size: 0.95rem;
-      margin-top: 6px;
-      border: 1px solid #d1d5db;
-      border-radius: 10px;
-      box-sizing: border-box;
-    }
-
+    .savebar { display: flex; justify-content: center; margin-top: 30px; }
     .save-btn {
-      margin-top: 32px;
-      width: 260px;
-      padding: 12px 20px;
-      font-size: 1rem;
-      font-weight: 700;
-      background: #ffffff;
-      color: #7c3aed;
-      border: 2px solid #7c3aed;
-      border-radius: 999px;
-      cursor: pointer;
-      display: block;
-      margin-left: auto;
-      margin-right: auto;
-      transition: background 0.2s ease;
+      width: 280px; max-width: 100%; padding: 13px 20px; font-size: 1rem; font-weight: 700; background: #fff;
+      color: var(--violet); border: 2px solid var(--violet); border-radius: 999px; cursor: pointer;
+      transition: background 0.2s ease; font-family: inherit;
     }
+    .save-btn:hover { background: #f0e9ff; }
 
-    .save-btn:hover {
-      background: #ece2ff;
-    }
-
-    /* ---------- TOAST NOTIFICATION ---------- */
+    /* ---------- TOAST ---------- */
     #toast {
-      position: fixed;
-      bottom: 32px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: #111827;
-      color: #fff;
-      padding: 12px 24px;
-      border-radius: 999px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.25s ease, transform 0.25s ease;
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #111827; color: #fff; padding: 12px 24px; border-radius: 999px; font-size: 0.95rem;
+      font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.18); opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease; z-index: 9999; display: flex; align-items: center; gap: 8px;
     }
-
-    #toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     #toast.success { background: #16a34a; }
     #toast.error   { background: #dc2626; }
-  </style>
 
+    @media (max-width: 640px) {
+      header { flex-direction: column; gap: 8px; padding: 12px; }
+      .header-title { padding-left: 0; text-align: center; }
+      .header-account-wrapper { flex-direction: column; gap: 8px; }
+      .program-row { grid-template-columns: 1fr; }
+      .program-row .remove-row { width: 100%; }
+      .field-row { flex-direction: column; align-items: stretch; }
+      .intg-head { gap: 14px; padding: 18px; }
+    }
+  </style>
 </head>
 
 <body>
@@ -394,9 +258,7 @@
           <strong>Logged in as:</strong><br>
           {{ username }}
         </div>
-
         <div class="account-menu-divider"></div>
-
         <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
       </div>
     </div>
@@ -413,138 +275,153 @@
   <h1>{{ t.config_system }}</h1>
   <p class="subtitle">{{ t.config_system_desc }}</p>
 
+  {# ---- derive status values ---- #}
+  {% set kobo_ok = config.get('KOBO_TOKEN') %}
+  {% set prog_count = program_mappings|length %}
+  {% set kobo_acct = '' %}
+  {% if kobo_account %}{% set kobo_acct = kobo_account %}
+  {% elif program_mappings %}{% set kobo_acct = program_mappings[0].get('koboFormOwner','') %}{% endif %}
+
   <form method="post">
-    <div class="cards-grid">
+    <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}">
 
-      <div class="card">
-        <h2>{{ t.kobo_info }}</h2>
+    <div class="cards">
 
-        <label for="KOBO_SERVER">Kobo Server</label>
-        <select id="KOBO_SERVER" name="KOBO_SERVER">
-          <option value="https://kobo.ifrc.org" {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>IFRC</option>
-          <option value="https://kf.kobotoolbox.org" {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>KF Toolbox</option>
-        </select>
-
-        <label for="KOBO_TOKEN">{{ t.kobo_token }}</label>
-        <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN"
-              placeholder="{{ '••••••••••••••••••••••••••••••••••••' if config.get('KOBO_TOKEN') else 'Enter Kobo API Key' }}"
-              autocomplete="off" onpaste="return true;" oncopy="return false;" oncut="return false;">
-      </div>
-
-      <div class="card">
-        <h2>{{ t.info_121 }}</h2>
-
-        <input type="hidden" id="url121" name="url121" value="{{ config['url121'] }}">
-
-        <div id="program-mappings">
-
-        {% if program_mappings %}
-          {% for m in program_mappings %}
-            <div class="program-row"
-                style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end;">
-              <div>
-                <label>{{ t.program_id }}</label>
-                <select name="PROGRAMS[][programId]" class="program-select">
-                  <option value="">— Select program —</option>
-                  {% for p in program_options %}
-                    <option value="{{ p.id }}"
-                      {% if p.id == m.programId %}selected{% endif %}>
-                      {{ p.title }}
-                    </option>
-                  {% endfor %}
-                </select>
-              </div>
-
-              <div>
-                <label>Kobo Asset ID</label>
-                <input type="text"
-                      name="PROGRAMS[][koboAssetId]"
-                      value="{{ m.koboAssetId }}">
-              </div>
-
-              <button type="button"
-                      class="remove-row"
-                      title="Remove"
-                      style="
-                        height:40px;
-                        width:40px;
-                        border-radius:10px;
-                        border:1px solid #e5e7eb;
-                        background:#fff;
-                        cursor:pointer;
-                        font-size:16px;
-                      ">
-                ✕
-              </button>
-
-              {% if m.koboFormName %}
-                <div class="kobo-status"
-                     style="
-                       grid-column: 1 / -1;
-                       margin: 6px 0 0 0;
-                       font-size: 0.85rem;
-                       color: #065f46;
-                     ">
-                  ✓ Connected to <strong>{{ m.koboFormName }}</strong>
-                </div>
-              {% endif %}
-            </div>
-
-
-          {% endfor %}
-        {% else %}
-          <!-- fallback: one empty row -->
-          <div class="program-row"
-              style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:12px;align-items:end;">
-            <div>
-              <label>{{ t.program_id }}</label>
-              <select name="PROGRAMS[][programId]" class="program-select">
-                <option value="">— Select program —</option>
-                {% for p in program_options %}
-                  <option value="{{ p.id }}">{{ p.title }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div>
-              <label>Kobo Asset ID</label>
-              <input type="text" name="PROGRAMS[][koboAssetId]">
-            </div>
-
-            <button type="button"
-                    class="remove-row"
-                    title="Remove"
-                    style="
-                      height:40px;
-                      width:40px;
-                      border-radius:10px;
-                      border:1px solid #e5e7eb;
-                      background:#fff;
-                      cursor:pointer;
-                      font-size:16px;
-                    ">
-              ✕
-            </button>
-          </div>
-
-        {% endif %}
-
-
-
-        </div>
-
-        <button type="button" id="add-program-row"
-          style="margin-top:8px;padding:6px 12px;border-radius:999px;border:2px dashed var(--violet);background:#fff;color:var(--violet);font-weight:600;cursor:pointer;">
-          ＋ Add program
+      <!-- ============ KOBO ============ -->
+      <section class="intg {% if not kobo_ok %}open{% endif %}" id="koboCard">
+        <button type="button" class="intg-head" aria-expanded="{{ 'false' if kobo_ok else 'true' }}" onclick="toggleCard('koboCard')">
+          <span class="intg-meta">
+            <p class="name">KoboToolbox</p>
+            {% if kobo_ok %}
+              <p class="status ok">
+                <span class="dot"></span>
+                <span>{% if kobo_acct %}Linked to <span class="acctname">{{ kobo_acct }}</span>{% else %}Token saved{% endif %}</span>
+              </p>
+            {% else %}
+              <p class="status bad">
+                <span class="dot"></span>
+                <span>Not set up yet — add a server and token</span>
+              </p>
+            {% endif %}
+          </span>
+          <span class="logo-tile kobo">
+            <img src="{{ url_for('static', filename='logos/kobo.png') }}" alt="KoboToolbox">
+            <span class="badge {{ 'ok' if kobo_ok else 'bad' }}">{{ '✓' if kobo_ok else '✕' }}</span>
+          </span>
+          <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
         </button>
 
+        <div class="panel">
+          <div class="panel-inner">
+            <label for="KOBO_SERVER">Kobo Server</label>
+            <select id="KOBO_SERVER" name="KOBO_SERVER">
+              <option value="https://kobo.ifrc.org" {% if config.get('KOBO_SERVER') == 'https://kobo.ifrc.org' %}selected{% endif %}>IFRC — kobo.ifrc.org</option>
+              <option value="https://kf.kobotoolbox.org" {% if config.get('KOBO_SERVER') == 'https://kf.kobotoolbox.org' %}selected{% endif %}>KoboToolbox — kf.kobotoolbox.org</option>
+            </select>
 
-        <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
-        <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}">
-      </div>
+            <label for="KOBO_TOKEN">{{ t.kobo_api_token | default('API token') }}</label>
+            <div class="field-row">
+              <div class="grow">
+                <input type="password" id="KOBO_TOKEN" name="KOBO_TOKEN"
+                      placeholder="{{ '••••••••••••••••••••••••••••••••' if kobo_ok else 'Paste your Kobo API token' }}"
+                      autocomplete="off" onpaste="return true;" oncopy="return false;" oncut="return false;">
+              </div>
+              <button type="button" class="verify-btn" id="verifyBtn" onclick="verifyKobo()">{{ t.verify_token | default('Verify token') }}</button>
+            </div>
+            <p class="hint">{{ t.kobo_token_hint | default('Found in KoboToolbox under Account settings → Security → API token.') }}</p>
+
+            <div class="linked ok {% if kobo_ok and kobo_acct %}show{% endif %}" id="koboLinked">
+              <span class="check">✓</span>
+              <span class="lbl">{{ t.token_linked_to | default('Token linked to') }} <span class="who" id="koboAcct">{{ kobo_acct }}</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 121 ============ -->
+      <section class="intg {% if not program_mappings %}open{% endif %}" id="one21Card">
+        <button type="button" class="intg-head" aria-expanded="{{ 'true' if not program_mappings else 'false' }}" onclick="toggleCard('one21Card')">
+          <span class="intg-meta">
+            <p class="name">121 Platform</p>
+            {% if prog_count > 0 %}
+              <p class="status ok">
+                <span class="dot"></span>
+                <span><span class="acctname">{{ prog_count }}</span> {{ 'program' if prog_count == 1 else 'programs' }} configured</span>
+              </p>
+            {% else %}
+              <p class="status bad">
+                <span class="dot"></span>
+                <span>No programs configured yet</span>
+              </p>
+            {% endif %}
+          </span>
+          <span class="logo-tile k121">
+            <img src="{{ url_for('static', filename='logos/121.png') }}" alt="121">
+            <span class="badge {{ 'ok' if prog_count > 0 else 'bad' }}">{{ '✓' if prog_count > 0 else '✕' }}</span>
+          </span>
+          <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+
+        <div class="panel">
+          <div class="panel-inner">
+            <p class="hint" style="margin-top:16px">{{ t.program_map_hint | default('Each 121 program is matched to the KoboToolbox form that collects its data.') }}</p>
+
+            <div id="program-mappings">
+            {% if program_mappings %}
+              {% for m in program_mappings %}
+                <div class="program-row">
+                  <div>
+                    <label>{{ t.program_id }}</label>
+                    <select name="PROGRAMS[][programId]" class="program-select">
+                      <option value="">— Select program —</option>
+                      {% for p in program_options %}
+                        <option value="{{ p.id }}" {% if p.id == m.programId %}selected{% endif %}>{{ p.title }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Kobo Asset ID</label>
+                    <input type="text" name="PROGRAMS[][koboAssetId]" value="{{ m.koboAssetId }}">
+                  </div>
+                  <button type="button" class="remove-row" title="Remove">✕</button>
+                  {% if m.koboFormName %}
+                    <div class="kobo-status">✓ Connected to <strong>{{ m.koboFormName }}</strong></div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="program-row">
+                <div>
+                  <label>{{ t.program_id }}</label>
+                  <select name="PROGRAMS[][programId]" class="program-select">
+                    <option value="">— Select program —</option>
+                    {% for p in program_options %}
+                      <option value="{{ p.id }}">{{ p.title }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label>Kobo Asset ID</label>
+                  <input type="text" name="PROGRAMS[][koboAssetId]">
+                </div>
+                <button type="button" class="remove-row" title="Remove">✕</button>
+              </div>
+            {% endif %}
+            </div>
+
+            <button type="button" id="add-program-row">＋ Add program</button>
+
+            <input type="hidden" id="programTitleHidden" name="programTitle" value="{{ program_title or '' }}">
+            <input type="hidden" id="programCurrency" name="programCurrency" value="{{ program_currency or config.get('programCurrency','') }}">
+          </div>
+        </div>
+      </section>
 
     </div>
-    <button type="submit" class="save-btn">{{ t.save }}</button>
+
+    <div class="savebar">
+      <button type="submit" class="save-btn">{{ t.save }}</button>
+    </div>
   </form>
 </div>
 
@@ -553,66 +430,95 @@
   <div class="footer-right">{{ t.footer_support }}</div>
 </footer>
 
+<!-- Toast notification -->
+<div id="toast"></div>
+
 <script>
+/* ---------- card expand ---------- */
+function toggleCard(id) {
+  const el = document.getElementById(id);
+  const open = el.classList.toggle('open');
+  el.querySelector('.intg-head').setAttribute('aria-expanded', open);
+}
+
+/* ---------- account dropdown ---------- */
 function toggleAccountDropdown() {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');
-
   menu.classList.toggle('hidden');
   btn.classList.toggle('active');
 }
-
 document.addEventListener('click', function(e) {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');
-
   if (!btn.contains(e.target)) {
     menu.classList.add('hidden');
     btn.classList.remove('active');
   }
 });
 
-</script>
-<script>
-function updateAddButtonVisibility() {
-  const selects = document.querySelectorAll('.program-select');
-  const addBtn = document.getElementById('add-program-row');
+/* ---------- verify Kobo token (live) ---------- */
+async function verifyKobo() {
+  const server = document.getElementById('KOBO_SERVER').value;
+  const token = document.getElementById('KOBO_TOKEN').value.trim();
+  const chip = document.getElementById('koboLinked');
+  const btn = document.getElementById('verifyBtn');
+  const acct = document.getElementById('koboAcct');
 
-  if (!selects.length) {
-    addBtn.style.display = 'none';
+  function show(kind, text) {
+    chip.className = 'linked ' + kind + ' show';
+    chip.querySelector('.lbl').innerHTML = text;
+  }
+
+  if (!token || token.charAt(0) === '\u2022') {
+    show('bad', '{{ t.enter_token_first | default("Enter a new token above, then verify.") }}');
     return;
   }
 
-  const selected = new Set(
-    Array.from(selects).map(s => s.value).filter(Boolean)
-  );
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '{{ t.verifying | default("Verifying…") }}';
 
-  const allProgramIds = Array.from(selects[0].options)
-    .map(o => o.value)
-    .filter(Boolean);
-
-  const hasUnusedPrograms =
-    allProgramIds.some(id => !selected.has(id));
-
-  addBtn.style.display = hasUnusedPrograms
-    ? 'inline-block'
-    : 'none';
+  try {
+    const res = await fetch('/verify-kobo-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server: server, token: token })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      show('ok', '{{ t.token_linked_to | default("Token linked to") }} <span class="who">' + (data.username || '') + '</span>' + (data.email ? ' · ' + data.email : ''));
+    } else {
+      show('bad', data.error || '{{ t.token_invalid | default("Token not valid for this server.") }}');
+    }
+  } catch (e) {
+    show('bad', '{{ t.verify_unreachable | default("Could not reach the server.") }}');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
+/* ---------- program row logic ---------- */
+function updateAddButtonVisibility() {
+  const selects = document.querySelectorAll('.program-select');
+  const addBtn = document.getElementById('add-program-row');
+  if (!selects.length) { addBtn.style.display = 'none'; return; }
+  const selected = new Set(Array.from(selects).map(s => s.value).filter(Boolean));
+  const allProgramIds = Array.from(selects[0].options).map(o => o.value).filter(Boolean);
+  const hasUnused = allProgramIds.some(id => !selected.has(id));
+  addBtn.style.display = hasUnused ? 'inline-block' : 'none';
+}
 
 function refreshProgramOptions() {
   const selects = document.querySelectorAll('.program-select');
-  const selected = Array.from(selects)
-    .map(s => s.value)
-    .filter(v => v);
-
+  const selected = Array.from(selects).map(s => s.value).filter(v => v);
   selects.forEach(sel => {
     Array.from(sel.options).forEach(opt => {
       if (!opt.value) return;
       opt.disabled = selected.includes(opt.value) && opt.value !== sel.value;
     });
   });
-
   updateAddButtonVisibility();
 }
 
@@ -620,44 +526,26 @@ document.getElementById('add-program-row').onclick = function () {
   const container = document.getElementById('program-mappings');
   const firstRow = container.querySelector('.program-row');
   const clone = firstRow.cloneNode(true);
-
-  clone.querySelectorAll('input, select').forEach(el => {
-    el.value = '';
-  });
+  clone.querySelectorAll('input, select').forEach(el => { el.value = ''; });
   clone.querySelectorAll('.kobo-status').forEach(el => el.remove());
-
   container.appendChild(clone);
   refreshProgramOptions();
-  updateAddButtonVisibility();
   clone.querySelector('.program-select').onchange = refreshProgramOptions;
 };
 
-document.querySelectorAll('.program-select').forEach(sel => {
-  sel.onchange = refreshProgramOptions;
-});
-</script>
+document.querySelectorAll('.program-select').forEach(sel => { sel.onchange = refreshProgramOptions; });
 
-<script>
-refreshProgramOptions();
-updateAddButtonVisibility();
-</script>
-<script>
 document.getElementById('program-mappings').addEventListener('click', function (e) {
   const btn = e.target.closest('.remove-row');
   if (!btn) return;
-
   const row = btn.closest('.program-row');
-  if (!row) return;
-
-  row.remove();
-  refreshProgramOptions();
+  if (row) { row.remove(); refreshProgramOptions(); }
 });
-</script>
 
-<!-- Toast notification -->
-<div id="toast"></div>
+refreshProgramOptions();
+updateAddButtonVisibility();
 
-<script>
+/* ---------- toast + submit ---------- */
 function showToast(message, type) {
   const toast = document.getElementById('toast');
   toast.textContent = (type === 'error' ? '\u2715  ' : '\u2713  ') + message;
@@ -673,30 +561,18 @@ function showToast(message, type) {
   {% endif %}
 {% endwith %}
 
-// Intercept form submit: show toast then submit
 document.querySelector('form[method="post"]').addEventListener('submit', function(e) {
   e.preventDefault();
   const form = this;
   const saveBtn = form.querySelector('.save-btn');
   saveBtn.disabled = true;
-
-  fetch(window.location.pathname + window.location.search, {
-    method: 'POST',
-    body: new FormData(form)
-  })
-  .then(function(res) {
-    if (res.ok) {
-      showToast('{{ t.saved_successfully }}', 'success');
-    } else {
-      showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error');
-    }
-  })
-  .catch(function() {
-    showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error');
-  })
-  .finally(function() {
-    saveBtn.disabled = false;
-  });
+  fetch(window.location.pathname + window.location.search, { method: 'POST', body: new FormData(form) })
+    .then(function(res) {
+      if (res.ok) { showToast('{{ t.saved_successfully }}', 'success'); }
+      else { showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error'); }
+    })
+    .catch(function() { showToast('{{ t.failed_to_save | default("Failed to save") }}', 'error'); })
+    .finally(function() { saveBtn.disabled = false; });
 });
 </script>
 

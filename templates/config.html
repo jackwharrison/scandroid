@@ -4,484 +4,274 @@
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <meta charset="UTF-8">
   <title>{{ t.config_title }}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
     :root {
-      --pad: 20px;
-      --gap: 24px;
-      --radius: 16px;
+      --pad: 16px;
+      --gap: 12px;
+      --radius: 18px;
       --card: #fff;
       --ink: #111827;
       --muted: #6b7280;
       --line: #e5e7eb;
       --bg: #f3f4f6;
       --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --shadow-hi: 0 18px 44px rgba(0,0,0,0.10);
       --navy: #002855;
       --violet: #7c3aed;
+      --kobo: #2f9be8;
+      --ok: #16a34a;
+      --ok-bg: #ecfdf5;
+      --bad: #dc2626;
     }
 
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    @media (prefers-reduced-motion: reduce){ * { transition: none !important; animation: none !important; } }
+
+    body {
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
       color: var(--ink);
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* ------------------ HEADER ------------------ */
+    /* ---------- HEADER (121 STYLE) ---------- */
     header {
-      background-color: #002855;
-      padding: 12px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      color: white;
-      position: relative;
-      z-index: 3000;
-      box-sizing: border-box;
+      background-color: #002855; padding: 12px 24px; display: flex; align-items: center;
+      justify-content: space-between; color: white; position: relative; z-index: 3000;
     }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-    }
-
-    .header-left img {
-      height: 32px;
-      width: auto;
-      object-fit: contain;
-    }
-
+    .header-left { display: flex; align-items: center; }
+    .header-left img { height: 32px; width: auto; object-fit: contain; }
     .header-title {
-      flex: 1;
-      padding-left: 20px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 1.1rem;
-      color: #ffffff;
-      white-space: nowrap;
+      flex: 1; text-align: left; padding-left: 20px; font-size: 1.1rem; color: #fff;
+      display: flex; align-items: center; gap: 6px;
     }
-
     .title-bold { font-weight: 800; letter-spacing: 0.3px; }
     .title-divider { opacity: 0.8; }
     .title-program { font-weight: 300; opacity: 0.95; }
 
-    .header-controls {
-      display: flex;
-      align-items: center;
-      gap: 16px;
+    .account-icon-svg { width: 16px; height: 16px; filter: invert(100%); }
+    .account-arrow-svg { width: 12px; height: 12px; filter: invert(100%); margin-left: 4px; transition: transform 0.15s ease; }
+    .account-btn {
+      background: transparent; border: 1px solid transparent; color: #fff; padding: 6px 10px; border-radius: 18px;
+      cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px; transition: border 0.2s ease;
     }
-
-    .header-btn {
-      height: 32px;
-      padding: 0 12px;
-      font-size: 14px;
-      font-weight: 500;
-      border-radius: 16px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: transparent;
-      border: none;
-      color: #ffffff;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: border 0.2s ease;
-      text-decoration: none !important;
-    }
-
-    .header-btn:hover {
-      border: 1px solid rgba(255,255,255,0.9);
-    }
-
-    .header-btn img {
-      width: 14px;
-      height: 14px;
-      filter: invert(100%);
-    }
-
-    .account-arrow-svg {
-      width: 12px;
-      height: 12px;
-      filter: invert(100%);
-      transition: transform 0.15s ease;
-    }
-
-    .account-btn.active .account-arrow-svg {
-      transform: rotate(180deg);
-    }
-
+    .account-btn:hover { border: 1px solid rgba(255,255,255,0.9); }
+    .account-btn.active .account-arrow-svg { transform: rotate(180deg); }
+    .header-account-wrapper { display: flex; align-items: center; gap: 16px; position: relative; }
     .lang-select select {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
+      padding: 6px 10px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff;
+      font-weight: 600; cursor: pointer; font-family: inherit;
     }
-
     .account-menu {
-      position: absolute;
-      background: #ffffff;
-      top: 48px;
-      right: 0;
-      min-width: 220px;
-      border-radius: 8px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.15);
-      z-index: 3001;
-      padding: 10px 0;
+      position: absolute; background: #fff; top: 48px; right: 0; min-width: 220px; border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15); z-index: 3001; padding: 10px 0;
     }
-
     .hidden { display: none; }
+    .account-menu-item { padding: 10px 16px; font-size: 14px; text-decoration: none; color: #000; display: block; }
+    .account-menu-item:hover { background: #f2f2f2; }
+    .account-menu-divider { border-top: 1px solid #e5e7eb; margin: 6px 0; }
+    .user-info { font-size: 13px; }
 
-    .account-menu-item {
-      padding: 10px 16px;
-      font-size: 14px;
-      color: #000;
-      text-decoration: none;
-      display: block;
-    }
-
-    .account-menu-item:hover {
-      background: #f2f2f2;
-    }
-
-    .account-menu-divider {
-      border-top: 1px solid #e5e7eb;
-      margin: 6px 0;
-    }
-
-    .user-info {
-      font-size: 13px;
-    }
-
-    /* ------------------ MAIN WRAPPER ------------------ */
-    .wrapper {
-      width: 100%;
-      max-width: 980px;
-      margin: 24px auto 40px auto;
-      padding: 0 20px;
-      box-sizing: border-box;
-      flex: 1;
-    }
-
-    .page-back-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--navy);
-      text-decoration: none;
-      padding: 8px 14px;
-      background: #ffffff;
-      border-radius: 999px;
-      border: 2px solid var(--navy);
-      transition: 0.2s ease;
-    }
-
-    .page-back-btn:hover {
-      background: #e3e8ef;
-    }
-
-    .page-back-btn img {
-      width: 14px;
-      height: 14px;
-    }
-
-    h1 {
-      text-align: center;
-      margin-bottom: 16px;
-      font-size: 1.6rem;
-    }
-
-    /* ------------------ TABLE ------------------ */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      margin-bottom: 24px;
-      box-shadow: var(--shadow-soft);
-      border: 1px solid var(--line);
-    }
-
-    th {
-      background: #f9fafb;
-      padding: 12px;
-      font-weight: 600;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-    }
-
-    td {
-      padding: 10px;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    input[type="text"] {
-      width: 95%;
-      max-width: 250px;
-      padding: 8px 10px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      box-sizing: border-box;
-    }
-
-    select[name="key"] {
-      width: 95%;
-      max-width: 260px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      font-size: 0.9rem;
-      background: #ffffff;
-      box-sizing: border-box;
-    }
-
-    .delete-btn {
-      background: #fee2e2;
-      color: #b91c1c;
-      border: none;
-      padding: 6px 10px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 700;
-    }
-
-    .delete-btn:hover { background: #fecaca; }
-
-    /* ------------------ CARDS ------------------ */
-    .card {
-      background: var(--card);
-      padding: var(--pad);
-      border-radius: var(--radius);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow-soft);
-      margin-bottom: 24px;
-    }
-
-    .card h2 {
-      margin-top: 0;
-      margin-bottom: 12px;
-      font-size: 1.2rem;
-    }
-
-    .btn-add-field {
-      margin: 24px 0 32px 0;
-      padding: 8px 18px;
-      border-radius: 999px;
-      border: 2px solid #7c3aed;
-      background: #ffffff;
-      font-size: 15px;
-      font-weight: 600;
-      color: #7c3aed;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      text-decoration: none;
-    }
-
-    .btn-add-field:hover {
-      background: #f3e8ff;
-    }
-
-    /* ------------------ SAVE BUTTON ------------------ */
-    .save-btn {
-      margin-top: 32px;
-      width: 260px;
-      padding: 12px 20px;
-      font-size: 1rem;
-      font-weight: 700;
-      background: #ffffff;
-      color: #7c3aed;
-      border: 2px solid #7c3aed;
-      border-radius: 999px;
-      cursor: pointer;
-      display: block;
-      margin-left: auto;
-      margin-right: auto;
-      transition: background 0.2s ease;
-    }
-
-    .save-btn:hover {
-      background: #ece2ff;
-    }
-
-    /* ------------------ PHOTO TOGGLE ------------------ */
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 14px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--ink);
-    }
-
-    .toggle {
-      position: relative;
-      width: 44px;
-      height: 24px;
-    }
-
-    .toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-      position: absolute;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #e5e7eb;
-      transition: 0.2s;
-      border-radius: 999px;
-    }
-
-    .toggle-slider:before {
-      content: "";
-      position: absolute;
-      height: 18px;
-      width: 18px;
-      left: 3px;
-      top: 3px;
-      background-color: #ffffff;
-      transition: 0.2s;
-      border-radius: 50%;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-    }
-
-    .toggle input:checked + .toggle-slider {
-      background-color: var(--violet);
-    }
-
-    .toggle input:checked + .toggle-slider:before {
-      transform: translateX(18px);
-    }
-
-    /* ------------------ FOOTER ------------------ */
+    /* ---------- FOOTER ---------- */
     footer {
-      display: flex;
-      justify-content: space-between;
-      padding: 12px 18px;
-      background-color: #002855;
-      border-top: 1px solid rgba(255,255,255,0.15);
-      color: white;
-      font-size: 0.9rem;
-      flex-wrap: wrap;
+      display: flex; justify-content: space-between; align-items: center; padding: 12px 18px;
+      font-size: 0.9rem; background-color: #002855; border-top: 1px solid rgba(255,255,255,0.15);
+      color: #fff; flex-wrap: wrap;
     }
 
-    #photoKey {
-      width: 95%;
-      max-width: 260px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      font-size: 0.9rem;
-      box-sizing: border-box;
-      cursor: pointer;
-      appearance: none;
+    /* ---------- SHELL ---------- */
+    .wrapper {
+      width: 100%; max-width: 1120px; margin: 28px auto 48px auto; padding: 0 20px;
+      box-sizing: border-box; flex: 1;
     }
-
-    /* ------------------ SEARCHABLE SELECT ------------------ */
-    .searchable-select {
-      position: relative;
-      width: 95%;
-      max-width: 260px;
+    .page-back-btn {
+      display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.95rem;
+      font-weight: 600; color: var(--navy); text-decoration: none; padding: 8px 14px; background: #fff;
+      border-radius: 999px; border: 2px solid var(--navy); transition: 0.2s ease;
     }
+    .page-back-btn:hover { background: #e3e8ef; }
+    .page-back-btn img { width: 14px; height: 14px; }
 
+    h1 { margin: 22px 0 6px 0; font-size: 1.7rem; letter-spacing: -0.015em; font-weight: 800; text-align: center; }
+    .subtitle { margin: 0 auto 26px auto; text-align: center; color: var(--muted); font-size: 1rem; max-width: 60ch; line-height: 1.5; }
+
+    /* ---------- PROGRAM PICKER ---------- */
+    .program-picker {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow-soft); padding: 16px 20px; margin-bottom: 22px;
+    }
+    .program-picker .pp-label { font-weight: 700; font-size: 0.95rem; }
+    .program-picker .pp-hint { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+    .program-picker select {
+      padding: 10px 13px; font-size: 0.95rem; border: 1px solid #d1d5db; border-radius: 11px;
+      background: #fff; color: var(--ink); font-family: inherit; min-width: 260px; cursor: pointer;
+    }
+    .program-picker select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+
+    /* ---------- SECTION CARDS ---------- */
+    .cards { display: flex; flex-direction: column; gap: 20px; }
+    .sect {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow-soft); overflow: hidden;
+    }
+    .sect-head { display: flex; align-items: center; gap: 14px; padding: 20px 24px 6px; }
+    .sect-head .sh-text { flex: 1; min-width: 0; }
+    .sect-head .name { font-size: 1.14rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+    .sect-head .sub { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .sect-body { padding: 8px 24px 24px; }
+
+    .logo-tile {
+      position: relative; height: 46px; width: 46px; flex: 0 0 auto; display: flex; align-items: center;
+      justify-content: center; border-radius: 12px; background: #f8fafc; border: 1px solid var(--line); color: var(--muted);
+    }
+    .logo-tile.kobo { background: #eaf5fd; border-color: #cfe8fa; color: var(--kobo); }
+    .logo-tile.fields { background: #f5f0ff; border-color: #e6dbff; color: var(--violet); }
+    .logo-tile.scan { background: #ecfdf5; border-color: #bbf7d0; color: var(--ok); }
+    .logo-tile svg { width: 24px; height: 24px; }
+
+    /* ---------- FIELD TABLE ---------- */
+    .tbl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    /* Fixed layout so columns fit the container (no horizontal scroll) and the
+       121 field name gets more room than the label columns. */
+    #fieldTable { table-layout: fixed; }
+    #fieldTable th:nth-child(1), #fieldTable td:nth-child(1) { width: 22%; }
+    #fieldTable th:nth-child(2), #fieldTable td:nth-child(2),
+    #fieldTable th:nth-child(3), #fieldTable td:nth-child(3),
+    #fieldTable th:nth-child(4), #fieldTable td:nth-child(4) { width: 18%; }
+    #fieldTable th:nth-child(5), #fieldTable td:nth-child(5) { width: 16%; }
+    #fieldTable th:nth-child(6), #fieldTable td:nth-child(6) { width: 8%; }
+    thead th {
+      background: #f9fafb; padding: 11px 12px; font-weight: 600; font-size: 0.85rem; color: var(--muted);
+      border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap;
+    }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid #f1f2f4; vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+
+    input[type="text"], select {
+      width: 100%; padding: 10px 12px; font-size: 0.92rem; border: 1px solid #d1d5db; border-radius: 10px;
+      background: #fff; color: var(--ink); font-family: inherit;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+    td select { min-width: 0; cursor: pointer; }
+    .col-lang input { min-width: 0; }
+
+    .row-del {
+      height: 38px; width: 38px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
+      cursor: pointer; color: var(--muted); font-size: 15px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .row-del:hover { border-color: var(--bad); color: var(--bad); background: #fef2f2; }
+
+    .btn-add {
+      margin-top: 16px; padding: 9px 16px; border-radius: 999px; border: 2px dashed var(--violet);
+      background: #fff; color: var(--violet); font-weight: 600; cursor: pointer; font-size: 0.9rem; font-family: inherit;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-add:hover { background: #f5f0ff; }
+
+    /* prefilled flash */
+    @keyframes prefillFlash {
+      0% { background: #ede9fe; border-color: var(--violet); }
+      100% { background: #fff; border-color: #d1d5db; }
+    }
+    .prefilled { animation: prefillFlash 1.1s ease; }
+
+    .prefill-note {
+      display: none; align-items: center; gap: 6px; margin-top: 12px; font-size: 0.82rem; color: var(--kobo); font-weight: 600;
+    }
+    .prefill-note.show { display: inline-flex; }
+    .prefill-note svg { width: 15px; height: 15px; }
+
+    /* ---------- TOGGLE ---------- */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fbfbfc;
+    }
+    .toggle-row .tr-text .t-name { font-weight: 600; font-size: 0.95rem; }
+    .toggle-row .tr-text .t-sub { color: var(--muted); font-size: 0.83rem; margin-top: 2px; }
+    .toggle { position: relative; width: 46px; height: 26px; flex: 0 0 auto; }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0; background-color: #e5e7eb; transition: 0.2s; border-radius: 999px;
+    }
+    .toggle-slider:before {
+      content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; background: #fff;
+      transition: 0.2s; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .toggle input:checked + .toggle-slider { background-color: var(--violet); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+    [dir="rtl"] .toggle input:checked + .toggle-slider:before { transform: translateX(-20px); }
+
+    /* ---------- EDITABLE COLUMN EMPHASIS ---------- */
+    thead th.col-editable {
+      text-align: center; color: var(--violet); background: #f7f2ff;
+      border-bottom: 2px solid #e6dbff;
+    }
+    td.col-editable-cell { text-align: center; }
+    .edit-toggle-wrap { display: inline-flex; align-items: center; gap: 10px; }
+    .edit-state {
+      font-size: 0.8rem; font-weight: 700; letter-spacing: 0.2px; white-space: nowrap; min-width: 62px; text-align: left;
+    }
+    .edit-state.on  { color: var(--violet); }
+    .edit-state.off { color: var(--muted); font-weight: 600; }
+    /* Highlight the whole row when its field is editable */
+    tr.editable-on td { background: #faf5ff; }
+    tr.editable-on td:first-child { box-shadow: inset 4px 0 0 var(--violet); }
+    [dir="rtl"] tr.editable-on td:first-child { box-shadow: inset -4px 0 0 var(--violet); }
+
+    .photo-grid { margin-top: 16px; transition: opacity 0.2s ease; }
+    .photo-grid.disabled { opacity: 0.45; pointer-events: none; }
+
+    /* ---------- SEARCHABLE SELECT ---------- */
+    .searchable-select { position: relative; width: 100%; }
     .searchable-select input {
-      width: 100%;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      font-size: 0.9rem;
-      box-sizing: border-box;
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #d1d5db;
+      font-size: 0.92rem; box-sizing: border-box; font-family: inherit;
     }
-
     .searchable-options {
-      position: fixed;
-      max-height: 240px;
-      overflow-y: auto;
-      background: #ffffff;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      z-index: 9999;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+      position: fixed; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid #d1d5db;
+      border-radius: 10px; z-index: 9999; box-shadow: 0 6px 20px rgba(0,0,0,0.12);
     }
+    .searchable-options div { padding: 8px 10px; cursor: pointer; font-size: 0.92rem; }
+    .searchable-options div:hover, .searchable-options div.active { background: #f3f4f6; }
 
-    .searchable-options div {
-      padding: 8px 10px;
-      cursor: pointer;
+    /* ---------- SAVEBAR ---------- */
+    .savebar { display: flex; justify-content: center; margin-top: 30px; }
+    .save-btn {
+      width: 280px; max-width: 100%; padding: 13px 20px; font-size: 1rem; font-weight: 700; background: #fff;
+      color: var(--violet); border: 2px solid var(--violet); border-radius: 999px; cursor: pointer;
+      transition: background 0.2s ease; font-family: inherit;
     }
+    .save-btn:hover { background: #f0e9ff; }
 
-    .searchable-options div:hover,
-    .searchable-options div.active {
-      background: #f3f4f6;
-    }
+    /* ---------- VALIDATION ---------- */
+    .field-error { border: 2px solid var(--bad) !important; background-color: #fffafa !important; }
+    .searchable-select input.field-error { border: 2px solid var(--bad) !important; }
+    .inline-error { margin-top: 16px; font-size: 0.85rem; color: var(--bad); text-align: center; }
 
-    /* ------------------ TOAST ------------------ */
+    /* ---------- TOAST ---------- */
     #saveToast {
-      position: fixed;
-      bottom: 32px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: #111827;
-      color: #fff;
-      padding: 12px 24px;
-      border-radius: 999px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.25s ease, transform 0.25s ease;
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #111827; color: #fff; padding: 12px 24px; border-radius: 999px; font-size: 0.95rem;
+      font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.18); opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease; z-index: 9999; display: flex; align-items: center; gap: 8px;
     }
-
-    #saveToast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-
+    #saveToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     #saveToast.success { background: #16a34a; }
     #saveToast.error   { background: #dc2626; }
 
-    /* Validation error styling */
-    .row-error {
-      background-color: #fef2f2;
-    }
-
-    .field-error {
-      border: 2px solid #dc2626 !important;
-      background-color: #fffafa !important;
-    }
-
-    .inline-error {
-      margin-top: 6px;
-      font-size: 0.8rem;
-      color: #dc2626;
+    @media (max-width: 640px) {
+      header { flex-direction: column; gap: 8px; padding: 12px; }
+      .header-title { padding-left: 0; text-align: center; }
+      .header-account-wrapper { flex-direction: column; gap: 8px; }
+      .program-picker .pp-hint { margin-left: 0; }
+      .sect-body { padding: 8px 14px 18px; }
     }
   </style>
 </head>
@@ -496,10 +286,10 @@
   <div class="header-title">
     <span class="title-bold">121 Scan</span>
     <span class="title-divider">|</span>
-    <span class="title-program">Field Configuration</span>
+    <span class="title-program">{{ t.config_title }}</span>
   </div>
 
-  <div class="header-controls">
+  <div class="header-account-wrapper">
     <form method="get" action="/config" class="lang-select">
       <select name="lang" onchange="this.form.submit()">
         <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
@@ -509,8 +299,8 @@
     </form>
 
     <div class="account-dropdown">
-      <button class="header-btn account-btn" onclick="toggleAccountDropdown()" type="button">
-        <img src="{{ url_for('static', filename='icons/user.svg') }}">
+      <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
         Account
         <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
       </button>
@@ -520,12 +310,8 @@
           <strong>Logged in as:</strong><br>
           {{ username }}
         </div>
-
         <div class="account-menu-divider"></div>
-
-        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">
-          Logout
-        </a>
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
       </div>
     </div>
   </div>
@@ -537,101 +323,149 @@
     <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
     {{ t.back_to_dashboard }}
   </a>
-<div style="margin-bottom:16px;text-align:center;">
-  <label style="font-weight:600;margin-right:8px;">
-    {{ t.program_id or "Program" }}
-  </label>
-  <select id="programSelector" style="padding:8px 12px;border-radius:8px;">
-    {% for p in programs %}
-      <option value="{{ p.id }}" {% if p.id == active_program_id %}selected{% endif %}>
-        {{ p.title }}
-      </option>
-    {% endfor %}
-  </select>
-</div>
 
   <h1>{{ t.config_title }}</h1>
+  <p class="subtitle">{{ t.config_subtitle or "Choose which fields appear during a scan and set their labels in each language. Photo capture pulls its options from the program's KoboToolbox form." }}</p>
+
+  <div class="program-picker">
+    <span class="pp-label">{{ t.program_id or "Program" }}</span>
+    <select id="programSelector">
+      {% for p in programs %}
+        <option value="{{ p.id }}" {% if p.id == active_program_id %}selected{% endif %}>{{ p.title }}</option>
+      {% endfor %}
+    </select>
+    <span class="pp-hint">{{ t.config_program_hint or "Settings below apply to the selected program" }}</span>
+  </div>
 
   <!-- disable native HTML5 validation; we validate manually -->
   <form id="configForm" novalidate>
+    <div class="cards">
 
-    <table id="fieldTable">
-      <thead>
-        <tr>
-          <th>{{ t.field_name_121 }}</th>
-          <th>{{ t.label_en }}</th>
-          <th>{{ t.label_fr }}</th>
-          <th>{{ t.label_ar }}</th>
-          <th>{{ t.remove }}</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-
-    <button type="button" onclick="addRow()" class="btn-add-field">
-      + {{ t.add_field }}
-    </button>
-
-    <div class="card" id="photoCard">
-      <h2>{{ t.photo_config_title }}</h2>
-
-      <label class="toggle-row">
-        <span>{{ t.enable_photo_field }}</span>
-        <div class="toggle">
-          <input type="checkbox" id="photoEnabled" onchange="togglePhotoFields()">
-          <span class="toggle-slider"></span>
+      <!-- ============ DISPLAYED FIELDS ============ -->
+      <section class="sect">
+        <div class="sect-head">
+          <span class="logo-tile fields">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          </span>
+          <div class="sh-text">
+            <p class="name">{{ t.fields_section_title or "Displayed fields" }}</p>
+            <p class="sub">{{ t.fields_section_hint or "Pick a field, then adjust its label per language. Labels prefill automatically and can be edited." }}</p>
+          </div>
         </div>
-      </label>
-
-      <table style="width:100%; border-collapse:collapse;">
-        <thead>
-          <tr>
-            <th>{{ t.field_key }}</th>
-            <th>{{ t.label_en }}</th>
-            <th>{{ t.label_fr }}</th>
-            <th>{{ t.label_ar }}</th>
-          </tr>
-        </thead>
-        <tbody id="photoTableBody">
-          <tr>
-            <td>
-              <select id="photoKey">
-                <option value="">{{ t.select_option }}</option>
-                {% for f in kobo_image_fields %}
-                  <option value="{{ f.name }}">{{ f.label }}</option>
-                {% endfor %}
-              </select>
-            </td>
-            <td><input type="text" id="photoLabelEn"></td>
-            <td><input type="text" id="photoLabelFr"></td>
-            <td><input type="text" id="photoLabelAr"></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card" id="scanCard">
-      <h2>{{ t.scan_config_title or "Scan Method" }}</h2>
-
-      <label class="toggle-row">
-        <span>{{ t.enable_qr_scan or "Enable QR code scanning" }}</span>
-        <div class="toggle">
-          <input type="checkbox" id="qrEnabled">
-          <span class="toggle-slider"></span>
+        <div class="sect-body">
+          <div class="tbl-scroll">
+            <table id="fieldTable">
+              <thead>
+                <tr>
+                  <th>{{ t.field_name_121 }}</th>
+                  <th>{{ t.label_en }}</th>
+                  <th>{{ t.label_fr }}</th>
+                  <th>{{ t.label_ar }}</th>
+                  <th class="col-editable">✏️ {{ t.editable or "Editable" }}</th>
+                  <th>{{ t.remove }}</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="sub" style="margin:12px 0 0;">{{ t.editable_hint or "Turn on “Editable” to let distribution staff type a value for this field during a scan (e.g. a prepaid card number). Saved values are sent back to 121 to update the registration. Note: phone number and reference ID cannot be updated this way." }}</p>
+          <button type="button" class="btn-add" onclick="addRow()">＋ {{ t.add_field }}</button>
         </div>
-      </label>
+      </section>
 
-      <p style="margin:0;color:var(--muted);font-size:0.88rem;">
-        {{ t.enable_qr_scan_hint or "When off, this program uses manual code entry only (no QR camera)." }}
-      </p>
+      <!-- ============ PHOTO / KOBO ============ -->
+      <section class="sect" id="photoCard">
+        <div class="sect-head">
+          <span class="logo-tile kobo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg>
+          </span>
+          <div class="sh-text">
+            <p class="name">{{ t.photo_config_title }}</p>
+            <p class="sub">{{ t.photo_section_hint or "Maps to an image question in the program's KoboToolbox form. Labels prefill from Kobo." }}</p>
+          </div>
+        </div>
+        <div class="sect-body">
+          <label class="toggle-row" style="cursor:pointer">
+            <span class="tr-text">
+              <span class="t-name">{{ t.enable_photo_field }}</span>
+              <span class="t-sub">{{ t.enable_photo_field_hint or "When on, staff can attach a photo to the selected Kobo image field." }}</span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="photoEnabled" onchange="togglePhotoFields()">
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+
+          <div class="photo-grid" id="photoGrid">
+            <div class="tbl-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{{ t.field_key }}</th>
+                    <th>{{ t.label_en }}</th>
+                    <th>{{ t.label_fr }}</th>
+                    <th>{{ t.label_ar }}</th>
+                  </tr>
+                </thead>
+                <tbody id="photoTableBody">
+                  <tr>
+                    <td>
+                      <select id="photoKey">
+                        <option value="">{{ t.select_option }}</option>
+                        {% for f in kobo_image_fields %}
+                          <option value="{{ f.name }}">{{ f.label }}</option>
+                        {% endfor %}
+                      </select>
+                    </td>
+                    <td class="col-lang"><input type="text" id="photoLabelEn"></td>
+                    <td class="col-lang"><input type="text" id="photoLabelFr"></td>
+                    <td class="col-lang"><input type="text" id="photoLabelAr" dir="rtl"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <span class="prefill-note" id="photoPrefillNote">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+              {{ t.kobo_prefill_note or "Labels filled from KoboToolbox — edit any if needed" }}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SCAN METHOD ============ -->
+      <section class="sect" id="scanCard">
+        <div class="sect-head">
+          <span class="logo-tile scan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h5V2H2v7h2zM20 4v5h2V2h-7v2zM4 20v-5H2v7h7v-2zM20 20h-5v2h7v-7h-2z"/><path d="M7 12h10"/></svg>
+          </span>
+          <div class="sh-text">
+            <p class="name">{{ t.scan_config_title or "Scan method" }}</p>
+            <p class="sub">{{ t.scan_section_hint or "Choose how beneficiaries are identified." }}</p>
+          </div>
+        </div>
+        <div class="sect-body">
+          <label class="toggle-row" style="cursor:pointer">
+            <span class="tr-text">
+              <span class="t-name">{{ t.enable_qr_scan or "QR code scanning" }}</span>
+              <span class="t-sub">{{ t.enable_qr_scan_hint or "When off, this program uses manual code entry only (no QR camera)." }}</span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="qrEnabled">
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+        </div>
+      </section>
+
     </div>
 
-    <div id="formError" class="inline-error hidden" style="text-align:center;">
-      Please select a field or delete the highlighted row(s) before saving.
+    <div id="formError" class="inline-error hidden">
+      {{ t.config_select_or_delete or "Please select a field or delete the highlighted row(s) before saving." }}
     </div>
 
-    <button type="submit" class="save-btn">{{ t.save }}</button>
-
+    <div class="savebar">
+      <button type="submit" class="save-btn">{{ t.save }}</button>
+    </div>
   </form>
 </div>
 
@@ -641,6 +475,7 @@
   <div>{{ t.footer_dev }}</div>
   <div>{{ t.footer_support }}</div>
 </footer>
+
 <script>
 /* ============================================================
    ACCOUNT DROPDOWN
@@ -651,7 +486,6 @@ function toggleAccountDropdown() {
   menu.classList.toggle('hidden');
   btn.classList.toggle('active');
 }
-
 document.addEventListener('click', function(e) {
   const menu = document.getElementById('account-menu');
   const btn = document.querySelector('.account-btn');
@@ -666,22 +500,28 @@ document.addEventListener('click', function(e) {
    ============================================================ */
 function showToast(message, type = 'success') {
   const toast = document.getElementById('saveToast');
-  toast.textContent = (type === 'success' ? '✓  ' : '✕  ') + message;
+  toast.textContent = (type === 'success' ? '\u2713  ' : '\u2715  ') + message;
   toast.className = 'show ' + type;
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => { toast.className = ''; }, 3000);
 }
 
 /* ============================================================
-   GLOBAL STATE (FIX #1)
+   GLOBAL STATE
    ============================================================ */
 let FULL_CONFIG = {{ full_config | tojson }};
 let activeProgramId = null;
+let allowedAttributes = {{ allowed_attributes | tojson }};
+let koboImageFields = {{ kobo_image_fields | tojson }};
+
+const fieldTableBody = document.querySelector('#fieldTable tbody');
+
+function flashInput(el){ if(!el) return; el.classList.remove('prefilled'); void el.offsetWidth; el.classList.add('prefilled'); }
 
 /* ============================================================
-   HELPERS
+   SEARCHABLE SELECT
+   (options are read live so program switches refresh the list)
    ============================================================ */
-
 function makeSelectSearchable(selectEl) {
   if (!selectEl || selectEl.dataset.searchable === 'true') return;
   selectEl.dataset.searchable = 'true';
@@ -691,20 +531,19 @@ function makeSelectSearchable(selectEl) {
 
   const input = document.createElement('input');
   input.type = 'text';
+  selectEl._searchInput = input;
 
   if (selectEl.value) {
     const selectedOption = selectEl.options[selectEl.selectedIndex];
     if (selectedOption) input.value = selectedOption.text;
   }
-
-  input.placeholder = selectEl.options.length
-    ? selectEl.options[0].text
-    : 'Search…';
+  input.placeholder = selectEl.options.length ? selectEl.options[0].text : 'Search…';
 
   const dropdown = document.createElement('div');
   dropdown.className = 'searchable-options hidden';
 
-  const options = Array.from(selectEl.options)
+  // Read options live from the underlying <select> every render
+  const getOptions = () => Array.from(selectEl.options)
     .filter(o => o.value)
     .map(o => ({ value: o.value, label: o.text }));
 
@@ -716,11 +555,9 @@ function makeSelectSearchable(selectEl) {
     dropdown.style.left = rect.left + 'px';
     dropdown.style.width = rect.width + 'px';
   }
-
   window.addEventListener('scroll', () => {
     if (!dropdown.classList.contains('hidden')) positionDropdown();
   }, true);
-
   window.addEventListener('resize', positionDropdown);
 
   setTimeout(() => {
@@ -734,8 +571,7 @@ function makeSelectSearchable(selectEl) {
   function render(filter = '') {
     dropdown.innerHTML = '';
     activeIndex = -1;
-
-    options
+    getOptions()
       .filter(o => o.label.toLowerCase().includes(filter.toLowerCase()))
       .forEach(o => {
         const div = document.createElement('div');
@@ -743,6 +579,7 @@ function makeSelectSearchable(selectEl) {
         div.onclick = () => {
           selectEl.value = o.value;
           input.value = o.label;
+          input.classList.remove('field-error');
           dropdown.classList.add('hidden');
           selectEl.dispatchEvent(new Event('change', { bubbles: true }));
         };
@@ -750,34 +587,17 @@ function makeSelectSearchable(selectEl) {
       });
   }
 
-  input.addEventListener('focus', () => {
-    render(input.value);
-    positionDropdown();
-    dropdown.classList.remove('hidden');
-  });
-
+  input.addEventListener('focus', () => { render(input.value); positionDropdown(); dropdown.classList.remove('hidden'); });
   input.addEventListener('input', () => {
-    render(input.value);
-    positionDropdown();
-    dropdown.classList.remove('hidden');
+    render(input.value); positionDropdown(); dropdown.classList.remove('hidden');
     if (!input.value.trim()) selectEl.value = '';
   });
-
   input.addEventListener('keydown', e => {
     const items = dropdown.querySelectorAll('div');
     if (!items.length) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      activeIndex = (activeIndex + 1) % items.length;
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIndex = (activeIndex - 1 + items.length) % items.length;
-    } else if (e.key === 'Enter' && activeIndex >= 0) {
-      e.preventDefault();
-      items[activeIndex].click();
-    }
-
+    if (e.key === 'ArrowDown') { e.preventDefault(); activeIndex = (activeIndex + 1) % items.length; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIndex = (activeIndex - 1 + items.length) % items.length; }
+    else if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); items[activeIndex].click(); }
     items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
   });
 
@@ -788,14 +608,16 @@ function makeSelectSearchable(selectEl) {
   wrapper.appendChild(selectEl);
 }
 
+// Keep a searchable input's visible text in sync with its select's current value
+function syncSearchInput(selectEl) {
+  if (!selectEl || !selectEl._searchInput) return;
+  const sel = selectEl.options[selectEl.selectedIndex];
+  selectEl._searchInput.value = (sel && sel.value) ? sel.text : '';
+}
+
 /* ============================================================
-   FIELD TABLE LOGIC
+   FIELD TABLE
    ============================================================ */
-
-let allowedAttributes = {{ allowed_attributes | tojson }};
-let koboImageFields = {{ kobo_image_fields | tojson }};
-const fieldTableBody = document.querySelector('#fieldTable tbody');
-
 function createFieldSelect(selectedKey) {
   const select = document.createElement('select');
   select.name = 'key';
@@ -813,21 +635,21 @@ function createFieldSelect(selectedKey) {
     select.appendChild(opt);
   });
 
+  // PREPOPULATE empty language labels from the chosen field
   select.addEventListener('change', () => {
     const row = select.closest('tr');
     const attr = allowedAttributes.find(a => a.name === select.value);
     if (!row || !attr) return;
-
     ['en', 'fr', 'ar'].forEach(lang => {
       const input = row.querySelector(`input[name="label_${lang}"]`);
-      if (input && !input.value.trim()) input.value = attr.label;
+      if (input && !input.value.trim()) { input.value = attr.label; flashInput(input); }
     });
   });
 
   return select;
 }
 
-function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
+function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''}, editable:false }) {
   const row = document.createElement('tr');
 
   const keyCell = document.createElement('td');
@@ -838,67 +660,126 @@ function addRowFromData(item = { key:'', labels:{en:'',fr:'',ar:''} }) {
 
   ['en','fr','ar'].forEach(lang => {
     const cell = document.createElement('td');
+    cell.className = 'col-lang';
     const input = document.createElement('input');
     input.type = 'text';
     input.name = 'label_' + lang;
     input.value = item.labels?.[lang] || '';
+    if (lang === 'ar') input.dir = 'rtl';
     cell.appendChild(input);
     row.appendChild(cell);
   });
 
+  // Editable toggle: when on, this field is shown as an input on the
+  // beneficiary scan page and its value is sent back to 121 on Send.
+  // Rendered with an explicit state label + row highlight so it's obvious
+  // at a glance which fields staff can type into.
+  const editCell = document.createElement('td');
+  editCell.className = 'col-editable-cell';
+
+  const editWrap = document.createElement('div');
+  editWrap.className = 'edit-toggle-wrap';
+
+  const editLabel = document.createElement('label');
+  editLabel.className = 'toggle';
+  const editInput = document.createElement('input');
+  editInput.type = 'checkbox';
+  editInput.name = 'editable';
+  editInput.checked = !!item.editable;
+  const editSlider = document.createElement('span');
+  editSlider.className = 'toggle-slider';
+  editLabel.appendChild(editInput);
+  editLabel.appendChild(editSlider);
+
+  const editState = document.createElement('span');
+  editState.className = 'edit-state';
+
+  const syncEditableState = () => {
+    const on = editInput.checked;
+    row.classList.toggle('editable-on', on);
+    editState.classList.toggle('on', on);
+    editState.classList.toggle('off', !on);
+    editState.textContent = on
+      ? "{{ t.editable_on or 'Editable' }}"
+      : "{{ t.editable_off or 'Read-only' }}";
+  };
+  editInput.addEventListener('change', syncEditableState);
+
+  editWrap.appendChild(editLabel);
+  editWrap.appendChild(editState);
+  editCell.appendChild(editWrap);
+  row.appendChild(editCell);
+
+  syncEditableState();
+
   const removeCell = document.createElement('td');
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'delete-btn';
-  btn.textContent = '❌';
+  btn.className = 'row-del';
+  btn.title = "{{ t.remove }}";
+  btn.textContent = '\u2715';
   btn.onclick = () => row.remove();
   removeCell.appendChild(btn);
   row.appendChild(removeCell);
 
   fieldTableBody.appendChild(row);
 }
-
-function addRow() {
-  addRowFromData();
-}
+function addRow() { addRowFromData(); }
 
 /* ============================================================
-   LOAD CONFIG (FIX #2)
+   PHOTO / KOBO FIELD
    ============================================================ */
+function togglePhotoFields() {
+  const on = document.getElementById('photoEnabled').checked;
+  document.getElementById('photoGrid').classList.toggle('disabled', !on);
+}
 
+// Prepopulate photo labels from the selected Kobo image field.
+// Kobo ships a single label per image field, so it seeds each empty
+// language input as a starting value that staff can then edit.
+document.getElementById('photoKey').addEventListener('change', function () {
+  const field = koboImageFields.find(f => f.name === this.value);
+  const note = document.getElementById('photoPrefillNote');
+  if (!field) { if (note) note.classList.remove('show'); return; }
+
+  let filled = false;
+  [['en','photoLabelEn'], ['fr','photoLabelFr'], ['ar','photoLabelAr']].forEach(([lang, id]) => {
+    const input = document.getElementById(id);
+    if (input && !input.value.trim()) { input.value = field.label; flashInput(input); filled = true; }
+  });
+  if (note) note.classList.toggle('show', filled);
+});
+
+/* ============================================================
+   LOAD CONFIG
+   ============================================================ */
 function loadConfig() {
   fieldTableBody.innerHTML = '';
 
   const programConfig =
     FULL_CONFIG?.programs?.[activeProgramId] || { fields: [], photo: {} };
 
-  programConfig.fields?.forEach(addRowFromData);
+  (programConfig.fields || []).forEach(addRowFromData);
 
-  document.getElementById('photoEnabled').checked =
-    !!programConfig.photo?.enabled;
-
-  document.getElementById('photoKey').value =
-    programConfig.photo?.field_name || '';
-
-  document.getElementById('photoLabelEn').value =
-    programConfig.photo?.labels?.en || '';
-  document.getElementById('photoLabelFr').value =
-    programConfig.photo?.labels?.fr || '';
-  document.getElementById('photoLabelAr').value =
-    programConfig.photo?.labels?.ar || '';
+  document.getElementById('photoEnabled').checked = !!programConfig.photo?.enabled;
+  document.getElementById('photoKey').value = programConfig.photo?.field_name || '';
+  document.getElementById('photoLabelEn').value = programConfig.photo?.labels?.en || '';
+  document.getElementById('photoLabelFr').value = programConfig.photo?.labels?.fr || '';
+  document.getElementById('photoLabelAr').value = programConfig.photo?.labels?.ar || '';
 
   // QR scanning: default ON unless explicitly disabled
-  document.getElementById('qrEnabled').checked =
-    programConfig.qr?.enabled !== false;
+  document.getElementById('qrEnabled').checked = programConfig.qr?.enabled !== false;
+
+  document.getElementById('photoPrefillNote').classList.remove('show');
 
   togglePhotoFields();
   makeSelectSearchable(document.getElementById('photoKey'));
+  syncSearchInput(document.getElementById('photoKey'));
 }
 
 /* ============================================================
-   SAVE (FIX #3 — UPDATE IN-MEMORY STATE)
+   SAVE
    ============================================================ */
-
 document.getElementById('configForm').addEventListener('submit', async e => {
   e.preventDefault();
 
@@ -907,28 +788,33 @@ document.getElementById('configForm').addEventListener('submit', async e => {
   const formError = document.getElementById('formError');
   let hasInvalid = false;
 
-  // Clear previous error state
   formError.classList.add('hidden');
   rows.forEach(row => {
     const k = row.querySelector('[name="key"]');
-    if (k) k.classList.remove('field-error');
+    if (k) {
+      k.classList.remove('field-error');
+      if (k._searchInput) k._searchInput.classList.remove('field-error');
+    }
   });
 
   for (const row of rows) {
     const keyEl = row.querySelector('[name="key"]');
     if (!keyEl || !keyEl.value) {
-      if (keyEl) keyEl.classList.add('field-error');
+      if (keyEl) {
+        keyEl.classList.add('field-error');
+        if (keyEl._searchInput) keyEl._searchInput.classList.add('field-error');
+      }
       hasInvalid = true;
       continue;
     }
-
     fields.push({
       key: keyEl.value,
       labels: {
         en: row.querySelector('[name="label_en"]').value,
         fr: row.querySelector('[name="label_fr"]').value,
         ar: row.querySelector('[name="label_ar"]').value
-      }
+      },
+      editable: !!(row.querySelector('[name="editable"]') || {}).checked
     });
   }
 
@@ -941,9 +827,7 @@ document.getElementById('configForm').addEventListener('submit', async e => {
   const result = {
     programId: activeProgramId,
     fields,
-    qr: {
-      enabled: document.getElementById('qrEnabled').checked
-    },
+    qr: { enabled: document.getElementById('qrEnabled').checked },
     photo: {
       enabled: document.getElementById('photoEnabled').checked,
       field_name: document.getElementById('photoKey').value,
@@ -982,11 +866,9 @@ document.getElementById('configForm').addEventListener('submit', async e => {
 /* ============================================================
    PROGRAM SWITCHING
    ============================================================ */
-
 document.getElementById('programSelector').addEventListener('change', async e => {
   activeProgramId = e.target.value;
 
-  // Show loading state
   const selector = document.getElementById('programSelector');
   selector.disabled = true;
 
@@ -997,7 +879,7 @@ document.getElementById('programSelector').addEventListener('change', async e =>
       allowedAttributes = data.attributes || [];
       koboImageFields = data.kobo_image_fields || [];
 
-      // Rebuild the photoKey select options
+      // Rebuild the photoKey options for the new program
       const photoKey = document.getElementById('photoKey');
       const currentVal = photoKey.value;
       photoKey.innerHTML = '<option value="">{{ t.select_option or "Select..." }}</option>';
@@ -1008,6 +890,7 @@ document.getElementById('programSelector').addEventListener('change', async e =>
         if (f.name === currentVal) opt.selected = true;
         photoKey.appendChild(opt);
       });
+      syncSearchInput(photoKey);
     }
   } catch (err) {
     console.warn('Failed to fetch program attributes:', err);
@@ -1021,12 +904,10 @@ document.getElementById('programSelector').addEventListener('change', async e =>
 /* ============================================================
    INITIAL LOAD
    ============================================================ */
-
 window.onload = () => {
   const selector = document.getElementById('programSelector');
   if (!selector) return;
 
-  // Use backend-resolved active program id, falling back to first option
   const backendActive = '{{ active_program_id }}';
   if (backendActive && [...selector.options].some(o => o.value === backendActive)) {
     selector.value = backendActive;

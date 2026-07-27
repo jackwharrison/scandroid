@@ -1,5 +1,5 @@
-/* Scandroid PWA service worker — v8 */
-const CACHE_VERSION = 'v28'; // bump on every deploy
+/* Scandroid PWA service worker — v30 */
+const CACHE_VERSION = 'v30'; // bump on every deploy
 const CACHE_NAME = `scandroid-cache-${CACHE_VERSION}`;
 
 // NOTE: We deliberately do NOT precache /scan, /fsp-admin, /fsp-login here
@@ -55,14 +55,16 @@ self.addEventListener("fetch", (event) => {
 
   if (req.method !== "GET") return;
 
-  // -------------- EARLY ABSOLUTE NO-CACHE PING -------------- //
+  // -------------- /ping: network-only reachability probe -------------- //
+  // The page reads response.ok to decide online/offline, so return the REAL
+  // network response when it answers, and a 503 only when the fetch genuinely
+  // fails (offline). Never cached.
+  // (Previously this synthesised a 204 and overrode the request headers; that
+  //  is removed in favour of passing the true status through, which is simpler
+  //  and avoids the probe misreporting reachability.)
   if (url.pathname === "/ping") {
     event.respondWith(
-      fetch(req, {
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache, no-store, must-revalidate" }
-      })
-        .then(() => new Response("", { status: 204 }))
+      fetch(req, { cache: "no-store" })
         .catch(() => new Response("", { status: 503 }))
     );
     return;

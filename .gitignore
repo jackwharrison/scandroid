@@ -53,3 +53,7 @@ build/
 pip-log.txt
 coverage.xml
 htmlcov/
+cl_diff.txt
+multicountry.txt
+uploads/
+flask_session/
