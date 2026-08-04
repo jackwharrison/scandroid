@@ -1119,23 +1119,57 @@ function scopedUUID(uuid) {
         photosWritten += items.filter(Boolean).length;
       }
 
-      // ---- NEW: import transactions.json ----
+      // ---- import transactions.json (one row per OPEN payment per person) ----
+      // A beneficiary may hold several concurrent payments; each becomes its own
+      // row keyed [uuid, paymentId]. We carry created/status/paymentName through
+      // because beneficiary_offline.html uses them to label and filter the
+      // selector — dropping them (as this did previously) left every option
+      // titled "Payment <id>" with no date and no status check.
       const txEntry = Object.values(zip.files).find(f => /transactions\.json$/i.test(f.name));
       if (txEntry) {
         const txText = await txEntry.async("string");
         const txList = JSON.parse(txText) || [];
 
+        // Drop this program's previously-cached tranches first. Without this, a
+        // payment that 121 has since closed would linger in the store forever
+        // and keep offering itself in the selector. Only the 'transaction' store
+        // is cleared — 'payments' holds the FSP's own decisions and must
+        // survive, otherwise we lose the record of what was already collected.
+        try {
+          const stale = await db.getAll("transaction");
+          const prefix = ACTIVE_PROGRAM_ID + ':';
+          for (const row of stale) {
+            if (row && typeof row.uuid === 'string' && row.uuid.startsWith(prefix)) {
+              await db.delete("transaction", [row.uuid, row.paymentId]);
+            }
+          }
+        } catch (e) {
+          console.warn('[sync] could not clear stale tranches:', e);
+        }
+
+        let tranchesWritten = 0;
         for (const t of txList) {
-          const uuid = t.registrationReferenceId || t.uuid;
+          const uuid = t.uuid || t.registrationReferenceId;
           if (!uuid) continue;
           if (t.paymentId == null) continue; // compound key needs both uuid and paymentId
 
           await db.put("transaction", {
             uuid: scopedUUID(uuid),
-            amount: t.amount || 0,
-            paymentId: t.paymentId
+            paymentId: t.paymentId,
+            // 121 auto-generates payment names and they are NOT unique — two
+            // payments minutes apart can share one. Kept for display only; the
+            // paymentId remains the identifier.
+            paymentName: t.paymentName || null,
+            paymentDate: t.paymentDate || null,
+            transactionId: t.transactionId ?? null,
+            registrationId: t.registrationId ?? null,
+            amount: t.amount ?? t.transferValue ?? 0,
+            created: t.created || null,
+            status: t.status || 'waiting'
           });
+          tranchesWritten++;
         }
+        console.info(`[sync] imported ${tranchesWritten} open payment tranche(s)`);
       }
 
       if (!silent) {
@@ -1256,16 +1290,10 @@ function scopedUUID(uuid) {
     const encKeyObj = await metaStore.get('encryptionKey');
     const encKey = encKeyObj?.value || '';
 
-    const csvRows = [['phoneNumber', 'status']];
-    for (const p of payments) {
-      let phone = p.match_value;
-      if (encKey && phone && phone.startsWith('gAAAA')) {
-        phone = await decrypt(phone, encKey);
-      }
-      csvRows.push([phone, p.status]);
-    }
-
-    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    // Reuse the shared builder so this path also emits paymentId and uses the
+    // configured match column instead of a hardcoded 'phoneNumber'.
+    const csvContent = await buildCsvFromPayments(payments);
+    const csvRows = csvContent.split('\n');
     cachedCsvBlob = new Blob([csvContent], { type: 'text/csv' });
 
     submitStatus.textContent = "✅ CSV ready with " + (csvRows.length - 1) + " records.";
@@ -1297,9 +1325,16 @@ function scopedUUID(uuid) {
       submitStatus.textContent =
         t.payment_submit_success || "✅ Payments submitted successfully!";
 
+      // Mark as submitted rather than clearing the store. Clearing erased the
+      // record of which tranche had been collected, so a re-scan would offer an
+      // already-paid payment again.
       const db = await openScandroidDB();
       const tx = db.transaction('payments', 'readwrite');
-      await tx.objectStore('payments').clear();
+      const store = tx.objectStore('payments');
+      for (const p of payments) {
+        if (p.status === 'success') { p.status = 'submitted'; await store.put(p); }
+      }
+      await tx.done;
 
       csvCountEl.textContent = "0";
       submitCsvBtn.disabled = true;
@@ -1381,7 +1416,10 @@ async function loadTotalAmount() {
       p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
     );
 
-    const scannedSet = new Set(pending.map(x => x.uuid));
+    // Key on uuid + paymentId. Keying on uuid alone summed EVERY tranche a
+    // person held, not the one the FSP selected — overstating the total for
+    // anyone with concurrent payments.
+    const scannedSet = new Set(pending.map(x => `${x.uuid}|${x.paymentId}`));
 
     // 2. Load all transactions
     const tx = db.transaction("transaction", "readonly");
@@ -1391,7 +1429,7 @@ async function loadTotalAmount() {
     // 3. Sum ONLY amounts of beneficiaries that are still pending
     let total = 0;
     for (const t of transactions) {
-      if (scannedSet.has(t.uuid)) {
+      if (scannedSet.has(`${t.uuid}|${t.paymentId}`)) {
         total += t.amount || 0;
       }
     }
@@ -1469,8 +1507,17 @@ async function buildCsvFromPayments(payments) {
   const encKeyObj = await metaStore.get("encryptionKey");
   const encKey = encKeyObj?.value || "";
 
-  // 🔥 Use the correct match column name from config
-  const rows = [[COLUMN_TO_MATCH, "status"]];
+  // 🔥 Use the correct match column name from config.
+  // paymentId is emitted explicitly: a beneficiary can hold several concurrent
+  // payments, so the server must reconcile the one the FSP actually selected
+  // rather than re-deriving it from the cache (which can only hold one value
+  // per person and would silently close out the wrong payment).
+  const rows = [[COLUMN_TO_MATCH, "status", "paymentId"]];
+
+  const esc = (val) => {
+    const v = String(val == null ? "" : val);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  };
 
   for (const p of payments) {
     let matchValue = p.match_value;
@@ -1479,10 +1526,10 @@ async function buildCsvFromPayments(payments) {
       matchValue = await decrypt(matchValue, encKey);
     }
 
-    rows.push([matchValue, p.status]);
+    rows.push([matchValue, p.status, p.paymentId ?? ""]);
   }
 
-  return rows.map(r => r.join(",")).join("\n");
+  return rows.map(r => r.map(esc).join(",")).join("\n");
 }
 
 // Which fields did the admin mark "Editable" for this program (config page)?

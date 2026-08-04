@@ -2530,13 +2530,33 @@ def submit_payments():
                     print(f"[!] Failed to decrypt incoming {column_to_match}: {raw_value} — {e}")
                     continue
 
-            payment_id = match_to_pid.get(raw_value)
+            # Prefer the paymentId the FSP actually selected on the device.
+            #
+            # A beneficiary can hold several concurrent payments. match_to_pid is
+            # keyed only by the match value, so it can hold ONE paymentId per
+            # person — using it would reconcile an arbitrary payment (whichever
+            # cache record was written last) instead of the one that was handed
+            # out. The device now sends its choice in a paymentId column; the
+            # cache lookup remains only as a fallback for CSVs produced by an
+            # older client build.
+            row_payment_id = str(row.get("paymentId") or "").strip()
+            if row_payment_id:
+                payment_id = row_payment_id
+            else:
+                payment_id = match_to_pid.get(raw_value)
+                if payment_id:
+                    print(
+                        f"[warn] CSV row for {raw_value} carried no paymentId; "
+                        f"fell back to cached paymentId {payment_id}. This is "
+                        "ambiguous when the beneficiary has multiple payments — "
+                        "re-sync the device to get a paymentId-aware export."
+                    )
 
             if not payment_id:
                 print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
-            grouped.setdefault(payment_id, []).append({
+            grouped.setdefault(str(payment_id), []).append({
                 column_to_match: raw_value,
                 "status": status
             })

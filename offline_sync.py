@@ -139,17 +139,74 @@ login_and_get_token()
 # 121 API HELPERS
 # ----------------------------------------------------------------------
 
+def _unwrap_list(data):
+    """121 is inconsistent about envelopes: /payments returns a bare array,
+    while /payments/{id}/transactions returns {"data": [...]}. Normalise both so
+    callers always get a list."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("data", "transactions", "payments"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+        logger.error("[ERROR] Unexpected list payload; keys=%s", list(data.keys()))
+    return []
+
+
+def _transfer_value(t):
+    """121 transactions carry the money as `transferValue`. Accept `amount` too,
+    so a schema difference between endpoints can't silently zero out every
+    amount the FSP sees on screen."""
+    for key in ("transferValue", "amount"):
+        value = t.get(key)
+        if value is not None:
+            return value
+    return 0
+
+
+def _parse_iso(value):
+    """Parse the two ISO shapes 121 emits (with and without fractional
+    seconds). Returns None when unparseable rather than raising."""
+    if not value:
+        return None
+    raw = str(value).replace("Z", "").replace("+00:00", "")
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def get_payments(program_id):
+    """
+    GET /api/programs/{id}/payments -> bare array of payment summaries.
+
+    Each item carries paymentId, name, paymentDate and aggregationsPerStatus.
+    That last field tells us how many transactions are still `waiting` BEFORE we
+    fetch any of them, so we only pull transactions for payments that actually
+    have something left to distribute.
+    """
+    url = f"{API_BASE}/programs/{program_id}/payments"
+    response = requests.get(url, cookies=COOKIES)
+    response.raise_for_status()
+    return _unwrap_list(response.json())
+
+
 def get_transactions(program_id, payment_id):
     url = f"{API_BASE}/programs/{program_id}/payments/{payment_id}/transactions"
     response = requests.get(url, cookies=COOKIES)
     response.raise_for_status()
-    return response.json()
+    return _unwrap_list(response.json())
 
 
 def get_all_transactions(program_id):
     """
     Get ALL transactions for a program.
-    This is used by download_recent_payments_cache.
+
+    DEPRECATED / unused: the sync is now driven by GET /programs/{id}/payments
+    (see select_open_payments). Kept only for ad-hoc debugging.
     """
     url = f"{API_BASE}/programs/{program_id}/transactions"
     response = requests.get(url, cookies=COOKIES)
@@ -487,7 +544,7 @@ def download_cache(program_id, payment_id):
             "registrationId": reg_id,
             "photo_filename": photo_filename,
             "paymentId": t.get("paymentId"),
-            "amount": t.get("amount", 0),
+            "amount": _transfer_value(t),
             "data": encrypted_data,
             "valid": is_valid,
             "reason": reason,
@@ -524,134 +581,229 @@ def download_cache(program_id, payment_id):
 
 
 # ----------------------------------------------------------------------
-# MAIN: RECENT PAYMENTS BATCH (last 14 days)
+# MAIN: OPEN PAYMENTS BATCH (multi-payment aware)
 # ----------------------------------------------------------------------
 
-def download_recent_payments_cache(program_id):
+# How far back to look. A payment older than this is assumed to be closed out
+# even if 121 still reports waiting transactions on it.
+WINDOW_DAYS = int(os.getenv("OFFLINE_SYNC_WINDOW_DAYS", "14"))
+
+
+def select_open_payments(program_id, window_days=WINDOW_DAYS):
     """
-    Build a "recent" offline batch:
-    - Get ALL transactions for a program
-    - Filter to status=waiting, not deleted, created in last 14 days
-    - Keep only the latest transaction per UUID
-    - Fetch registrations in bulk (parallel)
-    - Download & encrypt photos in parallel (medium-size)
-    - Save:
-        - registrations_cache.json
-        - transactions.json (latest transactions per uuid)
-        - batch_info.json
+    Decide which payments are worth pulling transactions for.
+
+    Driven by GET /programs/{id}/payments, which reports, per payment, how many
+    transactions sit in each status. We keep a payment when it still has waiting
+    transactions and its paymentDate falls inside the window. This replaces the
+    old approach of fetching every transaction in the program and filtering
+    client-side, and it gives us the payment `name` for free.
+
+    Returns a list of dicts: paymentId, name, paymentDate, waitingCount.
+    """
+    payments = get_payments(program_id)
+    logger.info(f"[INFO] Program {program_id}: {len(payments)} payment(s) in 121")
+
+    cutoff = datetime.utcnow() - timedelta(days=window_days)
+    selected = []
+    skipped_no_waiting = 0
+    skipped_too_old = 0
+
+    for p in payments:
+        payment_id = p.get("paymentId", p.get("id"))
+        if payment_id is None:
+            continue
+
+        aggregations = p.get("aggregationsPerStatus") or {}
+        waiting_count = (aggregations.get("waiting") or {}).get("count") or 0
+        if not waiting_count:
+            skipped_no_waiting += 1
+            continue
+
+        payment_date = p.get("paymentDate")
+        parsed_date = _parse_iso(payment_date)
+        if parsed_date and parsed_date < cutoff:
+            skipped_too_old += 1
+            continue
+
+        selected.append({
+            "paymentId": payment_id,
+            # Names are auto-generated by 121 and are NOT guaranteed unique —
+            # two payments minutes apart can share a name. The paymentId is the
+            # only reliable identifier, so it is carried alongside and is what
+            # the FSP's selection is keyed on.
+            "name": p.get("name") or f"Payment {payment_id}",
+            "paymentDate": payment_date,
+            "waitingCount": waiting_count,
+            "isPaymentApproved": p.get("isPaymentApproved"),
+        })
+
+    selected.sort(key=lambda x: (str(x.get("paymentDate") or ""), x["paymentId"]))
+
+    logger.info(
+        f"[INFO] {len(selected)} open payment(s) selected "
+        f"(skipped: {skipped_no_waiting} with nothing waiting, "
+        f"{skipped_too_old} older than {window_days} days)"
+    )
+    for p in selected:
+        logger.info(
+            f"  - paymentId={p['paymentId']} \"{p['name']}\" "
+            f"waiting={p['waitingCount']} date={p.get('paymentDate')}"
+        )
+
+    return selected
+
+
+def fetch_tranches(program_id, payments):
+    """
+    Fetch waiting transactions for each open payment (in parallel) and group them
+    by beneficiary.
+
+    A beneficiary legitimately appears under several payments at once — that is
+    the whole point of this batch. Returns:
+        tranches_by_uuid: {registrationReferenceId: [tranche, ...]}
+        reg_id_by_uuid:   {registrationReferenceId: registrationId}
+    """
+    tranches_by_uuid = defaultdict(dict)  # uuid -> {paymentId: tranche}
+    reg_id_by_uuid = {}
+
+    if not payments:
+        return {}, {}
+
+    def worker(payment):
+        try:
+            return payment, get_transactions(program_id, payment["paymentId"])
+        except Exception as e:
+            logger.warning(
+                f"[!] Failed to fetch transactions for paymentId "
+                f"{payment['paymentId']}: {e}"
+            )
+            return payment, []
+
+    counts = {"total": 0, "not_waiting": 0, "deleted": 0, "missing_ids": 0, "kept": 0}
+
+    max_workers = min(MAX_WORKERS, len(payments)) or 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(worker, p) for p in payments]
+        for future in as_completed(futures):
+            payment, transactions = future.result()
+            for t in transactions:
+                if not isinstance(t, dict):
+                    continue
+                counts["total"] += 1
+
+                status = (t.get("status") or t.get("transactionStatus") or "").lower()
+                if status != "waiting":
+                    counts["not_waiting"] += 1
+                    continue
+
+                if (t.get("registrationStatus") or "").lower() == "deleted":
+                    counts["deleted"] += 1
+                    continue
+
+                uuid = t.get("registrationReferenceId")
+                reg_id = t.get("registrationId")
+                if not uuid or not reg_id:
+                    counts["missing_ids"] += 1
+                    continue
+
+                payment_id = t.get("paymentId", payment["paymentId"])
+
+                tranche = {
+                    "uuid": uuid,
+                    # Kept so the client importer can read either shape.
+                    "registrationReferenceId": uuid,
+                    "registrationId": reg_id,
+                    "transactionId": t.get("id"),
+                    "paymentId": payment_id,
+                    "paymentName": payment["name"],
+                    "paymentDate": payment.get("paymentDate"),
+                    "amount": _transfer_value(t),
+                    "created": t.get("created"),
+                    "status": status,
+                }
+
+                # One tranche per (uuid, paymentId) — matches the compound
+                # IndexedDB key on the client. If 121 ever returns more than one
+                # transaction for the same pair, keep the most recent.
+                existing = tranches_by_uuid[uuid].get(payment_id)
+                if existing and str(existing.get("created") or "") > str(t.get("created") or ""):
+                    continue
+
+                tranches_by_uuid[uuid][payment_id] = tranche
+                reg_id_by_uuid[uuid] = reg_id
+                counts["kept"] += 1
+
+    logger.info("[INFO] Transaction scan: " + ", ".join(f"{k}={v}" for k, v in counts.items()))
+
+    # Flatten to {uuid: [tranche, ...]} sorted oldest payment first, so the
+    # order the FSP sees on screen is stable between syncs.
+    flattened = {}
+    for uuid, by_payment in tranches_by_uuid.items():
+        tranches = sorted(
+            by_payment.values(),
+            key=lambda x: (str(x.get("paymentDate") or x.get("created") or ""), x["paymentId"]),
+        )
+        flattened[uuid] = tranches
+
+    multi = sum(1 for v in flattened.values() if len(v) > 1)
+    logger.info(
+        f"[INFO] {len(flattened)} beneficiar(y/ies) with open payments; "
+        f"{multi} of them have more than one"
+    )
+
+    return flattened, reg_id_by_uuid
+
+
+def download_open_payments_cache(program_id):
+    """
+    Build the offline batch, multi-payment aware.
+
+    1) Ask 121 which payments still have waiting transactions (and their names)
+    2) Fetch those payments' transactions in parallel
+    3) Group into a list of tranches per beneficiary
+    4) Fetch each registration and photo ONCE per beneficiary, not per tranche
+    5) Write registrations_cache.json, transactions.json, batch_info.json
+
+    The batch directory keeps the historical "payment-recent-batch-N" name
+    because /submit-payments and /api/offline/latest.zip select batches by that
+    prefix.
     """
     base_path = "offline-cache"
     os.makedirs(base_path, exist_ok=True)
     batch_dir = get_next_batch_dir(base_path, "recent")
     photos_dir = os.path.join(batch_dir, "photos")
 
-    # Resolve the match column ONCE, live from 121, and reuse it for every
-    # record below AND record it in the manifest so the client never has to guess.
+    # Resolve the match column ONCE, live from 121, and record it in the
+    # manifest so the client never has to guess.
     match_key = resolve_column_to_match(program_id)
     if not match_key:
         logger.error("[!] Could not resolve columnToMatch for program %s — "
                      "offline payments will not be matchable.", program_id)
 
-    all_transactions = get_all_transactions(program_id)
-    logger.info(f"[INFO] Total transactions fetched: {len(all_transactions)}")
+    # 1) + 2) + 3)
+    open_payments = select_open_payments(program_id)
+    if not open_payments:
+        logger.warning("[!] No open payments for program %s — nothing to cache.", program_id)
 
-    filtered = []
+    tranches_by_uuid, reg_id_by_uuid = fetch_tranches(program_id, open_payments)
 
-    counts = {
-        "not_dict": 0,
-        "not_waiting": 0,
-        "deleted": 0,
-        "missing_created": 0,
-        "invalid_date": 0,
-        "valid": 0,
-    }
+    if not tranches_by_uuid:
+        logger.warning("[!] No waiting transactions found — writing an empty batch.")
 
-    # 1) Filter by status, not deleted, and date window
-    for t in all_transactions:
-        if not isinstance(t, dict):
-            counts["not_dict"] += 1
-            continue
-
-        status = (t.get("status") or t.get("transactionStatus") or "").lower()
-        created = t.get("created", "")
-        deleted = (t.get("registrationStatus") or "").lower() == "deleted"
-
-        if status != "waiting":
-            counts["not_waiting"] += 1
-            continue
-
-        if deleted:
-            counts["deleted"] += 1
-            continue
-
-        if not created:
-            counts["missing_created"] += 1
-            continue
-
-        try:
-            try:
-                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
-            except ValueError:
-                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ")
-        except ValueError:
-            counts["invalid_date"] += 1
-            logger.info(f"[SKIP] Invalid date: {created}")
-            continue
-
-        filtered.append(t)
-        counts["valid"] += 1
-
-    logger.debug("\n[DEBUG] Filter counts:")
-    for k, v in counts.items():
-        logger.info(f"  - {k}: {v}")
-    logger.info(f"[INFO] Filtered transactions: {len(filtered)}")
-
-    # 2) Keep only the latest transaction per UUID
-    latest_by_uuid = {}
-    for t in filtered:
-        uuid = t.get("registrationReferenceId")
-        if not uuid:
-            continue
-        existing = latest_by_uuid.get(uuid)
-        if not existing or t.get("created", "") > existing.get("created", ""):
-            latest_by_uuid[uuid] = t
-
-    logger.info(f"[INFO] Final unique transactions to cache: {len(latest_by_uuid)}")
-
-    # 3) Fetch registrations in bulk (parallel)
-    reg_ids = [
-        t.get("registrationId")
-        for t in latest_by_uuid.values()
-        if t.get("registrationId")
-    ]
-    registrations_map = fetch_registrations_bulk(program_id, reg_ids)
+    # 4) Fetch registrations once per beneficiary
+    registrations_map = fetch_registrations_bulk(
+        program_id, list(reg_id_by_uuid.values())
+    )
 
     cache_data = []
+    all_tranches = []
 
-    # 4) Build records
-    for t in latest_by_uuid.values():
-        reg_id = t.get("registrationId")
-        uuid = t.get("registrationReferenceId")
-
-        if not reg_id or not uuid:
-            logger.info("[SKIP] Missing reg_id or uuid")
-            continue
-
-        status = (t.get("status") or t.get("transactionStatus") or "").lower()
-        deleted = (t.get("registrationStatus") or "").lower() == "deleted"
-        created = t.get("created", "")
-
-        try:
-            try:
-                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
-            except ValueError:
-                created_dt = datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ")
-        except Exception:
-            created_dt = datetime.min
-
+    for uuid, tranches in tranches_by_uuid.items():
+        reg_id = reg_id_by_uuid.get(uuid)
         reg = registrations_map.get(reg_id)
         if not reg:
-            logger.warning(f"[!] Failed registration fetch for {reg_id}")
+            logger.warning(f"[!] Failed registration fetch for {reg_id} (uuid {uuid})")
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
@@ -659,58 +811,77 @@ def download_recent_payments_cache(program_id):
             filtered_data[match_key] = reg.get(match_key)
         encrypted_data = encrypt_data(filtered_data)
 
-        photo_filename = f"{uuid}.enc"
-
-        is_valid = status == "waiting" and not deleted
-
-        reason = "ok"
-        if not is_valid:
-            if status != "waiting":
-                reason = f"status={status}"
-            elif deleted:
-                reason = "deleted"
+        first = tranches[0]
 
         record = {
             "uuid": uuid,
             "registrationId": reg_id,
-            "photo_filename": photo_filename,
-            "paymentId": t.get("paymentId"),
-            "amount": t.get("amount", 0),
+            "photo_filename": f"{uuid}.enc",
+            # Full tranche list — this is the authoritative payment data now.
+            "payments": tranches,
+            "paymentCount": len(tranches),
+            # Legacy scalars, kept so an older client build (or the
+            # single-tranche fallback in beneficiary_offline.html) still renders
+            # something sane. They describe the FIRST open payment only and must
+            # not be treated as "the" payment when paymentCount > 1.
+            "paymentId": first["paymentId"],
+            "amount": first["amount"],
+            # Every record here has at least one waiting, non-deleted tranche,
+            # so it is valid by construction.
+            "valid": True,
+            "reason": "ok",
             "data": encrypted_data,
-            "valid": is_valid,
-            "reason": reason,
         }
 
         cache_data.append(record)
+        all_tranches.extend(tranches)
 
-    # 5) Download & encrypt photos in parallel
+    # 5) Download & encrypt photos in parallel (one per beneficiary)
     download_photos_bulk(cache_data, photos_dir)
 
-    # 6) Save encrypted registration data
     json_path = os.path.join(batch_dir, "registrations_cache.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(cache_data, f, indent=2)
 
-    # Save filtered latest transactions
+    # Flat list of every open tranche — the client imports this into its
+    # 'transaction' store keyed on [uuid, paymentId].
     tx_path = os.path.join(batch_dir, "transactions.json")
     with open(tx_path, "w", encoding="utf-8") as f:
-        json.dump(list(latest_by_uuid.values()), f, indent=2)
-
-    logger.info(f"\n[OK] Batch saved to: {batch_dir}")
-    logger.info(f"{len(cache_data)} beneficiaries ready.")
+        json.dump(all_tranches, f, indent=2)
 
     batch_info = {
         "batchType": "payment-recent",
+        "multiPayment": True,
         "programId": program_id,
         "columnToMatch": match_key,
+        "dataEncrypted": True,
+        "windowDays": WINDOW_DAYS,
         "recordCount": len(cache_data),
+        "trancheCount": len(all_tranches),
+        "payments": [
+            {
+                "paymentId": p["paymentId"],
+                "name": p["name"],
+                "paymentDate": p.get("paymentDate"),
+            }
+            for p in open_payments
+        ],
         "generatedAt": datetime.utcnow().isoformat() + "Z",
     }
-
     with open(os.path.join(batch_dir, "batch_info.json"), "w", encoding="utf-8") as f:
         json.dump(batch_info, f, indent=2)
 
+    logger.info(f"\n[OK] Batch saved to: {batch_dir}")
+    logger.info(
+        f"{len(cache_data)} beneficiaries ready for offline validation "
+        f"({len(all_tranches)} open payments in total)."
+    )
     return len(cache_data)
+
+
+# Backwards-compatible alias: anything still calling the old name gets the new,
+# multi-payment-aware behaviour.
+download_recent_payments_cache = download_open_payments_cache
 
 
 # ----------------------------------------------------------------------
@@ -718,5 +889,5 @@ def download_recent_payments_cache(program_id):
 # ----------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Default behaviour: generate the "recent" batch
-    download_recent_payments_cache(PROGRAM_ID)
+    # Default behaviour: generate the multi-payment "recent" batch
+    download_open_payments_cache(PROGRAM_ID)

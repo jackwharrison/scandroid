@@ -283,6 +283,8 @@
 
     // ---- Multi-payment (tranche) selection state ----
     let SELECTED_PAYMENT_ID = null;
+    let SELECTED_PAYMENT_NAME = null;
+    let SELECTED_AMOUNT = null;
     let MATCH_COL = null;
     let MATCH_VALUE = null;
 
@@ -300,6 +302,17 @@
       const n=Number(v);
       const f=Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:2}):String(v);
       return PROGRAM_CURRENCY?`${f} ${PROGRAM_CURRENCY}`:f;
+    }
+    function payLabel(t){
+      if(t.paymentName) return String(t.paymentName);
+      return 'Payment '+(t.paymentId??'');
+    }
+    // Payment names are minute-resolution and can repeat, so show the time too.
+    function fmtDateTime(iso){
+      if(!iso) return '';
+      const d=new Date(iso);
+      if(isNaN(d)) return '';
+      return d.toLocaleString(undefined,{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     }
     function fmtDate(iso){
       if(!iso) return '';
@@ -358,9 +371,17 @@
 
       if(open.length===1){
         // Single open tranche — no selection friction, show the amount block.
-        SELECTED_PAYMENT_ID=open[0].paymentId??null;
+        const only=open[0];
+        SELECTED_PAYMENT_ID=only.paymentId??null;
+        SELECTED_PAYMENT_NAME=only.paymentName||null;
+        SELECTED_AMOUNT=only.amount??null;
         amountBlock.classList.remove('hidden');
-        document.getElementById('amountValue').textContent=fmtAmount(open[0].amount);
+        document.getElementById('amountValue').textContent=fmtAmount(only.amount);
+        // Name the payment even when there's only one, so the FSP always knows
+        // which one they just closed out.
+        const sl=document.getElementById('selectedLine');
+        sl.textContent=payLabel(only)+(only.paymentId!=null?` (#${only.paymentId})`:'');
+        sl.classList.remove('hidden');
         return;
       }
 
@@ -369,23 +390,37 @@
       selectSection.classList.remove('hidden');
       approveBtn.disabled=true; // require a selection first
       listEl.innerHTML='';
-      open.sort((a,b)=>String(a.created||'').localeCompare(String(b.created||'')));
+      // Oldest payment first, matching the order the sync wrote them in.
+      open.sort((a,b)=>String(a.paymentDate||a.created||'').localeCompare(String(b.paymentDate||b.created||''))
+                      ||(Number(a.paymentId)-Number(b.paymentId)));
       open.forEach((t)=>{
         const opt=document.createElement('div');
         opt.className='pay-option';
-        const ref=t.paymentId!=null?`Ref PAY-${t.paymentId}`:'';
-        const date=fmtDate(t.created);
-        const meta=[date,ref].filter(Boolean).join(' · ');
+        const label=payLabel(t);
+        const date=fmtDateTime(t.paymentDate||t.created);
+        // 121 auto-generates payment names and does NOT guarantee they are
+        // unique — two payments created minutes apart share a name. The
+        // paymentId is the only reliable differentiator and is what actually
+        // gets sent back to 121, so it is always shown alongside the name.
+        const meta=[date,t.paymentId!=null?`#${t.paymentId}`:''].filter(Boolean).join(' · ');
         opt.innerHTML=`<div class="pay-radio"></div>`+
-          `<div class="pay-main"><div class="pay-title">${date||('Payment '+(t.paymentId??''))}</div>`+
-          `<div class="pay-meta">${meta}</div></div>`+
-          `<div class="pay-amount">${fmtAmount(t.amount)}</div>`;
+          `<div class="pay-main"><div class="pay-title"></div>`+
+          `<div class="pay-meta"></div></div>`+
+          `<div class="pay-amount"></div>`;
+        // textContent, not innerHTML — payment names come from 121 and must not
+        // be interpolated into markup.
+        opt.querySelector('.pay-title').textContent=label;
+        opt.querySelector('.pay-meta').textContent=meta;
+        opt.querySelector('.pay-amount').textContent=fmtAmount(t.amount);
         opt.addEventListener('click',()=>{
           SELECTED_PAYMENT_ID=t.paymentId??null;
+          SELECTED_PAYMENT_NAME=t.paymentName||null;
+          SELECTED_AMOUNT=t.amount??null;
           [...listEl.children].forEach(c=>c.classList.remove('selected'));
           opt.classList.add('selected');
           const sl=document.getElementById('selectedLine');
-          sl.textContent=`{{ t.selected or 'Selected' }}: ${date||('Payment '+(t.paymentId??''))} — ${fmtAmount(t.amount)}`;
+          sl.textContent=`{{ t.selected or 'Selected' }}: ${label}`+
+            (t.paymentId!=null?` (#${t.paymentId})`:'')+` — ${fmtAmount(t.amount)}`;
           sl.classList.remove('hidden');
           approveBtn.disabled=false;
         });
@@ -427,6 +462,9 @@
         tx.objectStore("payments").put({
           uuid: rec.uuid,
           paymentId: SELECTED_PAYMENT_ID,
+          // Display-only, for the audit trail — names are not unique.
+          payment_name: SELECTED_PAYMENT_NAME,
+          amount: SELECTED_AMOUNT,
           programId: ACTIVE_PROGRAM_ID,
           status: decisionValue,
           column_to_match: MATCH_COL,
