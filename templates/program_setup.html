@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" {% if lang == 'ar' %}dir="rtl"{% endif %}>
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="UTF-8">
+  <title>{{ t.program_setup or "Program set-up" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --pad: 16px;
+      --gap: 12px;
+      --radius: 18px;
+      --card: #fff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #f3f4f6;
+      --shadow-soft: 0 10px 30px rgba(0,0,0,0.06);
+      --navy: #002855;
+      --violet: #7c3aed;
+      --kobo: #2f9be8;
+      --ok: #16a34a;
+      --bad: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    @media (prefers-reduced-motion: reduce){ * { transition: none !important; animation: none !important; } }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---------- HEADER (121 STYLE) ---------- */
+    header {
+      background-color: #002855; padding: 12px 24px; display: flex; align-items: center;
+      justify-content: space-between; color: white; position: relative; z-index: 3000;
+    }
+    .header-left { display: flex; align-items: center; }
+    .header-left img { height: 32px; width: auto; object-fit: contain; }
+    .header-title {
+      flex: 1; text-align: left; padding-left: 20px; font-size: 1.1rem; color: #fff;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .title-bold { font-weight: 800; letter-spacing: 0.3px; }
+    .title-divider { opacity: 0.8; }
+    .title-program { font-weight: 300; opacity: 0.95; }
+
+    .account-icon-svg { width: 16px; height: 16px; filter: invert(100%); }
+    .account-arrow-svg { width: 12px; height: 12px; filter: invert(100%); margin-left: 4px; transition: transform 0.15s ease; }
+    .account-btn {
+      background: transparent; border: 1px solid transparent; color: #fff; padding: 6px 10px; border-radius: 18px;
+      cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 6px; transition: border 0.2s ease;
+    }
+    .account-btn:hover { border: 1px solid rgba(255,255,255,0.9); }
+    .account-btn.active .account-arrow-svg { transform: rotate(180deg); }
+    .header-account-wrapper { display: flex; align-items: center; gap: 16px; position: relative; }
+    .lang-select select {
+      padding: 6px 10px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff;
+      font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .account-menu {
+      position: absolute; background: #fff; top: 48px; right: 0; min-width: 220px; border-radius: 8px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.15); z-index: 3001; padding: 10px 0;
+    }
+    .hidden { display: none; }
+    .account-menu-item { padding: 10px 16px; font-size: 14px; text-decoration: none; color: #000; display: block; }
+    .account-menu-item:hover { background: #f2f2f2; }
+    .account-menu-divider { border-top: 1px solid #e5e7eb; margin: 6px 0; }
+    .user-info { font-size: 13px; }
+
+    /* ---------- FOOTER ---------- */
+    footer {
+      display: flex; justify-content: space-between; align-items: center; padding: 12px 18px;
+      font-size: 0.9rem; background-color: #002855; border-top: 1px solid rgba(255,255,255,0.15);
+      color: #fff; flex-wrap: wrap;
+    }
+
+    /* ---------- SHELL ---------- */
+    .wrapper {
+      width: 100%; max-width: 1120px; margin: 28px auto 48px auto; padding: 0 20px;
+      box-sizing: border-box; flex: 1;
+    }
+    .page-back-btn {
+      display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.95rem;
+      font-weight: 600; color: var(--navy); text-decoration: none; padding: 8px 14px; background: #fff;
+      border-radius: 999px; border: 2px solid var(--navy); transition: 0.2s ease;
+    }
+    .page-back-btn:hover { background: #e3e8ef; }
+    .page-back-btn img { width: 14px; height: 14px; }
+
+    h1 { margin: 22px 0 6px 0; font-size: 1.7rem; letter-spacing: -0.015em; font-weight: 800; text-align: center; }
+    .subtitle { margin: 0 auto 26px auto; text-align: center; color: var(--muted); font-size: 1rem; max-width: 60ch; line-height: 1.5; }
+
+    /* ---------- PROGRAM PICKER ---------- */
+    .program-picker {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow-soft); padding: 16px 20px; margin-bottom: 22px;
+    }
+    .program-picker .pp-label { font-weight: 700; font-size: 0.95rem; }
+    .program-picker .pp-hint { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+    .program-picker select {
+      padding: 10px 13px; font-size: 0.95rem; border: 1px solid #d1d5db; border-radius: 11px;
+      background: #fff; color: var(--ink); font-family: inherit; min-width: 260px; cursor: pointer;
+    }
+    .program-picker select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+    [dir="rtl"] .program-picker .pp-hint { margin-left: 0; margin-right: auto; }
+
+    /* ---------- SECTION CARDS ---------- */
+    .cards { display: flex; flex-direction: column; gap: 20px; }
+    .sect {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow-soft); overflow: hidden;
+    }
+    .sect-head { display: flex; align-items: center; gap: 14px; padding: 20px 24px 6px; }
+    .sect-head .sh-text { flex: 1; min-width: 0; }
+    .sect-head .name { font-size: 1.14rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+    .sect-head .sub { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+    .sect-body { padding: 8px 24px 24px; }
+
+    .logo-tile {
+      position: relative; height: 46px; width: 46px; flex: 0 0 auto; display: flex; align-items: center;
+      justify-content: center; border-radius: 12px; background: #f8fafc; border: 1px solid var(--line); color: var(--muted);
+    }
+    .logo-tile.pay   { background: #f5f0ff; border-color: #e6dbff; color: var(--violet); }
+    .logo-tile.scan  { background: #ecfdf5; border-color: #bbf7d0; color: var(--ok); }
+    .logo-tile.sync  { background: #eaf5fd; border-color: #cfe8fa; color: var(--kobo); }
+    .logo-tile svg { width: 24px; height: 24px; }
+
+    /* ---------- TOGGLE ---------- */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fbfbfc;
+    }
+    .toggle-row .tr-text .t-name { font-weight: 600; font-size: 0.95rem; }
+    .toggle-row .tr-text .t-sub { color: var(--muted); font-size: 0.83rem; margin-top: 2px; }
+    .toggle { position: relative; width: 46px; height: 26px; flex: 0 0 auto; }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0; background-color: #e5e7eb; transition: 0.2s; border-radius: 999px;
+    }
+    .toggle-slider:before {
+      content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; background: #fff;
+      transition: 0.2s; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .toggle input:checked + .toggle-slider { background-color: var(--violet); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+    [dir="rtl"] .toggle input:checked + .toggle-slider:before { transform: translateX(-20px); }
+    .toggle input:focus-visible + .toggle-slider { box-shadow: 0 0 0 3px rgba(124,58,237,0.35); }
+
+    /* ---------- CONSEQUENCE NOTE ---------- */
+    /* Shown only when recording payment status is off, so the admin can see what
+       the scan screen will look like without leaving the page. */
+    .mode-note {
+      display: none; margin-top: 14px; padding: 13px 15px; border-radius: 12px;
+      background: #f7f2ff; border: 1px solid #e6dbff; color: #4c1d95;
+      font-size: 0.87rem; line-height: 1.5;
+    }
+    .mode-note.show { display: block; }
+
+    /* ---------- STATUS PICKER ---------- */
+    .status-grid {
+      display: flex; flex-wrap: wrap; gap: 10px;
+    }
+    .status-chip {
+      display: inline-flex; align-items: center; gap: 9px; cursor: pointer;
+      padding: 11px 16px 11px 13px; border: 1px solid var(--line); border-radius: 12px;
+      background: #fbfbfc; font-size: 0.92rem; font-weight: 600; transition: 0.15s ease;
+      user-select: none;
+    }
+    .status-chip:hover { border-color: #c7b8ee; background: #fdfcff; }
+    .status-chip input { width: 17px; height: 17px; margin: 0; accent-color: var(--violet); cursor: pointer; flex: 0 0 auto; }
+    .status-chip.on { border-color: var(--violet); background: #faf5ff; color: #4c1d95; }
+    .status-chip:focus-within { box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+
+    /* ---------- SAVEBAR ---------- */
+    .savebar { display: flex; justify-content: center; margin-top: 30px; }
+    .save-btn {
+      width: 280px; max-width: 100%; padding: 13px 20px; font-size: 1rem; font-weight: 700; background: #fff;
+      color: var(--violet); border: 2px solid var(--violet); border-radius: 999px; cursor: pointer;
+      transition: background 0.2s ease; font-family: inherit;
+    }
+    .save-btn:hover { background: #f0e9ff; }
+    .save-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* ---------- VALIDATION ---------- */
+    .inline-error { margin-top: 16px; font-size: 0.85rem; color: var(--bad); text-align: center; }
+    .status-grid.field-error {
+      border: 2px solid var(--bad); border-radius: 14px; padding: 10px; background: #fffafa;
+    }
+
+    /* ---------- TOAST ---------- */
+    #saveToast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #111827; color: #fff; padding: 12px 24px; border-radius: 999px; font-size: 0.95rem;
+      font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.18); opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease; z-index: 9999; display: flex; align-items: center; gap: 8px;
+    }
+    #saveToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #saveToast.success { background: #16a34a; }
+    #saveToast.error   { background: #dc2626; }
+
+    .empty-state {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow-soft); padding: 32px 24px; text-align: center; color: var(--muted);
+    }
+
+    @media (max-width: 640px) {
+      header { flex-direction: column; gap: 8px; padding: 12px; }
+      .header-title { padding-left: 0; text-align: center; }
+      .header-account-wrapper { flex-direction: column; gap: 8px; }
+      .program-picker .pp-hint { margin-left: 0; }
+      .sect-body { padding: 8px 14px 18px; }
+      .status-chip { flex: 1 1 100%; }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <div class="header-left">
+    <img src="/instance-static/ns1.png" alt="">
+  </div>
+
+  <div class="header-title">
+    <span class="title-bold">121 Scan</span>
+    <span class="title-divider">|</span>
+    <span class="title-program">{{ t.program_setup or "Program set-up" }}</span>
+  </div>
+
+  <div class="header-account-wrapper">
+    <form method="get" action="/program-setup" class="lang-select">
+      <select name="lang" onchange="this.form.submit()">
+        <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
+        <option value="fr" {% if lang=='fr' %}selected{% endif %}>Français</option>
+        <option value="ar" {% if lang=='ar' %}selected{% endif %}>العربية</option>
+      </select>
+    </form>
+
+    <div class="account-dropdown">
+      <button class="account-btn" onclick="toggleAccountDropdown()" type="button">
+        <img src="{{ url_for('static', filename='icons/user.svg') }}" class="account-icon-svg">
+        Account
+        <img src="{{ url_for('static', filename='icons/arrow.svg') }}" class="account-arrow-svg">
+      </button>
+
+      <div id="account-menu" class="account-menu hidden">
+        <div class="account-menu-item user-info">
+          <strong>Logged in as:</strong><br>
+          {{ username }}
+        </div>
+        <div class="account-menu-divider"></div>
+        <a href="/admin-logout?lang={{ lang }}" class="account-menu-item">Logout</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrapper">
+
+  <a href="/admin-dashboard?lang={{ lang }}" class="page-back-btn">
+    <img src="{{ url_for('static', filename='icons/back-arrow.svg') }}">
+    {{ t.back_to_dashboard }}
+  </a>
+
+  <h1>{{ t.program_setup or "Program set-up" }}</h1>
+  <p class="subtitle">{{ t.program_setup_subtitle or "These settings decide what happens when a beneficiary is scanned in this program." }}</p>
+
+  {% if not programs %}
+    <div class="empty-state">
+      {{ t.no_programs_configured or "No programs are configured yet. Add a program under System Configuration first." }}
+    </div>
+  {% else %}
+
+  <div class="program-picker">
+    <span class="pp-label">{{ t.program_id or "Program" }}</span>
+    <select id="programSelector">
+      {% for p in programs %}
+        <option value="{{ p.id }}" {% if p.id == active_program_id %}selected{% endif %}>{{ p.title }}</option>
+      {% endfor %}
+    </select>
+    <span class="pp-hint">{{ t.program_setup_program_hint or "Settings below apply to the selected program" }}</span>
+  </div>
+
+  <form id="setupForm" novalidate>
+    <div class="cards">
+
+      <!-- ============ WHAT A SCAN UPDATES ============ -->
+      <section class="sect">
+        <div class="sect-head">
+          <span class="logo-tile pay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 11h20"/><path d="M6 15h4"/>
+            </svg>
+          </span>
+          <div class="sh-text">
+            <p class="name">{{ t.scan_outcome_title or "What a scan updates" }}</p>
+            <p class="sub">{{ t.scan_outcome_hint or "A scan can record a payment, update registration data, or both." }}</p>
+          </div>
+        </div>
+        <div class="sect-body">
+          <label class="toggle-row" style="cursor:pointer">
+            <span class="tr-text">
+              <span class="t-name">{{ t.enable_payment_status or "Record payment status" }}</span>
+              <span class="t-sub">{{ t.enable_payment_status_hint or "When on, staff approve or reject a payment during the scan and the result is sent to 121. Turn it off for programs where a scan only updates registration data." }}</span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="paymentStatusUpdate">
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+
+          <div class="mode-note" id="paymentOffNote">
+            {{ t.payment_status_off_note or "With this off, the scan screen shows no approve or reject buttons. Only editable fields set on the Display Config page are sent back to 121." }}
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ HOW PEOPLE ARE IDENTIFIED ============ -->
+      <section class="sect">
+        <div class="sect-head">
+          <span class="logo-tile scan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h5V2H2v7h2zM20 4v5h2V2h-7v2zM4 20v-5H2v7h7v-2zM20 20h-5v2h7v-7h-2z"/><path d="M7 12h10"/></svg>
+          </span>
+          <div class="sh-text">
+            <p class="name">{{ t.scan_config_title or "Scan method" }}</p>
+            <p class="sub">{{ t.scan_section_hint or "Choose how beneficiaries are identified." }}</p>
+          </div>
+        </div>
+        <div class="sect-body">
+          <label class="toggle-row" style="cursor:pointer">
+            <span class="tr-text">
+              <span class="t-name">{{ t.enable_qr_scan or "QR code scanning" }}</span>
+              <span class="t-sub">{{ t.enable_qr_scan_hint or "When off, this program uses manual code entry only (no QR camera)." }}</span>
+            </span>
+            <span class="toggle">
+              <input type="checkbox" id="qrEnabled">
+              <span class="toggle-slider"></span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <!-- ============ REGISTRATIONS TO SYNC ============ -->
+      <section class="sect">
+        <div class="sect-head">
+          <span class="logo-tile sync">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.7-4.4"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.7 4.4"/>
+              <path d="M3 4v4h4"/><path d="M21 20v-4h-4"/>
+            </svg>
+          </span>
+          <div class="sh-text">
+            <p class="name">{{ t.sync_scope_title or "Registrations to sync" }}</p>
+            <p class="sub">{{ t.sync_scope_hint or "Only registrations with a selected status are downloaded to the device for offline scanning." }}</p>
+          </div>
+        </div>
+        <div class="sect-body">
+          <div class="status-grid" id="statusGrid">
+            {% for s in registration_statuses %}
+              <label class="status-chip" data-status="{{ s.value }}">
+                <input type="checkbox" name="registration_status" value="{{ s.value }}">
+                <span>{{ t.get('status_' + s.value, s.label) }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <div id="formError" class="inline-error hidden">
+      {{ t.sync_scope_none or "Select at least one status, otherwise nothing will sync to the device." }}
+    </div>
+
+    <div class="savebar">
+      <button type="submit" class="save-btn">{{ t.save }}</button>
+    </div>
+  </form>
+
+  {% endif %}
+</div>
+
+<div id="saveToast"></div>
+
+<footer>
+  <div>{{ t.footer_dev }}</div>
+  <div>{{ t.footer_support }}</div>
+</footer>
+
+<script>
+/* ============================================================
+   ACCOUNT DROPDOWN
+   ============================================================ */
+function toggleAccountDropdown() {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  menu.classList.toggle('hidden');
+  btn.classList.toggle('active');
+}
+document.addEventListener('click', function (e) {
+  const menu = document.getElementById('account-menu');
+  const btn = document.querySelector('.account-btn');
+  if (btn && !btn.contains(e.target)) {
+    menu.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+});
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('saveToast');
+  toast.textContent = (type === 'success' ? '\u2713  ' : '\u2715  ') + message;
+  toast.className = 'show ' + type;
+  setTimeout(() => { toast.className = ''; }, 3000);
+}
+
+/* ============================================================
+   STATE
+
+   Every program's saved set-up arrives with the page, so switching the
+   dropdown needs no round trip. Unsaved edits are written back into this map
+   before switching, so moving between programs never silently discards them.
+   ============================================================ */
+const SETUP_BY_PROGRAM = {{ setup_by_program | tojson }};
+let activeProgramId = null;
+
+const setupForm     = document.getElementById('setupForm');
+const paymentToggle = document.getElementById('paymentStatusUpdate');
+const qrToggle      = document.getElementById('qrEnabled');
+const statusGrid    = document.getElementById('statusGrid');
+const formError     = document.getElementById('formError');
+
+// With no programs configured the form is not rendered at all, so everything
+// below would dereference null. Stop here and leave the empty state alone.
+if (setupForm) {
+
+function statusInputs() {
+  return statusGrid ? [...statusGrid.querySelectorAll('input[name="registration_status"]')] : [];
+}
+
+function selectedStatuses() {
+  return statusInputs().filter(i => i.checked).map(i => i.value);
+}
+
+/* Keep the chip's highlight in step with its checkbox. */
+function syncChipState(input) {
+  const chip = input.closest('.status-chip');
+  if (chip) chip.classList.toggle('on', input.checked);
+}
+
+/* The consequence note only makes sense while payment status is off. */
+function syncPaymentNote() {
+  const note = document.getElementById('paymentOffNote');
+  if (note) note.classList.toggle('show', !paymentToggle.checked);
+}
+
+/* ============================================================
+   LOAD / CAPTURE
+   ============================================================ */
+function loadSetup(programId) {
+  const setup = SETUP_BY_PROGRAM[programId] || {};
+  const statuses = (setup.sync && setup.sync.registration_statuses) || [];
+
+  // Both toggles default ON when a program has never been set up, matching the
+  // server-side defaults in DEFAULT_PROGRAM_SETUP.
+  paymentToggle.checked = setup.payment_status_update !== false;
+  qrToggle.checked      = setup.qr_enabled !== false;
+
+  statusInputs().forEach(input => {
+    input.checked = statuses.includes(input.value);
+    syncChipState(input);
+  });
+
+  syncPaymentNote();
+  formError.classList.add('hidden');
+  statusGrid.classList.remove('field-error');
+}
+
+function captureSetup(programId) {
+  if (!programId) return;
+  SETUP_BY_PROGRAM[programId] = {
+    payment_status_update: paymentToggle.checked,
+    qr_enabled: qrToggle.checked,
+    sync: { registration_statuses: selectedStatuses() }
+  };
+}
+
+/* ============================================================
+   WIRING
+   ============================================================ */
+paymentToggle.addEventListener('change', syncPaymentNote);
+
+statusInputs().forEach(input => {
+  input.addEventListener('change', () => {
+    syncChipState(input);
+    if (selectedStatuses().length) {
+      formError.classList.add('hidden');
+      statusGrid.classList.remove('field-error');
+    }
+  });
+});
+
+document.getElementById('programSelector').addEventListener('change', e => {
+  captureSetup(activeProgramId);
+  activeProgramId = e.target.value;
+  loadSetup(activeProgramId);
+});
+
+/* ============================================================
+   SAVE
+   ============================================================ */
+setupForm.addEventListener('submit', async e => {
+  e.preventDefault();
+
+  const statuses = selectedStatuses();
+  if (!statuses.length) {
+    formError.classList.remove('hidden');
+    statusGrid.classList.add('field-error');
+    statusGrid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  formError.classList.add('hidden');
+  statusGrid.classList.remove('field-error');
+
+  const btn = e.target.querySelector('.save-btn');
+  btn.disabled = true;
+
+  const payload = {
+    programId: activeProgramId,
+    payment_status_update: paymentToggle.checked,
+    qr_enabled: qrToggle.checked,
+    registration_statuses: statuses
+  };
+
+  try {
+    const res = await fetch('/program-setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    let data = {};
+    try { data = await res.json(); } catch (_) { /* non-JSON error page */ }
+
+    if (res.ok && data.success) {
+      captureSetup(activeProgramId);
+      showToast('{{ t.saved_successfully }}', 'success');
+    } else {
+      showToast(data.error || '{{ t.failed_to_save }}', 'error');
+    }
+  } catch (err) {
+    console.error('Program set-up save failed:', err);
+    showToast('{{ t.failed_to_save }}', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ============================================================
+   INITIAL LOAD
+   ============================================================ */
+window.onload = () => {
+  const selector = document.getElementById('programSelector');
+  if (!selector) return;
+
+  const backendActive = '{{ active_program_id or "" }}';
+  if (backendActive && [...selector.options].some(o => o.value === backendActive)) {
+    selector.value = backendActive;
+  }
+
+  activeProgramId = selector.value;
+  if (activeProgramId) loadSetup(activeProgramId);
+};
+
+} // end if (setupForm)
+</script>
+
+</body>
+</html>
