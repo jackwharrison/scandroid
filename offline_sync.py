@@ -80,8 +80,46 @@ fernet = Fernet(ENCRYPTION_KEY.encode())
 # Thread pool size (can be overridden by env var)
 MAX_WORKERS = int(os.getenv("OFFLINE_SYNC_WORKERS", "8"))
 
+# ---------------------------------------------------------------------------
+# COMPLETENESS / PAGINATION SETTINGS
+# ---------------------------------------------------------------------------
+# GET /programs/{id}/payments/{paymentId}/transactions is a nestjs-paginate
+# endpoint. If no `limit` is sent, 121 applies DEFAULT_PAGINATION_LIMIT (20)
+# and returns {"data": [...20 items...], "meta": {...}}. Because the old code
+# read only the "data" key, every payment silently synced at most 20
+# beneficiaries and the rest were simply absent from the offline batch — with
+# no error anywhere. Never call a 121 list endpoint without an explicit limit.
+#
+# nestjs-paginate treats limit=-1 as NO_PAGINATION, and 121's own
+# PaginateConfigTransactionView sets maxLimit=-1, so -1 is accepted and
+# returns everything. We still verify the returned count against meta.totalItems
+# and fall back to explicit page-by-page fetching if a server build ever
+# refuses it.
+NO_PAGINATION = -1
+PAGE_SIZE = int(os.getenv("OFFLINE_SYNC_PAGE_SIZE", "1000"))
+MAX_PAGES = int(os.getenv("OFFLINE_SYNC_MAX_PAGES", "10000"))
+REQUEST_TIMEOUT = int(os.getenv("OFFLINE_SYNC_TIMEOUT", "120"))
+
+# STRICT mode (default ON): abort the sync rather than write a batch that is
+# known to be incomplete. app.py checks the subprocess return code and shows
+# the failure to the FSP user. A failed sync is recoverable; a batch that looks
+# complete but is missing people is not — those people cannot be verified.
+STRICT = os.getenv("OFFLINE_SYNC_STRICT", "1").lower() not in ("0", "false", "no")
+
 COOKIES = None
 HEADERS_KOBO = {"Authorization": f"Token {KOBO_TOKEN}"}
+
+
+class IncompleteSyncError(RuntimeError):
+    """Raised when the batch we are about to write is known to be missing
+    beneficiaries. Never swallow this."""
+
+
+def _fail(message):
+    """Abort in strict mode; otherwise log loudly and continue."""
+    if STRICT:
+        raise IncompleteSyncError(message)
+    logger.error("[INCOMPLETE] %s (continuing: OFFLINE_SYNC_STRICT is off)", message)
 
 
 # ----------------------------------------------------------------------
@@ -141,8 +179,13 @@ login_and_get_token()
 
 def _unwrap_list(data):
     """121 is inconsistent about envelopes: /payments returns a bare array,
-    while /payments/{id}/transactions returns {"data": [...]}. Normalise both so
-    callers always get a list."""
+    while /payments/{id}/transactions returns {"data": [...], "meta": {...}}.
+    Normalise both so callers always get a list.
+
+    NOTE: this deliberately does NOT look at "meta". Any caller hitting a
+    paginated endpoint must use _fetch_all(), which reconciles the returned
+    item count against meta.totalItems. Unwrapping alone cannot tell a
+    complete response from a truncated one."""
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
@@ -152,6 +195,94 @@ def _unwrap_list(data):
                 return value
         logger.error("[ERROR] Unexpected list payload; keys=%s", list(data.keys()))
     return []
+
+
+def _meta_of(payload):
+    """Return the nestjs-paginate meta block, or {} for bare-array responses."""
+    if isinstance(payload, dict):
+        meta = payload.get("meta")
+        if isinstance(meta, dict):
+            return meta
+    return {}
+
+
+def _fetch_all(url, params=None, label=""):
+    """GET a (possibly paginated) 121 list endpoint and return ALL items.
+
+    Strategy:
+      1. Ask for limit=-1 (NO_PAGINATION). This is what 121's own code uses
+         internally when it needs every row.
+      2. Compare len(items) against meta.totalItems. If the server paginated us
+         anyway, fall back to walking pages explicitly.
+      3. If we still end up short, raise — a short read here means missing
+         beneficiaries in the field.
+
+    Returns (items, total_items_reported_or_None).
+    """
+    base_params = dict(params or {})
+
+    # --- 1) single unpaginated request ---
+    first_params = dict(base_params)
+    first_params["limit"] = NO_PAGINATION
+    response = requests.get(url, cookies=COOKIES, params=first_params,
+                            timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    payload = response.json()
+    items = _unwrap_list(payload)
+    meta = _meta_of(payload)
+    total = meta.get("totalItems")
+
+    if total is None or len(items) >= total:
+        return items, total
+
+    # --- 2) server enforced pagination: walk the pages ---
+    logger.warning(
+        "[!] %s: limit=-1 returned %s of %s rows; falling back to paged fetch "
+        "(pageSize=%s)", label or url, len(items), total, PAGE_SIZE
+    )
+
+    collected = []
+    seen_pages = 0
+    page = 1
+    while page <= MAX_PAGES:
+        page_params = dict(base_params)
+        page_params["limit"] = PAGE_SIZE
+        page_params["page"] = page
+        r = requests.get(url, cookies=COOKIES, params=page_params,
+                         timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        page_payload = r.json()
+        batch = _unwrap_list(page_payload)
+        page_meta = _meta_of(page_payload)
+        total = page_meta.get("totalItems", total)
+        total_pages = page_meta.get("totalPages")
+
+        collected.extend(batch)
+        seen_pages += 1
+
+        if not batch:
+            break
+        if total_pages is not None and page >= total_pages:
+            break
+        if total is not None and len(collected) >= total:
+            break
+        page += 1
+    else:
+        raise IncompleteSyncError(
+            f"{label or url}: exceeded MAX_PAGES={MAX_PAGES} while paging."
+        )
+
+    logger.info("[INFO] %s: fetched %s rows across %s page(s)",
+                label or url, len(collected), seen_pages)
+
+    # --- 3) final reconciliation ---
+    if total is not None and len(collected) < total:
+        raise IncompleteSyncError(
+            f"{label or url}: fetched {len(collected)} of {total} rows. "
+            "Refusing to build an incomplete offline batch."
+        )
+
+    return collected, total
 
 
 def _transfer_value(t):
@@ -183,22 +314,42 @@ def get_payments(program_id):
     """
     GET /api/programs/{id}/payments -> bare array of payment summaries.
 
+    This endpoint is NOT paginated (it maps to getPaymentAggregationsSummaries,
+    which returns a plain array), but we route it through _fetch_all anyway so
+    that a future change to a paginated shape can't silently truncate it.
+
     Each item carries paymentId, name, paymentDate and aggregationsPerStatus.
     That last field tells us how many transactions are still `waiting` BEFORE we
     fetch any of them, so we only pull transactions for payments that actually
-    have something left to distribute.
+    have something left to distribute — and it is the yardstick we reconcile
+    the fetched transactions against.
     """
     url = f"{API_BASE}/programs/{program_id}/payments"
-    response = requests.get(url, cookies=COOKIES)
-    response.raise_for_status()
-    return _unwrap_list(response.json())
+    payments, _ = _fetch_all(url, label=f"payments(program={program_id})")
+    return payments
 
 
 def get_transactions(program_id, payment_id):
+    """
+    GET all transactions for one payment.
+
+    THIS ENDPOINT IS PAGINATED. Without an explicit limit 121 returns only
+    DEFAULT_PAGINATION_LIMIT (20) rows. _fetch_all sends limit=-1 and verifies
+    the count against meta.totalItems, so a truncated read raises instead of
+    silently shrinking the batch.
+    """
     url = f"{API_BASE}/programs/{program_id}/payments/{payment_id}/transactions"
-    response = requests.get(url, cookies=COOKIES)
-    response.raise_for_status()
-    return _unwrap_list(response.json())
+    transactions, total = _fetch_all(
+        url, label=f"transactions(payment={payment_id})"
+    )
+    if total is not None and len(transactions) != total:
+        raise IncompleteSyncError(
+            f"payment {payment_id}: got {len(transactions)} transactions, "
+            f"API reports {total}."
+        )
+    logger.info("[INFO] paymentId=%s: %s transaction(s) fetched",
+                payment_id, len(transactions))
+    return transactions
 
 
 def get_all_transactions(program_id):
@@ -209,7 +360,7 @@ def get_all_transactions(program_id):
     (see select_open_payments). Kept only for ad-hoc debugging.
     """
     url = f"{API_BASE}/programs/{program_id}/transactions"
-    response = requests.get(url, cookies=COOKIES)
+    response = requests.get(url, cookies=COOKIES, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     data = response.json()
 
@@ -229,7 +380,7 @@ def get_all_transactions(program_id):
 
 def get_registration(program_id, registration_id):
     url = f"{API_BASE}/programs/{program_id}/registrations/{registration_id}"
-    response = requests.get(url, cookies=COOKIES)
+    response = requests.get(url, cookies=COOKIES, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     return response.json()
 
@@ -265,31 +416,46 @@ def resolve_column_to_match(program_id):
 def fetch_registrations_bulk(program_id, registration_ids):
     """
     Fetch registrations in parallel for a set of registrationIds.
-    Returns dict: {registrationId: registration_json}
+
+    Returns (results, failed_ids):
+        results:    {registrationId: registration_json}
+        failed_ids: [registrationId, ...] that could not be fetched
+
+    A failed fetch used to be a lone warning line, after which the beneficiary
+    silently disappeared from the batch. Failures are now returned so the
+    caller can refuse to ship an incomplete batch.
     """
     results = {}
+    failed_ids = []
     unique_ids = list(set(registration_ids))
 
     if not unique_ids:
-        return results
+        return results, failed_ids
 
     def worker(rid):
-        try:
-            reg = get_registration(program_id, rid)
-            return rid, reg
-        except Exception as e:
-            logger.warning(f"[!] Failed to get registration {rid}: {e}")
-            return rid, None
+        last_error = None
+        for attempt in range(3):
+            try:
+                return rid, get_registration(program_id, rid), None
+            except Exception as e:
+                last_error = e
+        return rid, None, last_error
 
     max_workers = min(MAX_WORKERS, len(unique_ids)) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, rid) for rid in unique_ids]
         for fut in as_completed(futures):
-            rid, reg = fut.result()
+            rid, reg, error = fut.result()
             if reg is not None:
                 results[rid] = reg
+            else:
+                failed_ids.append(rid)
+                logger.warning(f"[!] Failed to get registration {rid}: {error}")
 
-    return results
+    logger.info("[INFO] Registrations: %s requested, %s fetched, %s failed",
+                len(unique_ids), len(results), len(failed_ids))
+
+    return results, failed_ids
 
 
 # ----------------------------------------------------------------------
@@ -305,7 +471,7 @@ def get_kobo_submission(uuid):
     # Keep it simple & safe: full submission (no fields filter),
     # since we rely on photo field, *_URL, _attachments, and _id.
     url = f"{KOBO_BASE}/api/v2/assets/{ASSET_ID}/data.json?query={{\"_uuid\":\"{uuid}\"}}"
-    response = requests.get(url, headers=HEADERS_KOBO)
+    response = requests.get(url, headers=HEADERS_KOBO, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     results = response.json().get("results", [])
     return results[0] if results else None
@@ -320,19 +486,19 @@ def download_and_encrypt_photo(uuid, save_path):
     - Kobo _attachments list
     - IFRC Kobo /attachments/<uid>/ format
     Uses a smaller 'medium' view to speed up sync.
+
+    Returns True on success, False on failure (a beneficiary without a photo
+    cannot be visually verified, so the caller counts these).
     """
 
     # If photo already exists and is non-empty, you *could* skip.
     # For now, we always refresh since each batch dir is unique.
-    # if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
-    #     print(f"[SKIP] Photo already exists for UUID {uuid}")
-    #     return
 
     # --- 1) Fetch Kobo submission ---
     submission = get_kobo_submission(uuid)
     if not submission:
         logger.warning(f"[!] No Kobo submission found for UUID {uuid}")
-        return
+        return False
 
     photo_field = PHOTO_FIELD_NAME  # e.g. "photo"
     photo_filename = submission.get(photo_field)
@@ -347,27 +513,27 @@ def download_and_encrypt_photo(uuid, save_path):
         # Use smaller 'medium' image instead of original
         photo_url = photo_url.replace("/original/", "/medium/")
 
-        res = requests.get(photo_url, headers=HEADERS_KOBO)
+        res = requests.get(photo_url, headers=HEADERS_KOBO, timeout=REQUEST_TIMEOUT)
         if res.status_code != 200:
             logger.warning(f"[!] Direct photo download failed for UUID {uuid}: {res.status_code}")
-            return
+            return False
 
         encrypted_bytes = encrypt_photo(res.content)
         with open(save_path, "wb") as f:
             f.write(encrypted_bytes)
 
         logger.info(f"[OK] Photo downloaded & encrypted (direct URL) for UUID {uuid}")
-        return
+        return True
 
     # --- 3) Fallback: match against _attachments (older Kobo submissions) ---
     if not photo_filename:
         logger.warning(f"[!] No '{photo_field}' value for UUID {uuid}")
-        return
+        return False
 
     attachments = submission.get("_attachments", [])
     if not attachments:
         logger.warning(f"[!] No attachments in submission for UUID {uuid}")
-        return
+        return False
 
     from urllib.parse import unquote
 
@@ -387,7 +553,7 @@ def download_and_encrypt_photo(uuid, save_path):
         fnames = [a.get("filename", "") for a in attachments]
         logger.warning(f"[!] No matching attachment for '{photo_filename}' (UUID {uuid})")
         logger.debug(f"[DEBUG] Available filenames: {fnames}")
-        return
+        return False
 
     att = matching[0]
     attach_uid = att.get("uid")
@@ -407,17 +573,17 @@ def download_and_encrypt_photo(uuid, save_path):
         logger.info(f"[OK] Using constructed IFRC URL for UUID {uuid}: {file_url[:80]}")
     else:
         logger.warning(f"[!] No download URL or UID for attachment (UUID {uuid})")
-        return
+        return False
 
     # --- 5) Download (retry without medium if it fails) ---
-    res = requests.get(file_url, headers=HEADERS_KOBO)
+    res = requests.get(file_url, headers=HEADERS_KOBO, timeout=REQUEST_TIMEOUT)
     if res.status_code != 200:
         fallback = file_url.replace("/medium/", "/original/").replace("?view=medium", "")
         logger.warning(f"[!] Medium download failed ({res.status_code}), retrying: {fallback[:80]}")
-        res = requests.get(fallback, headers=HEADERS_KOBO)
+        res = requests.get(fallback, headers=HEADERS_KOBO, timeout=REQUEST_TIMEOUT)
     if res.status_code != 200:
         logger.warning(f"[!] Failed to download attachment for UUID {uuid}: {res.status_code}")
-        return
+        return False
 
     # --- 6) Encrypt & save ---
     encrypted_bytes = encrypt_photo(res.content)
@@ -425,15 +591,21 @@ def download_and_encrypt_photo(uuid, save_path):
         f.write(encrypted_bytes)
 
     logger.info(f"[OK] Photo downloaded & encrypted for UUID {uuid}")
+    return True
 
 
 def download_photos_bulk(records, photos_dir):
     """
     Download & encrypt photos for all records in parallel.
     Each record should have 'uuid' and 'photo_filename'.
+
+    Returns a list of uuids whose photo could NOT be retrieved. These
+    beneficiaries are still in the batch (their data is valid) but cannot be
+    visually verified, so the count is surfaced in the manifest and the log.
     """
+    failed = []
     if not records:
-        return
+        return failed
 
     os.makedirs(photos_dir, exist_ok=True)
 
@@ -441,14 +613,29 @@ def download_photos_bulk(records, photos_dir):
         uuid = rec["uuid"]
         photo_filename = rec["photo_filename"]
         save_path = os.path.join(photos_dir, photo_filename)
-        download_and_encrypt_photo(uuid, save_path)
+        try:
+            ok = download_and_encrypt_photo(uuid, save_path)
+        except Exception as e:
+            logger.warning(f"[!] Photo error for UUID {uuid}: {e}")
+            ok = False
+        return uuid, ok
 
     max_workers = min(MAX_WORKERS, len(records)) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, rec) for rec in records]
-        for _ in as_completed(futures):
-            # We don't need the result; download_and_encrypt_photo handles logging
-            pass
+        for fut in as_completed(futures):
+            uuid, ok = fut.result()
+            if not ok:
+                failed.append(uuid)
+
+    if failed:
+        logger.error("[!] %s of %s photo(s) could not be downloaded — those "
+                     "beneficiaries cannot be visually verified offline.",
+                     len(failed), len(records))
+    else:
+        logger.info("[INFO] All %s photo(s) downloaded & encrypted.", len(records))
+
+    return failed
 
 
 # ----------------------------------------------------------------------
@@ -477,9 +664,9 @@ def download_cache(program_id, payment_id):
     """
     Original behaviour: download cache for a single paymentId.
 
-    - Fetch transactions for this payment
-    - Fetch registrations (now in parallel)
-    - Fetch + encrypt photos (now in parallel, medium-size)
+    - Fetch transactions for this payment (ALL of them — see get_transactions)
+    - Fetch registrations (in parallel)
+    - Fetch + encrypt photos (in parallel, medium-size)
     - Save registrations_cache.json and transactions.json
     """
     base_path = "offline-cache"
@@ -504,7 +691,12 @@ def download_cache(program_id, payment_id):
             reg_ids.append(t["registrationId"])
 
     # 2) Fetch registrations in bulk (parallel)
-    registrations_map = fetch_registrations_bulk(program_id, reg_ids)
+    registrations_map, failed_reg_ids = fetch_registrations_bulk(program_id, reg_ids)
+    if failed_reg_ids:
+        _fail(
+            f"{len(failed_reg_ids)} registration(s) could not be fetched for "
+            f"payment {payment_id}: {failed_reg_ids[:20]}"
+        )
 
     # 3) Build records (encryption, validity checks)
     for t in transactions:
@@ -553,7 +745,7 @@ def download_cache(program_id, payment_id):
         cache_data.append(record)
 
     # 4) Download & encrypt all photos in parallel
-    download_photos_bulk(cache_data, photos_dir)
+    photo_failures = download_photos_bulk(cache_data, photos_dir)
 
     # 5) Save encrypted registration data & transactions
     json_path = os.path.join(batch_dir, "registrations_cache.json")
@@ -570,6 +762,10 @@ def download_cache(program_id, payment_id):
         "paymentId": payment_id,
         "columnToMatch": match_key,
         "recordCount": len(cache_data),
+        "transactionCount": len(transactions),
+        "registrationFetchFailures": len(failed_reg_ids),
+        "photoFailures": len(photo_failures),
+        "complete": not failed_reg_ids,
         "generatedAt": datetime.utcnow().isoformat() + "Z",
     }
     with open(os.path.join(batch_dir, "batch_info.json"), "w", encoding="utf-8") as f:
@@ -586,6 +782,10 @@ def download_cache(program_id, payment_id):
 
 # How far back to look. A payment older than this is assumed to be closed out
 # even if 121 still reports waiting transactions on it.
+# NOTE: this is a second, independent way beneficiaries can go missing from a
+# batch. A payment with waiting transactions whose paymentDate is older than
+# WINDOW_DAYS is skipped entirely. Raise OFFLINE_SYNC_WINDOW_DAYS if a
+# distribution is running long.
 WINDOW_DAYS = int(os.getenv("OFFLINE_SYNC_WINDOW_DAYS", "14"))
 
 
@@ -599,6 +799,10 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
     old approach of fetching every transaction in the program and filtering
     client-side, and it gives us the payment `name` for free.
 
+    The waiting count from this endpoint is also the yardstick: fetch_tranches
+    reconciles the transactions it actually retrieves against it, which is what
+    catches a truncated/paginated read.
+
     Returns a list of dicts: paymentId, name, paymentDate, waitingCount.
     """
     payments = get_payments(program_id)
@@ -608,6 +812,7 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
     selected = []
     skipped_no_waiting = 0
     skipped_too_old = 0
+    skipped_waiting_total = 0
 
     for p in payments:
         payment_id = p.get("paymentId", p.get("id"))
@@ -624,6 +829,13 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
         parsed_date = _parse_iso(payment_date)
         if parsed_date and parsed_date < cutoff:
             skipped_too_old += 1
+            skipped_waiting_total += waiting_count
+            logger.warning(
+                "[!] paymentId=%s \"%s\" skipped as older than %s days "
+                "(date=%s) but still has %s waiting transaction(s). Those "
+                "beneficiaries will NOT be in this batch.",
+                payment_id, p.get("name"), window_days, payment_date, waiting_count
+            )
             continue
 
         selected.append({
@@ -643,7 +855,8 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
     logger.info(
         f"[INFO] {len(selected)} open payment(s) selected "
         f"(skipped: {skipped_no_waiting} with nothing waiting, "
-        f"{skipped_too_old} older than {window_days} days)"
+        f"{skipped_too_old} older than {window_days} days "
+        f"holding {skipped_waiting_total} waiting transaction(s))"
     )
     for p in selected:
         logger.info(
@@ -663,30 +876,55 @@ def fetch_tranches(program_id, payments):
     the whole point of this batch. Returns:
         tranches_by_uuid: {registrationReferenceId: [tranche, ...]}
         reg_id_by_uuid:   {registrationReferenceId: registrationId}
+        reconciliation:   per-payment expected-vs-seen report
+
+    RECONCILIATION: for every payment we compare the number of `waiting`
+    transactions we actually received against the waitingCount 121 reported in
+    the payments aggregation. Fewer waiting rows than expected means the read
+    was truncated (the pagination bug) or the data shifted mid-sync — either
+    way the batch would be missing people, so we refuse to write it.
     """
     tranches_by_uuid = defaultdict(dict)  # uuid -> {paymentId: tranche}
     reg_id_by_uuid = {}
+    reconciliation = []
 
     if not payments:
-        return {}, {}
+        return {}, {}, reconciliation
 
     def worker(payment):
         try:
-            return payment, get_transactions(program_id, payment["paymentId"])
+            return payment, get_transactions(program_id, payment["paymentId"]), None
         except Exception as e:
             logger.warning(
                 f"[!] Failed to fetch transactions for paymentId "
                 f"{payment['paymentId']}: {e}"
             )
-            return payment, []
+            return payment, [], e
 
     counts = {"total": 0, "not_waiting": 0, "deleted": 0, "missing_ids": 0, "kept": 0}
+    fetch_errors = []
 
     max_workers = min(MAX_WORKERS, len(payments)) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, p) for p in payments]
         for future in as_completed(futures):
-            payment, transactions = future.result()
+            payment, transactions, error = future.result()
+
+            if error is not None:
+                fetch_errors.append((payment["paymentId"], error))
+
+            per_payment = {
+                "paymentId": payment["paymentId"],
+                "name": payment.get("name"),
+                "expectedWaiting": payment.get("waitingCount"),
+                "fetchedTotal": len(transactions),
+                "waitingSeen": 0,
+                "deleted": 0,
+                "missingIds": 0,
+                "kept": 0,
+                "error": str(error) if error else None,
+            }
+
             for t in transactions:
                 if not isinstance(t, dict):
                     continue
@@ -697,14 +935,18 @@ def fetch_tranches(program_id, payments):
                     counts["not_waiting"] += 1
                     continue
 
+                per_payment["waitingSeen"] += 1
+
                 if (t.get("registrationStatus") or "").lower() == "deleted":
                     counts["deleted"] += 1
+                    per_payment["deleted"] += 1
                     continue
 
                 uuid = t.get("registrationReferenceId")
                 reg_id = t.get("registrationId")
                 if not uuid or not reg_id:
                     counts["missing_ids"] += 1
+                    per_payment["missingIds"] += 1
                     continue
 
                 payment_id = t.get("paymentId", payment["paymentId"])
@@ -730,11 +972,43 @@ def fetch_tranches(program_id, payments):
                 if existing and str(existing.get("created") or "") > str(t.get("created") or ""):
                     continue
 
+                if not existing:
+                    counts["kept"] += 1
+                    per_payment["kept"] += 1
+
                 tranches_by_uuid[uuid][payment_id] = tranche
                 reg_id_by_uuid[uuid] = reg_id
-                counts["kept"] += 1
+
+            reconciliation.append(per_payment)
 
     logger.info("[INFO] Transaction scan: " + ", ".join(f"{k}={v}" for k, v in counts.items()))
+
+    # --- per-payment reconciliation against the 121 aggregation ---
+    reconciliation.sort(key=lambda r: r["paymentId"])
+    shortfalls = []
+    for r in reconciliation:
+        expected = r["expectedWaiting"]
+        logger.info(
+            "[INFO] paymentId=%s: expected waiting=%s, waiting received=%s, "
+            "kept=%s (deleted=%s, missingIds=%s)",
+            r["paymentId"], expected, r["waitingSeen"], r["kept"],
+            r["deleted"], r["missingIds"],
+        )
+        if r["error"]:
+            shortfalls.append(
+                f"paymentId={r['paymentId']}: transaction fetch failed ({r['error']})"
+            )
+        elif expected is not None and r["waitingSeen"] < expected:
+            shortfalls.append(
+                f"paymentId={r['paymentId']}: received {r['waitingSeen']} waiting "
+                f"transaction(s) but 121 reports {expected}"
+            )
+
+    if shortfalls:
+        _fail(
+            "Transaction reconciliation failed — the batch would be missing "
+            "beneficiaries:\n  - " + "\n  - ".join(shortfalls)
+        )
 
     # Flatten to {uuid: [tranche, ...]} sorted oldest payment first, so the
     # order the FSP sees on screen is stable between syncs.
@@ -752,7 +1026,7 @@ def fetch_tranches(program_id, payments):
         f"{multi} of them have more than one"
     )
 
-    return flattened, reg_id_by_uuid
+    return flattened, reg_id_by_uuid, reconciliation
 
 
 def download_open_payments_cache(program_id):
@@ -760,10 +1034,11 @@ def download_open_payments_cache(program_id):
     Build the offline batch, multi-payment aware.
 
     1) Ask 121 which payments still have waiting transactions (and their names)
-    2) Fetch those payments' transactions in parallel
+    2) Fetch those payments' transactions in parallel — ALL pages of them
     3) Group into a list of tranches per beneficiary
     4) Fetch each registration and photo ONCE per beneficiary, not per tranche
-    5) Write registrations_cache.json, transactions.json, batch_info.json
+    5) Reconcile what we built against what 121 said existed
+    6) Write registrations_cache.json, transactions.json, batch_info.json
 
     The batch directory keeps the historical "payment-recent-batch-N" name
     because /submit-payments and /api/offline/latest.zip select batches by that
@@ -786,24 +1061,28 @@ def download_open_payments_cache(program_id):
     if not open_payments:
         logger.warning("[!] No open payments for program %s — nothing to cache.", program_id)
 
-    tranches_by_uuid, reg_id_by_uuid = fetch_tranches(program_id, open_payments)
+    tranches_by_uuid, reg_id_by_uuid, reconciliation = fetch_tranches(
+        program_id, open_payments
+    )
 
     if not tranches_by_uuid:
         logger.warning("[!] No waiting transactions found — writing an empty batch.")
 
     # 4) Fetch registrations once per beneficiary
-    registrations_map = fetch_registrations_bulk(
+    registrations_map, failed_reg_ids = fetch_registrations_bulk(
         program_id, list(reg_id_by_uuid.values())
     )
 
     cache_data = []
     all_tranches = []
+    missing_registration_uuids = []
 
     for uuid, tranches in tranches_by_uuid.items():
         reg_id = reg_id_by_uuid.get(uuid)
         reg = registrations_map.get(reg_id)
         if not reg:
             logger.warning(f"[!] Failed registration fetch for {reg_id} (uuid {uuid})")
+            missing_registration_uuids.append(uuid)
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
@@ -836,8 +1115,25 @@ def download_open_payments_cache(program_id):
         cache_data.append(record)
         all_tranches.extend(tranches)
 
-    # 5) Download & encrypt photos in parallel (one per beneficiary)
-    download_photos_bulk(cache_data, photos_dir)
+    # 5) Reconcile the finished batch against 121 before anyone relies on it.
+    expected_beneficiaries = len(tranches_by_uuid)
+    expected_tranches = sum(len(v) for v in tranches_by_uuid.values())
+
+    if missing_registration_uuids:
+        _fail(
+            f"{len(missing_registration_uuids)} beneficiar(y/ies) were dropped "
+            f"because their registration could not be fetched "
+            f"(registrationIds: {failed_reg_ids[:20]}). Batch would be incomplete."
+        )
+
+    if len(cache_data) != expected_beneficiaries:
+        _fail(
+            f"Built {len(cache_data)} record(s) but expected "
+            f"{expected_beneficiaries}."
+        )
+
+    # 6) Download & encrypt photos in parallel (one per beneficiary)
+    photo_failures = download_photos_bulk(cache_data, photos_dir)
 
     json_path = os.path.join(batch_dir, "registrations_cache.json")
     with open(json_path, "w", encoding="utf-8") as f:
@@ -858,11 +1154,24 @@ def download_open_payments_cache(program_id):
         "windowDays": WINDOW_DAYS,
         "recordCount": len(cache_data),
         "trancheCount": len(all_tranches),
+        # Completeness evidence — a batch that cannot prove it is whole should
+        # not be trusted in the field.
+        "expectedBeneficiaryCount": expected_beneficiaries,
+        "expectedTrancheCount": expected_tranches,
+        "registrationFetchFailures": len(failed_reg_ids),
+        "photoFailures": len(photo_failures),
+        "complete": (
+            len(cache_data) == expected_beneficiaries
+            and len(all_tranches) == expected_tranches
+            and not failed_reg_ids
+        ),
+        "reconciliation": reconciliation,
         "payments": [
             {
                 "paymentId": p["paymentId"],
                 "name": p["name"],
                 "paymentDate": p.get("paymentDate"),
+                "waitingCount": p.get("waitingCount"),
             }
             for p in open_payments
         ],
@@ -872,6 +1181,11 @@ def download_open_payments_cache(program_id):
         json.dump(batch_info, f, indent=2)
 
     logger.info(f"\n[OK] Batch saved to: {batch_dir}")
+    if photo_failures:
+        logger.warning("[!] %s beneficiar(y/ies) have no photo in this batch.",
+                       len(photo_failures))
+    # Keep this exact phrasing: app.py /sync-fsp scans stdout for a line
+    # containing "beneficiaries" and shows it to the FSP user.
     logger.info(
         f"{len(cache_data)} beneficiaries ready for offline validation "
         f"({len(all_tranches)} open payments in total)."
