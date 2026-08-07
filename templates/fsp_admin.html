@@ -532,6 +532,81 @@
           font-size: 0.8rem;
         }
       }
+
+      /* --- Sync progress panel ------------------------------------------
+         The sync runs in the background and takes minutes on a large program,
+         so the user needs to see that something is happening and how far along
+         it is. State is carried by an icon and colour, never by an emoji in
+         the message text. Hidden until a sync starts. */
+      .sync-progress {
+        display: none; margin-top: 12px; padding-top: 12px;
+        border-top: 1px solid var(--line); text-align: left;
+      }
+      .sync-progress.visible { display: block; }
+
+      .sync-progress-head {
+        display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px;
+      }
+      .sync-status-icon {
+        width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px;
+        color: #1d4ed8; display: block;
+      }
+      .sync-status-icon svg { width: 18px; height: 18px; display: block; }
+      /* Indeterminate ring used while the job is running */
+      .sync-status-icon .ring {
+        width: 16px; height: 16px; margin: 1px; border-radius: 50%;
+        border: 2px solid rgba(29,78,216,0.25); border-top-color: #1d4ed8;
+        animation: spin 0.8s linear infinite;
+      }
+      .sync-progress-copy { flex: 1; min-width: 0; }
+      .sync-progress-text {
+        font-weight: 600; font-size: 0.9rem; color: var(--ink); line-height: 1.35;
+      }
+      .sync-progress-detail {
+        font-size: 0.78rem; color: var(--muted); margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .sync-elapsed {
+        font-size: 0.78rem; color: var(--muted); flex: 0 0 auto; margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .sync-bar {
+        height: 6px; background: var(--line); border-radius: 999px;
+        overflow: hidden;
+      }
+      .sync-bar-fill {
+        position: relative; height: 100%; width: 0%; background: #1d4ed8;
+        border-radius: 999px; overflow: hidden;
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      /* Sheen that travels along the filled portion while work is in flight,
+         so a slow phase still reads as "moving" between counter updates. */
+      .sync-progress.is-running .sync-bar-fill::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(90deg,
+          rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%);
+        animation: syncSheen 1.6s ease-in-out infinite;
+      }
+      @keyframes syncSheen {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+
+      .sync-progress.is-done  .sync-bar-fill  { background: #16a34a; }
+      .sync-progress.is-done  .sync-status-icon { color: #16a34a; }
+      .sync-progress.is-error .sync-bar-fill  { background: #dc2626; }
+      .sync-progress.is-error .sync-status-icon { color: #dc2626; }
+      .sync-progress.is-error .sync-progress-text { color: #991b1b; }
+
+      .sync-error {
+        display: none; margin-top: 10px; padding: 9px 11px; background: #fef2f2;
+        border: 1px solid #fecaca; border-left: 3px solid #dc2626;
+        color: #991b1b; border-radius: 8px; font-size: 0.78rem;
+        font-weight: 500; line-height: 1.45; white-space: pre-wrap;
+        word-break: break-word; text-align: left;
+      }
+      .sync-error.visible { display: block; }
   </style>
 
 </head>
@@ -624,6 +699,25 @@
       </div>
       <div id="syncOfflineHint" class="offline-hint">
         {{ t.cannot_sync_offline or "Cannot sync while offline" }}
+      </div>
+
+      <!-- Live sync progress. #statusMessage is the element the existing
+           import/sync code has always written to but which never existed in
+           the markup, so every status message was silently discarded. -->
+      <div id="syncProgress" class="sync-progress">
+        <div class="sync-progress-head">
+          <span id="syncStatusIcon" class="sync-status-icon" aria-hidden="true"></span>
+          <div class="sync-progress-copy">
+            <div id="statusMessage" class="sync-progress-text">…</div>
+            <div id="syncDetail" class="sync-progress-detail"></div>
+          </div>
+          <span id="syncElapsed" class="sync-elapsed">0:00</span>
+        </div>
+        <div class="sync-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="0" id="syncBarTrack">
+          <div id="syncBarFill" class="sync-bar-fill"></div>
+        </div>
+        <div id="syncError" class="sync-error"></div>
       </div>
     </div>
 
@@ -790,69 +884,279 @@ document.addEventListener('click', function(e) {
     });
   }
 
-  // -----------------------------
-  // UPDATED SYNC BUTTON HANDLER
-  // -----------------------------
-  document.getElementById("syncBtn").addEventListener("click", async function () {
-    if (isEffectivelyOffline()) return;
+  // ---------------------------------------------------------------------
+  // SYNC BUTTON HANDLER — background job + progress polling
+  //
+  // /sync-fsp no longer blocks until the sync finishes: it starts the job and
+  // returns immediately, so the server keeps answering /ping (a long sync used
+  // to starve the reachability probe and the page would declare itself
+  // OFFLINE mid-sync) and we never hit Azure's 230s request timeout.
+  // We poll /sync-status for progress, then import once it reports done.
+  // ---------------------------------------------------------------------
+  const SYNC_POLL_MS = 2000;
+  let syncPollTimer = null;
+  let syncTickTimer = null;
+  let syncStartedAtMs = null;
 
-    const btn = this;
-    const statusDiv = document.getElementById("statusMessage");
+  function syncEls() {
+    return {
+      panel: document.getElementById("syncProgress"),
+      text: document.getElementById("statusMessage"),
+      detail: document.getElementById("syncDetail"),
+      elapsed: document.getElementById("syncElapsed"),
+      fill: document.getElementById("syncBarFill"),
+      track: document.getElementById("syncBarTrack"),
+      icon: document.getElementById("syncStatusIcon"),
+      error: document.getElementById("syncError"),
+      btn: document.getElementById("syncBtn"),
+    };
+  }
 
-    // Store original button content (SVG + text)
-    const originalHTML = btn.innerHTML;
+  // Status is conveyed by icon + colour rather than a glyph in the message.
+  const ICON_CHECK =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const ICON_ALERT =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>';
 
-    // Visual loading state
-    btn.classList.add("btn-loading");
-    btn.disabled = true;
+  function setSyncIcon(state) {
+    const { icon } = syncEls();
+    if (!icon) return;
+    if (state === "done") icon.innerHTML = ICON_CHECK;
+    else if (state === "error") icon.innerHTML = ICON_ALERT;
+    else icon.innerHTML = '<span class="ring"></span>';
+  }
 
-    btn.innerHTML = `
-      ${originalHTML}
-      <div class="spinner" style="margin-left:6px;"></div>
-    `;
+  // The Sync button's own markup (icon + label), captured once so the inline
+  // spinner can be added while a sync runs and cleanly removed afterwards.
+  const SYNC_BTN_HTML = (() => {
+    const b = document.getElementById("syncBtn");
+    return b ? b.innerHTML : "";
+  })();
 
-    try {
-      const syncRes = await fetch("/sync-fsp?lang={{ lang }}");
-      const syncJson = await syncRes.json();
-      const syncMessage = syncJson.message || "Synced";
+  function fmtElapsed(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
 
-      statusDiv && (statusDiv.textContent = syncMessage + " → Importing…");
+  function startSyncClock() {
+    stopSyncClock();
+    syncTickTimer = setInterval(() => {
+      const { elapsed } = syncEls();
+      if (elapsed && syncStartedAtMs) {
+        elapsed.textContent = fmtElapsed(Date.now() - syncStartedAtMs);
+      }
+    }, 1000);
+  }
+  function stopSyncClock() {
+    if (syncTickTimer) { clearInterval(syncTickTimer); syncTickTimer = null; }
+  }
 
-      const importResult = await importLatestCache(true);
+  function setSyncBusy(busy) {
+    // Read by updateOnlineButtonState so the 5s connectivity repaint doesn't
+    // re-enable the Sync button in the middle of a running sync.
+    window.__syncRunning = busy;
+    const { btn, panel } = syncEls();
+    if (btn) {
+      btn.disabled = busy;
+      btn.classList.toggle("btn-loading", busy);
+      // Spinner inside the button, as before — it is the clearest signal that
+      // the tap registered, and the panel below carries the detail.
+      btn.innerHTML = busy
+        ? `${SYNC_BTN_HTML}<div class="spinner" style="margin-left:6px;"></div>`
+        : SYNC_BTN_HTML;
+    }
+    if (panel) {
+      panel.classList.toggle("is-running", busy);
+      if (busy) {
+        panel.classList.add("visible");
+        panel.classList.remove("is-done", "is-error");
+      }
+    }
+    if (busy) setSyncIcon("running");
+  }
 
-      const finalMessage =
-        `Sync complete: ${syncMessage} → Imported ${importResult.written} beneficiaries and ${importResult.photosWritten} photos.`;
+  const n = (v) => Number(v || 0).toLocaleString();
 
-      statusDiv && (statusDiv.textContent = "✅ " + finalMessage);
+  // Headline: what the sync is doing right now, in plain words.
+  function syncPhaseText(job) {
+    const p = (job && job.progress) || {};
+    switch (p.phase) {
+      case "payments":      return "Checking payments in 121";
+      case "transactions":  return "Reading payment records";
+      case "registrations": return "Fetching beneficiary details";
+      case "photos":        return "Downloading photos";
+      case "done":          return job.message || "Sync complete";
+      case "failed":        return job.message || "Sync failed";
+      default:              return "Starting sync";
+    }
+  }
 
-      // Timestamp
-      const now = new Date();
-      const formatted = now.toLocaleString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
+  // Sub-line: the actual numbers, so progress is legible even when the bar
+  // moves slowly.
+  function syncDetailText(job) {
+    const p = (job && job.progress) || {};
+    switch (p.phase) {
+      case "transactions": {
+        const total = p.paymentsTotal || 0;
+        const done = p.paymentsDone || 0;
+        const tx = p.transactions || 0;
+        if (!total) return "";
+        return `Payment ${Math.min(done + 1, total)} of ${total} · ${n(tx)} records`;
+      }
+      case "registrations": {
+        const total = p.registrationsTotal || p.beneficiaries || 0;
+        return total ? `${n(p.registrationsDone)} of ${n(total)} people` : "";
+      }
+      case "photos": {
+        const total = p.photosTotal || p.beneficiaries || 0;
+        return total ? `${n(p.photosDone)} of ${n(total)} photos` : "";
+      }
+      default:
+        return "";
+    }
+  }
 
-      const lastSyncedEl = document.getElementById("lastSyncedText");
-      const readyCountEl = document.getElementById("beneficiaryCount");
+  function paintSyncJob(job) {
+    const { text, detail, fill, track } = syncEls();
+    const pct = Math.max(1, Math.min(100, job.percent || 1));
+    if (text) text.textContent = syncPhaseText(job);
+    if (detail) detail.textContent = syncDetailText(job);
+    if (fill) fill.style.width = `${pct}%`;
+    if (track) track.setAttribute("aria-valuenow", String(pct));
+  }
 
-      if (lastSyncedEl) lastSyncedEl.textContent = formatted;
-      if (readyCountEl) readyCountEl.textContent = importResult.written;
+  function stopSyncPolling() {
+    if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+  }
 
-      localStorage.setItem(`scandroid_last_synced_date_${ACTIVE_PROGRAM_ID}`, formatted);
-      localStorage.setItem(`scandroid_last_synced_count_${ACTIVE_PROGRAM_ID}`, importResult.written);
+  function showSyncFailure(job) {
+    stopSyncPolling();
+    stopSyncClock();
+    setSyncBusy(false);
+    const { panel, text, detail, error, fill } = syncEls();
+    if (panel) { panel.classList.add("visible", "is-error"); panel.classList.remove("is-running"); }
+    setSyncIcon("error");
+    if (fill) fill.style.width = "100%";
+    if (text) text.textContent = job.message || "Sync failed";
+    if (detail) detail.textContent = "No data was changed on this device.";
+    if (error) {
+      // The server passes offline_sync.py's own message through. When strict
+      // reconciliation trips, that text says exactly which payment came back
+      // short — the most useful thing we can put in front of an FSP.
+      error.textContent = (job.error || "").trim() || "No further detail available.";
+      error.classList.add("visible");
+    }
+  }
 
-    } catch (err) {
-      console.error(err);
-      statusDiv && (statusDiv.textContent = "❌ Failed to sync & import. Please try again.");
+  async function afterSyncComplete(job) {
+    stopSyncPolling();
+    const { text, detail, panel, fill } = syncEls();
+    if (text) text.textContent = "Saving to this device";
+    if (detail) detail.textContent = "Importing records and photos…";
+
+    const importResult = await importLatestCache(true);
+
+    stopSyncClock();
+    setSyncBusy(false);
+    if (panel) { panel.classList.add("is-done"); panel.classList.remove("is-running"); }
+    setSyncIcon("done");
+    if (fill) fill.style.width = "100%";
+
+    const took = syncStartedAtMs ? fmtElapsed(Date.now() - syncStartedAtMs) : null;
+    if (text) text.textContent = `${n(importResult.written)} beneficiaries ready to scan`;
+    if (detail) {
+      detail.textContent =
+        `${n(importResult.photosWritten)} photos` + (took ? ` · completed in ${took}` : "");
     }
 
-    // Restore original button content
-    btn.innerHTML = originalHTML;
-    btn.classList.remove("btn-loading");
-    btn.disabled = false;
+    const now = new Date();
+    const formatted = now.toLocaleString("en-GB", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit"
+    });
+    const lastSyncedEl = document.getElementById("lastSyncedText");
+    const readyCountEl = document.getElementById("beneficiaryCount");
+    if (lastSyncedEl) lastSyncedEl.textContent = formatted;
+    if (readyCountEl) readyCountEl.textContent = importResult.written;
+
+    localStorage.setItem(`scandroid_last_synced_date_${ACTIVE_PROGRAM_ID}`, formatted);
+    localStorage.setItem(`scandroid_last_synced_count_${ACTIVE_PROGRAM_ID}`, importResult.written);
+  }
+
+  async function pollSyncOnce() {
+    let job;
+    try {
+      const res = await fetch(`/sync-status?t=${Date.now()}`, { cache: "no-store" });
+      job = await res.json();
+    } catch (e) {
+      // A dropped poll is not a failure — the sync runs server-side regardless.
+      // Keep the clock running and try again on the next tick.
+      console.debug("[sync] status poll failed", e);
+      return;
+    }
+
+    if (!job || job.status === "idle") return;
+
+    if (job.startedAt) syncStartedAtMs = job.startedAt * 1000;
+
+    if (job.status === "running") { paintSyncJob(job); return; }
+    if (job.status === "failed") { showSyncFailure(job); return; }
+    if (job.status === "done") {
+      paintSyncJob(job);
+      await afterSyncComplete(job);
+    }
+  }
+
+  function beginSyncPolling() {
+    stopSyncPolling();
+    syncPollTimer = setInterval(pollSyncOnce, SYNC_POLL_MS);
+    pollSyncOnce();
+  }
+
+  document.getElementById("syncBtn").addEventListener("click", async function () {
+    if (isEffectivelyOffline()) return;
+    if (window.__syncRunning) return;
+
+    const { error } = syncEls();
+    if (error) { error.textContent = ""; error.classList.remove("visible"); }
+
+    syncStartedAtMs = Date.now();
+    setSyncBusy(true);
+    startSyncClock();
+    paintSyncJob({ percent: 1, progress: { phase: "starting" } });
+
+    try {
+      const res = await fetch(`/sync-fsp?lang={{ lang }}`, { cache: "no-store" });
+      const json = await res.json();
+      if (!json.success) {
+        showSyncFailure({ message: json.message || "Could not start sync", error: "" });
+        return;
+      }
+      beginSyncPolling();
+    } catch (err) {
+      console.error(err);
+      showSyncFailure({
+        message: "Could not start sync",
+        error: (err && err.message) ? String(err.message) : String(err),
+      });
+    }
+  });
+
+  // If a sync was already running when this page loaded (the user refreshed,
+  // or reopened the app mid-sync), reattach to it instead of showing an idle
+  // screen while work is happening on the server.
+  window.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const res = await fetch(`/sync-status?t=${Date.now()}`, { cache: "no-store" });
+      const job = await res.json();
+      if (job && job.status === "running") {
+        syncStartedAtMs = (job.startedAt || Date.now() / 1000) * 1000;
+        setSyncBusy(true);
+        startSyncClock();
+        paintSyncJob(job);
+        beginSyncPolling();
+      }
+    } catch (e) { /* offline or server busy — nothing to reattach to */ }
   });
 
   // Service worker
@@ -1769,9 +2073,13 @@ function updateOnlineButtonState(isOnline) {
     const sendHint = document.getElementById("sendOfflineHint");
 
     if (isOnline) {
-        syncBtn.disabled = false;
+        // A sync in flight keeps its own button disabled — otherwise the 5s
+        // connectivity repaint re-enables it and a second sync can be started
+        // on top of the first.
+        const syncBusy = !!window.__syncRunning;
+        syncBtn.disabled = syncBusy;
         sendBtn.disabled = false;
-        syncBtn.classList.remove("btn-disabled");
+        syncBtn.classList.toggle("btn-disabled", syncBusy);
         sendBtn.classList.remove("btn-disabled");
         syncBtn.removeAttribute("aria-disabled");
         sendBtn.removeAttribute("aria-disabled");

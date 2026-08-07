@@ -2087,48 +2087,381 @@ def fsp_admin():
     )
 
 
+# ---------------------------------------------------------------------------
+# BACKGROUND SYNC JOB RUNNER
+#
+# offline_sync.py can now run for many minutes (it pulls every waiting
+# transaction, registration and photo — a 1,000-registration program is minutes,
+# not seconds). Running it inside the request, as this used to, blocks the
+# gunicorn worker for that whole time. On Azure that means:
+#   - /ping stops answering, so fsp_admin.html's reachability probe fails three
+#     times and the page declares itself OFFLINE mid-sync;
+#   - the Azure front-end kills any request idle for 230s, so a big sync would
+#     return 502 even on a healthy worker.
+#
+# So /sync-fsp now STARTS the sync in a background thread and returns
+# immediately. Progress is parsed out of offline_sync.py's stdout and written to
+# a small job file, which /sync-status serves to the page.
+#
+# The job file (not a module global) is deliberate: gunicorn recycles workers,
+# and the status poll can land on a different worker than the one that started
+# the job. A file survives both.
+# ---------------------------------------------------------------------------
+import threading
+import time
+import uuid as _uuid_mod
+import re as _sync_re
+from collections import deque as _sync_deque
+
+SYNC_JOB_DIR = "offline-cache"
+SYNC_JOB_FILE = os.path.join(SYNC_JOB_DIR, "sync_job.json")
+
+# If the heartbeat is older than this, the worker that owned the job is gone
+# (recycled, crashed, container restarted). Report it rather than showing a
+# spinner forever.
+SYNC_STALE_SECONDS = 90
+
+_sync_job_lock = threading.Lock()
+
+# Progress markers emitted by offline_sync.py. Keep these in step with the
+# logger.info() calls in that file — if a message is reworded, progress silently
+# stops advancing (the sync itself is unaffected).
+_RE_OPEN_PAYMENTS = _sync_re.compile(r"\[INFO\]\s+(\d+)\s+open payment\(s\) selected")
+_RE_PAYMENT_DONE = _sync_re.compile(r"\[INFO\]\s+paymentId=(\S+):\s+(\d+)\s+transaction")
+_RE_BENEFICIARIES = _sync_re.compile(r"\[INFO\]\s+(\d+)\s+beneficiar\(y/ies\) with open payments")
+_RE_REGISTRATIONS = _sync_re.compile(r"\[INFO\]\s+Registrations:\s+(\d+)\s+requested,\s+(\d+)\s+fetched,\s+(\d+)\s+failed")
+_RE_PHOTO_OK = _sync_re.compile(r"^\[OK\]\s+Photo downloaded & encrypted")
+_RE_FINAL = _sync_re.compile(r"^(\d+)\s+beneficiaries ready for offline validation")
+# Fine-grained counters emitted by offline_sync.py during the two long phases.
+# These are what make the progress bar move continuously rather than jumping
+# between phase boundaries.
+_RE_PROGRESS = _sync_re.compile(r"\[PROGRESS\]\s+(registrations|photos)\s+(\d+)/(\d+)")
+
+
+def _sync_job_read():
+    """Current job record, or None. Never raises."""
+    try:
+        with open(SYNC_JOB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError, OSError):
+        return None
+
+
+def _sync_job_write(job):
+    """Write the job record atomically so a concurrent poll never reads a
+    half-written file."""
+    try:
+        os.makedirs(SYNC_JOB_DIR, exist_ok=True)
+        tmp = SYNC_JOB_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(job, f)
+        os.replace(tmp, SYNC_JOB_FILE)
+    except OSError as e:
+        print(f"[sync] could not write job file: {e}")
+
+
+def _sync_job_is_stale(job):
+    if not job or job.get("status") != "running":
+        return False
+    return (time.time() - float(job.get("heartbeat") or 0)) > SYNC_STALE_SECONDS
+
+
+def _sync_percent(p):
+    """Completion estimate, weighted by how long each phase actually takes.
+
+    Bands: payments 1-5, transactions 5-17, registrations 18-40, photos 40-98.
+    Registrations and photos both report incremental counts (see the
+    [PROGRESS] lines in offline_sync.py), so within those two bands — which are
+    almost all of the wall-clock time — the bar advances continuously.
+    """
+    phase = p.get("phase")
+
+    def band(low, high, done, total):
+        if not total:
+            return low
+        return low + int((high - low) * min(max(done / total, 0.0), 1.0))
+
+    if phase in (None, "starting"):
+        return 1
+    if phase == "payments":
+        return 4
+    if phase == "transactions":
+        return band(5, 17, p.get("paymentsDone") or 0, p.get("paymentsTotal") or 0)
+    if phase == "registrations":
+        return band(
+            18, 40,
+            p.get("registrationsDone") or 0,
+            p.get("registrationsTotal") or p.get("beneficiaries") or 0,
+        )
+    if phase == "photos":
+        return band(
+            40, 98,
+            p.get("photosDone") or 0,
+            p.get("photosTotal") or p.get("beneficiaries") or 0,
+        )
+    if phase in ("done", "failed"):
+        return 100
+    return 4
+
+
+def _sync_worker(job_id, program_id):
+    """Run offline_sync.py, tailing its stdout to keep the job file current."""
+    env = os.environ.copy()
+    env["PROGRAM_ID"] = str(program_id)
+
+    progress = {
+        "phase": "starting",
+        "paymentsTotal": None,
+        "paymentsDone": 0,
+        "transactions": 0,
+        "beneficiaries": None,
+        "registrationsFetched": 0,
+        "registrationsFailed": 0,
+        "registrationsDone": 0,
+        "registrationsTotal": 0,
+        "photosDone": 0,
+        "photosTotal": 0,
+    }
+    job = {
+        "jobId": job_id,
+        "programId": str(program_id),
+        "status": "running",
+        "startedAt": time.time(),
+        "heartbeat": time.time(),
+        "progress": progress,
+        "percent": 2,
+        "message": "",
+        "error": "",
+    }
+    _sync_job_write(job)
+
+    stdout_tail = _sync_deque(maxlen=300)
+    stderr_chunks = []
+    final_line = ""
+
+    def _flush(force=False):
+        now = time.time()
+        if force or now - _flush.last >= 1.0:
+            _flush.last = now
+            job["heartbeat"] = now
+            job["percent"] = _sync_percent(progress)
+            _sync_job_write(job)
+
+    _flush.last = 0.0
+
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "offline_sync.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            bufsize=1,
+        )
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = f"Could not start offline_sync.py: {e}"
+        job["finishedAt"] = time.time()
+        job["heartbeat"] = time.time()
+        job["percent"] = 100
+        _sync_job_write(job)
+        return
+
+    # Drain stderr on its own thread. Reading it only after stdout closes would
+    # deadlock if a traceback filled the 64KB pipe buffer.
+    def _drain_stderr():
+        try:
+            for line in proc.stderr:
+                stderr_chunks.append(line)
+        except Exception:
+            pass
+
+    err_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    err_thread.start()
+
+    try:
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            stdout_tail.append(line)
+
+            # Incremental counters first — these are the highest-frequency
+            # lines and drive most of the bar's movement.
+            m = _RE_PROGRESS.search(line)
+            if m:
+                kind, done, total = m.group(1), int(m.group(2)), int(m.group(3))
+                if kind == "registrations":
+                    progress["phase"] = "registrations"
+                    progress["registrationsDone"] = done
+                    progress["registrationsTotal"] = total
+                else:
+                    progress["phase"] = "photos"
+                    progress["photosDone"] = done
+                    progress["photosTotal"] = total
+                _flush()
+                continue
+
+            m = _RE_OPEN_PAYMENTS.search(line)
+            if m:
+                progress["phase"] = "transactions"
+                progress["paymentsTotal"] = int(m.group(1))
+                _flush(force=True)
+                continue
+
+            m = _RE_PAYMENT_DONE.search(line)
+            if m:
+                progress["phase"] = "transactions"
+                progress["paymentsDone"] += 1
+                progress["transactions"] += int(m.group(2))
+                _flush()
+                continue
+
+            m = _RE_BENEFICIARIES.search(line)
+            if m:
+                progress["phase"] = "registrations"
+                progress["beneficiaries"] = int(m.group(1))
+                _flush(force=True)
+                continue
+
+            m = _RE_REGISTRATIONS.search(line)
+            if m:
+                progress["phase"] = "photos"
+                progress["registrationsFetched"] = int(m.group(2))
+                progress["registrationsFailed"] = int(m.group(3))
+                _flush(force=True)
+                continue
+
+            if _RE_PHOTO_OK.search(line):
+                # Fallback only: if this app is ever run against an older
+                # offline_sync.py that has no [PROGRESS] lines, count the
+                # per-photo "[OK]" lines instead. When [PROGRESS] is present it
+                # is authoritative and this must not double-count.
+                progress["phase"] = "photos"
+                if not progress.get("photosTotal"):
+                    progress["photosDone"] += 1
+                _flush()
+                continue
+
+            if _RE_FINAL.search(line):
+                final_line = line
+                _flush(force=True)
+                continue
+
+            if line.startswith("[INFO] Program ") or line.startswith("[INFO] Loaded "):
+                progress["phase"] = "payments"
+                _flush()
+    except Exception as e:
+        print(f"[sync] stdout reader error: {e}")
+
+    proc.wait()
+    err_thread.join(timeout=5)
+
+    stdout_text = "\n".join(stdout_tail)
+    stderr_text = "".join(stderr_chunks)
+
+    print("\n[DEBUG] SYNC STDOUT (tail):\n", stdout_text)
+    print("\n[DEBUG] SYNC STDERR:\n", stderr_text)
+
+    if proc.returncode != 0:
+        progress["phase"] = "failed"
+        job["status"] = "failed"
+        # offline_sync.py raises IncompleteSyncError (strict mode) rather than
+        # writing a batch it knows is missing people. Surface that verbatim —
+        # it is the most important message this app can show an FSP.
+        detail = (stderr_text or stdout_text or "").strip()
+        job["error"] = detail[-2000:] if detail else f"Sync exited with code {proc.returncode}"
+        job["message"] = "Sync failed — no batch was written"
+    else:
+        progress["phase"] = "done"
+        job["status"] = "done"
+        if not final_line:
+            for line in reversed(stdout_tail):
+                if "beneficiaries" in line.lower():
+                    final_line = line
+                    break
+        # Plain text: the page renders state with an icon and colour, so a
+        # status glyph in the string would be redundant (and looks amateurish).
+        job["message"] = final_line.strip() if final_line else "Sync completed"
+        job["count"] = int(_RE_FINAL.match(job["message"]).group(1)) if _RE_FINAL.match(job["message"]) else None
+
+    job["finishedAt"] = time.time()
+    job["heartbeat"] = time.time()
+    job["percent"] = 100
+    _sync_job_write(job)
+
+
 @app.route("/sync-fsp")
 def sync_fsp():
-    import subprocess
-    import os
+    """Start a sync. Returns immediately; poll /sync-status for progress.
 
-    # 🔴 get selected program from session
+    Single-flight: if a sync is already running, its job is returned instead of
+    launching a second offline_sync.py (two would race on get_next_batch_dir and
+    both write batch directories).
+    """
     program_id = session.get("fsp_program_id")
     if not program_id:
         return jsonify({"success": False, "message": "❌ No program selected"})
 
-    env = os.environ.copy()
-    env["PROGRAM_ID"] = str(program_id)  # 🔑 THIS IS THE FIX
-
-    try:
-        result = subprocess.run(
-            [sys.executable, "offline_sync.py"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,  # 🔑 PASS ENV
-        )
-
-        print("\n[DEBUG] STDOUT:\n", result.stdout)
-        print("\n[DEBUG] STDERR:\n", result.stderr)
-
-        if result.returncode != 0:
+    with _sync_job_lock:
+        existing = _sync_job_read()
+        if existing and existing.get("status") == "running" and not _sync_job_is_stale(existing):
             return jsonify(
                 {
-                    "success": False,
-                    "message": f"❌ Script failed:\n{result.stderr or result.stdout}",
+                    "success": True,
+                    "started": False,
+                    "alreadyRunning": True,
+                    "jobId": existing.get("jobId"),
+                    "job": existing,
+                    "message": "Sync already running",
                 }
             )
 
-        for line in result.stdout.splitlines():
-            if "beneficiaries" in line.lower():
-                return jsonify({"success": True, "message": f"✅ {line.strip()}"})
+        job_id = _uuid_mod.uuid4().hex[:12]
+        _sync_job_write(
+            {
+                "jobId": job_id,
+                "programId": str(program_id),
+                "status": "running",
+                "startedAt": time.time(),
+                "heartbeat": time.time(),
+                "progress": {"phase": "starting"},
+                "percent": 1,
+                "message": "",
+                "error": "",
+            }
+        )
 
-        return jsonify({"success": True, "message": "✅ Sync completed"})
+    threading.Thread(
+        target=_sync_worker, args=(job_id, program_id), daemon=True
+    ).start()
 
-    except Exception as e:
-        return jsonify({"success": False, "message": f"❌ Error running sync: {e}"})
+    return jsonify(
+        {
+            "success": True,
+            "started": True,
+            "jobId": job_id,
+            "message": "Sync started",
+        }
+    )
+
+
+@app.route("/sync-status")
+def sync_status():
+    """Current sync job state for the page's progress panel."""
+    job = _sync_job_read()
+    if not job:
+        return jsonify({"status": "idle"})
+
+    if _sync_job_is_stale(job):
+        job = dict(job)
+        job["status"] = "failed"
+        job["error"] = (
+            "The sync stopped reporting progress (the server process was "
+            "restarted). Check the offline-cache folder, then sync again."
+        )
+        job["message"] = "❌ Sync interrupted."
+    return jsonify(job)
 
 
 @app.route("/fsp-logout")
@@ -2635,7 +2968,7 @@ def submit_payments():
                 print(f"[!] No paymentId found for {column_to_match}: {raw_value}")
                 continue
 
-            grouped.setdefault(payment_id, []).append(
+            grouped.setdefault(str(payment_id), []).append(
                 {column_to_match: raw_value, "status": status}
             )
 

@@ -445,7 +445,9 @@ def fetch_registrations_bulk(program_id, registration_ids):
                 last_error = e
         return rid, None, last_error
 
-    max_workers = min(MAX_WORKERS, len(unique_ids)) or 1
+    total = len(unique_ids)
+    done = 0
+    max_workers = min(MAX_WORKERS, total) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, rid) for rid in unique_ids]
         for fut in as_completed(futures):
@@ -455,6 +457,14 @@ def fetch_registrations_bulk(program_id, registration_ids):
             else:
                 failed_ids.append(rid)
                 logger.warning(f"[!] Failed to get registration {rid}: {error}")
+
+            # Incremental progress for the /sync-status panel. Without these the
+            # UI has nothing to show between the "N beneficiaries" line and the
+            # final summary — on a 1,000-person program that is minutes of a
+            # frozen progress bar.
+            done += 1
+            if done % 25 == 0 or done == total:
+                logger.info(f"[PROGRESS] registrations {done}/{total}")
 
     logger.info("[INFO] Registrations: %s requested, %s fetched, %s failed",
                 len(unique_ids), len(results), len(failed_ids))
@@ -624,13 +634,21 @@ def download_photos_bulk(records, photos_dir):
             ok = False
         return uuid, ok
 
-    max_workers = min(MAX_WORKERS, len(records)) or 1
+    total = len(records)
+    done = 0
+    max_workers = min(MAX_WORKERS, total) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, rec) for rec in records]
         for fut in as_completed(futures):
             uuid, ok = fut.result()
             if not ok:
                 failed.append(uuid)
+
+            # Photo download is the longest phase by far, so report often —
+            # this is what actually drives the progress bar in fsp_admin.html.
+            done += 1
+            if done % 10 == 0 or done == total:
+                logger.info(f"[PROGRESS] photos {done}/{total}")
 
     if failed:
         logger.error("[!] %s of %s photo(s) could not be downloaded — those "
