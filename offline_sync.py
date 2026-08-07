@@ -75,7 +75,11 @@ FIELD_KEYS = [field["key"] for field in _prog_config.get("fields", [])]
 PHOTO_FIELD_NAME = _prog_config.get("photo", {}).get("field_name", "photo")
 logger.info(f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {program_id}: {FIELD_KEYS}")
 
-fernet = Fernet(ENCRYPTION_KEY.encode())
+try:
+    fernet = Fernet(ENCRYPTION_KEY.encode())
+except ValueError as e:
+    logger.error(f"[!] ENCRYPTION_KEY is invalid (not a valid Fernet key): {e}")
+    sys.exit(1)
 
 # Thread pool size (can be overridden by env var)
 MAX_WORKERS = int(os.getenv("OFFLINE_SYNC_WORKERS", "8"))
@@ -441,7 +445,9 @@ def fetch_registrations_bulk(program_id, registration_ids):
                 last_error = e
         return rid, None, last_error
 
-    max_workers = min(MAX_WORKERS, len(unique_ids)) or 1
+    total = len(unique_ids)
+    done = 0
+    max_workers = min(MAX_WORKERS, total) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, rid) for rid in unique_ids]
         for fut in as_completed(futures):
@@ -451,6 +457,14 @@ def fetch_registrations_bulk(program_id, registration_ids):
             else:
                 failed_ids.append(rid)
                 logger.warning(f"[!] Failed to get registration {rid}: {error}")
+
+            # Incremental progress for the /sync-status panel. Without these the
+            # UI has nothing to show between the "N beneficiaries" line and the
+            # final summary — on a 1,000-person program that is minutes of a
+            # frozen progress bar.
+            done += 1
+            if done % 25 == 0 or done == total:
+                logger.info(f"[PROGRESS] registrations {done}/{total}")
 
     logger.info("[INFO] Registrations: %s requested, %s fetched, %s failed",
                 len(unique_ids), len(results), len(failed_ids))
@@ -620,13 +634,21 @@ def download_photos_bulk(records, photos_dir):
             ok = False
         return uuid, ok
 
-    max_workers = min(MAX_WORKERS, len(records)) or 1
+    total = len(records)
+    done = 0
+    max_workers = min(MAX_WORKERS, total) or 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, rec) for rec in records]
         for fut in as_completed(futures):
             uuid, ok = fut.result()
             if not ok:
                 failed.append(uuid)
+
+            # Photo download is the longest phase by far, so report often —
+            # this is what actually drives the progress bar in fsp_admin.html.
+            done += 1
+            if done % 10 == 0 or done == total:
+                logger.info(f"[PROGRESS] photos {done}/{total}")
 
     if failed:
         logger.error("[!] %s of %s photo(s) could not be downloaded — those "
@@ -738,6 +760,11 @@ def download_cache(program_id, payment_id):
             "paymentId": t.get("paymentId"),
             "amount": _transfer_value(t),
             "data": encrypted_data,
+            # Explicit encryption metadata — app.py's reconciliation reads
+            # record["dataEncrypted"] to decide whether to decrypt, instead of
+            # guessing. Do not remove.
+            "dataEncrypted": True,
+            "encryptionScheme": "fernet-v1",
             "valid": is_valid,
             "reason": reason,
         }
@@ -761,6 +788,8 @@ def download_cache(program_id, payment_id):
         "programId": program_id,
         "paymentId": payment_id,
         "columnToMatch": match_key,
+        "dataEncrypted": True,
+        "encryptionScheme": "fernet-v1",
         "recordCount": len(cache_data),
         "transactionCount": len(transactions),
         "registrationFetchFailures": len(failed_reg_ids),
@@ -1110,6 +1139,11 @@ def download_open_payments_cache(program_id):
             "valid": True,
             "reason": "ok",
             "data": encrypted_data,
+            # Explicit encryption metadata — app.py's reconciliation reads
+            # record["dataEncrypted"] to decide whether to decrypt, instead of
+            # guessing. Do not remove.
+            "dataEncrypted": True,
+            "encryptionScheme": "fernet-v1",
         }
 
         cache_data.append(record)
@@ -1151,6 +1185,7 @@ def download_open_payments_cache(program_id):
         "programId": program_id,
         "columnToMatch": match_key,
         "dataEncrypted": True,
+        "encryptionScheme": "fernet-v1",
         "windowDays": WINDOW_DAYS,
         "recordCount": len(cache_data),
         "trancheCount": len(all_tranches),

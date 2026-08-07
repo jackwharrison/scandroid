@@ -534,30 +534,76 @@
       }
 
       /* --- Sync progress panel ------------------------------------------
-         The sync now runs in the background and can take minutes on a large
-         program, so the user needs to see that something is happening and
-         roughly how far along it is. Hidden until a sync starts. */
-      .sync-progress { display: none; margin-top: 10px; text-align: left; }
-      .sync-progress.visible { display: block; }
-      .sync-progress-head {
-        display: flex; justify-content: space-between; align-items: baseline;
-        gap: 10px; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px;
+         The sync runs in the background and takes minutes on a large program,
+         so the user needs to see that something is happening and how far along
+         it is. State is carried by an icon and colour, never by an emoji in
+         the message text. Hidden until a sync starts. */
+      .sync-progress {
+        display: none; margin-top: 12px; padding-top: 12px;
+        border-top: 1px solid var(--line); text-align: left;
       }
-      .sync-progress-text { font-weight: 600; color: var(--ink); }
-      .sync-elapsed { font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+      .sync-progress.visible { display: block; }
+
+      .sync-progress-head {
+        display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px;
+      }
+      .sync-status-icon {
+        width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px;
+        color: #1d4ed8; display: block;
+      }
+      .sync-status-icon svg { width: 18px; height: 18px; display: block; }
+      /* Indeterminate ring used while the job is running */
+      .sync-status-icon .ring {
+        width: 16px; height: 16px; margin: 1px; border-radius: 50%;
+        border: 2px solid rgba(29,78,216,0.25); border-top-color: #1d4ed8;
+        animation: spin 0.8s linear infinite;
+      }
+      .sync-progress-copy { flex: 1; min-width: 0; }
+      .sync-progress-text {
+        font-weight: 600; font-size: 0.9rem; color: var(--ink); line-height: 1.35;
+      }
+      .sync-progress-detail {
+        font-size: 0.78rem; color: var(--muted); margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .sync-elapsed {
+        font-size: 0.78rem; color: var(--muted); flex: 0 0 auto; margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+
       .sync-bar {
-        height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden;
+        height: 6px; background: var(--line); border-radius: 999px;
+        overflow: hidden;
       }
       .sync-bar-fill {
-        height: 100%; width: 0%; background: #1d4ed8; border-radius: 999px;
-        transition: width 0.4s ease;
+        position: relative; height: 100%; width: 0%; background: #1d4ed8;
+        border-radius: 999px; overflow: hidden;
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
       }
-      .sync-progress.is-done  .sync-bar-fill { background: #16a34a; }
-      .sync-progress.is-error .sync-bar-fill { background: #dc2626; }
+      /* Sheen that travels along the filled portion while work is in flight,
+         so a slow phase still reads as "moving" between counter updates. */
+      .sync-progress.is-running .sync-bar-fill::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(90deg,
+          rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%);
+        animation: syncSheen 1.6s ease-in-out infinite;
+      }
+      @keyframes syncSheen {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+
+      .sync-progress.is-done  .sync-bar-fill  { background: #16a34a; }
+      .sync-progress.is-done  .sync-status-icon { color: #16a34a; }
+      .sync-progress.is-error .sync-bar-fill  { background: #dc2626; }
+      .sync-progress.is-error .sync-status-icon { color: #dc2626; }
+      .sync-progress.is-error .sync-progress-text { color: #991b1b; }
+
       .sync-error {
-        display: none; margin-top: 8px; padding: 8px 10px; background: #fee2e2;
-        border: 1px solid #fca5a5; color: #991b1b; border-radius: 8px;
-        font-size: 0.8rem; font-weight: 600; white-space: pre-wrap;
+        display: none; margin-top: 10px; padding: 9px 11px; background: #fef2f2;
+        border: 1px solid #fecaca; border-left: 3px solid #dc2626;
+        color: #991b1b; border-radius: 8px; font-size: 0.78rem;
+        font-weight: 500; line-height: 1.45; white-space: pre-wrap;
         word-break: break-word; text-align: left;
       }
       .sync-error.visible { display: block; }
@@ -660,10 +706,17 @@
            the markup, so every status message was silently discarded. -->
       <div id="syncProgress" class="sync-progress">
         <div class="sync-progress-head">
-          <span id="statusMessage" class="sync-progress-text">…</span>
+          <span id="syncStatusIcon" class="sync-status-icon" aria-hidden="true"></span>
+          <div class="sync-progress-copy">
+            <div id="statusMessage" class="sync-progress-text">…</div>
+            <div id="syncDetail" class="sync-progress-detail"></div>
+          </div>
           <span id="syncElapsed" class="sync-elapsed">0:00</span>
         </div>
-        <div class="sync-bar"><div id="syncBarFill" class="sync-bar-fill"></div></div>
+        <div class="sync-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="0" id="syncBarTrack">
+          <div id="syncBarFill" class="sync-bar-fill"></div>
+        </div>
         <div id="syncError" class="sync-error"></div>
       </div>
     </div>
@@ -849,12 +902,36 @@ document.addEventListener('click', function(e) {
     return {
       panel: document.getElementById("syncProgress"),
       text: document.getElementById("statusMessage"),
+      detail: document.getElementById("syncDetail"),
       elapsed: document.getElementById("syncElapsed"),
       fill: document.getElementById("syncBarFill"),
+      track: document.getElementById("syncBarTrack"),
+      icon: document.getElementById("syncStatusIcon"),
       error: document.getElementById("syncError"),
       btn: document.getElementById("syncBtn"),
     };
   }
+
+  // Status is conveyed by icon + colour rather than a glyph in the message.
+  const ICON_CHECK =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const ICON_ALERT =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>';
+
+  function setSyncIcon(state) {
+    const { icon } = syncEls();
+    if (!icon) return;
+    if (state === "done") icon.innerHTML = ICON_CHECK;
+    else if (state === "error") icon.innerHTML = ICON_ALERT;
+    else icon.innerHTML = '<span class="ring"></span>';
+  }
+
+  // The Sync button's own markup (icon + label), captured once so the inline
+  // spinner can be added while a sync runs and cleanly removed afterwards.
+  const SYNC_BTN_HTML = (() => {
+    const b = document.getElementById("syncBtn");
+    return b ? b.innerHTML : "";
+  })();
 
   function fmtElapsed(ms) {
     const s = Math.max(0, Math.floor(ms / 1000));
@@ -882,51 +959,70 @@ document.addEventListener('click', function(e) {
     if (btn) {
       btn.disabled = busy;
       btn.classList.toggle("btn-loading", busy);
+      // Spinner inside the button, as before — it is the clearest signal that
+      // the tap registered, and the panel below carries the detail.
+      btn.innerHTML = busy
+        ? `${SYNC_BTN_HTML}<div class="spinner" style="margin-left:6px;"></div>`
+        : SYNC_BTN_HTML;
     }
-    if (busy && panel) {
-      panel.classList.add("visible");
-      panel.classList.remove("is-done", "is-error");
+    if (panel) {
+      panel.classList.toggle("is-running", busy);
+      if (busy) {
+        panel.classList.add("visible");
+        panel.classList.remove("is-done", "is-error");
+      }
     }
+    if (busy) setSyncIcon("running");
   }
 
-  // Turn the job's structured progress into one plain sentence.
+  const n = (v) => Number(v || 0).toLocaleString();
+
+  // Headline: what the sync is doing right now, in plain words.
   function syncPhaseText(job) {
     const p = (job && job.progress) || {};
     switch (p.phase) {
-      case "payments":
-        return t.sync_phase_payments || "Checking payments in 121…";
+      case "payments":      return "Checking payments in 121";
+      case "transactions":  return "Reading payment records";
+      case "registrations": return "Fetching beneficiary details";
+      case "photos":        return "Downloading photos";
+      case "done":          return job.message || "Sync complete";
+      case "failed":        return job.message || "Sync failed";
+      default:              return "Starting sync";
+    }
+  }
+
+  // Sub-line: the actual numbers, so progress is legible even when the bar
+  // moves slowly.
+  function syncDetailText(job) {
+    const p = (job && job.progress) || {};
+    switch (p.phase) {
       case "transactions": {
-        const done = p.paymentsDone || 0;
         const total = p.paymentsTotal || 0;
+        const done = p.paymentsDone || 0;
         const tx = p.transactions || 0;
-        return total
-          ? `Reading payment ${Math.min(done + 1, total)} of ${total} — ${tx.toLocaleString()} records so far…`
-          : "Reading payments…";
+        if (!total) return "";
+        return `Payment ${Math.min(done + 1, total)} of ${total} · ${n(tx)} records`;
       }
-      case "registrations":
-        return p.beneficiaries
-          ? `Fetching details for ${p.beneficiaries.toLocaleString()} people…`
-          : "Fetching registration details…";
+      case "registrations": {
+        const total = p.registrationsTotal || p.beneficiaries || 0;
+        return total ? `${n(p.registrationsDone)} of ${n(total)} people` : "";
+      }
       case "photos": {
-        const done = p.photosDone || 0;
-        const total = p.beneficiaries || 0;
-        return total
-          ? `Downloading photos — ${done.toLocaleString()} of ${total.toLocaleString()}…`
-          : `Downloading photos — ${done.toLocaleString()}…`;
+        const total = p.photosTotal || p.beneficiaries || 0;
+        return total ? `${n(p.photosDone)} of ${n(total)} photos` : "";
       }
-      case "done":
-        return job.message || "Sync complete";
-      case "failed":
-        return job.message || "Sync failed";
       default:
-        return t.syncing || "Starting sync…";
+        return "";
     }
   }
 
   function paintSyncJob(job) {
-    const { text, fill } = syncEls();
+    const { text, detail, fill, track } = syncEls();
+    const pct = Math.max(1, Math.min(100, job.percent || 1));
     if (text) text.textContent = syncPhaseText(job);
-    if (fill) fill.style.width = `${Math.max(1, Math.min(100, job.percent || 1))}%`;
+    if (detail) detail.textContent = syncDetailText(job);
+    if (fill) fill.style.width = `${pct}%`;
+    if (track) track.setAttribute("aria-valuenow", String(pct));
   }
 
   function stopSyncPolling() {
@@ -937,10 +1033,12 @@ document.addEventListener('click', function(e) {
     stopSyncPolling();
     stopSyncClock();
     setSyncBusy(false);
-    const { panel, text, error, fill } = syncEls();
-    if (panel) { panel.classList.add("visible", "is-error"); }
+    const { panel, text, detail, error, fill } = syncEls();
+    if (panel) { panel.classList.add("visible", "is-error"); panel.classList.remove("is-running"); }
+    setSyncIcon("error");
     if (fill) fill.style.width = "100%";
-    if (text) text.textContent = job.message || "❌ Sync failed";
+    if (text) text.textContent = job.message || "Sync failed";
+    if (detail) detail.textContent = "No data was changed on this device.";
     if (error) {
       // The server passes offline_sync.py's own message through. When strict
       // reconciliation trips, that text says exactly which payment came back
@@ -952,21 +1050,23 @@ document.addEventListener('click', function(e) {
 
   async function afterSyncComplete(job) {
     stopSyncPolling();
-    const { text, panel, fill } = syncEls();
-    if (text) text.textContent = (job.message || "Sync complete") + " → Importing…";
+    const { text, detail, panel, fill } = syncEls();
+    if (text) text.textContent = "Saving to this device";
+    if (detail) detail.textContent = "Importing records and photos…";
 
     const importResult = await importLatestCache(true);
 
     stopSyncClock();
     setSyncBusy(false);
-    if (panel) panel.classList.add("is-done");
+    if (panel) { panel.classList.add("is-done"); panel.classList.remove("is-running"); }
+    setSyncIcon("done");
     if (fill) fill.style.width = "100%";
 
-    const took = syncStartedAtMs ? ` in ${fmtElapsed(Date.now() - syncStartedAtMs)}` : "";
-    if (text) {
-      text.textContent =
-        `✅ ${importResult.written.toLocaleString()} beneficiaries and ` +
-        `${importResult.photosWritten.toLocaleString()} photos ready to scan${took}.`;
+    const took = syncStartedAtMs ? fmtElapsed(Date.now() - syncStartedAtMs) : null;
+    if (text) text.textContent = `${n(importResult.written)} beneficiaries ready to scan`;
+    if (detail) {
+      detail.textContent =
+        `${n(importResult.photosWritten)} photos` + (took ? ` · completed in ${took}` : "");
     }
 
     const now = new Date();
@@ -1029,14 +1129,14 @@ document.addEventListener('click', function(e) {
       const res = await fetch(`/sync-fsp?lang={{ lang }}`, { cache: "no-store" });
       const json = await res.json();
       if (!json.success) {
-        showSyncFailure({ message: json.message || "❌ Could not start sync", error: "" });
+        showSyncFailure({ message: json.message || "Could not start sync", error: "" });
         return;
       }
       beginSyncPolling();
     } catch (err) {
       console.error(err);
       showSyncFailure({
-        message: "❌ Could not start sync",
+        message: "Could not start sync",
         error: (err && err.message) ? String(err.message) : String(err),
       });
     }

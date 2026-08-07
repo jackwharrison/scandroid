@@ -2132,6 +2132,10 @@ _RE_BENEFICIARIES = _sync_re.compile(r"\[INFO\]\s+(\d+)\s+beneficiar\(y/ies\) wi
 _RE_REGISTRATIONS = _sync_re.compile(r"\[INFO\]\s+Registrations:\s+(\d+)\s+requested,\s+(\d+)\s+fetched,\s+(\d+)\s+failed")
 _RE_PHOTO_OK = _sync_re.compile(r"^\[OK\]\s+Photo downloaded & encrypted")
 _RE_FINAL = _sync_re.compile(r"^(\d+)\s+beneficiaries ready for offline validation")
+# Fine-grained counters emitted by offline_sync.py during the two long phases.
+# These are what make the progress bar move continuously rather than jumping
+# between phase boundaries.
+_RE_PROGRESS = _sync_re.compile(r"\[PROGRESS\]\s+(registrations|photos)\s+(\d+)/(\d+)")
 
 
 def _sync_job_read():
@@ -2163,26 +2167,41 @@ def _sync_job_is_stale(job):
 
 
 def _sync_percent(p):
-    """Rough completion estimate, weighted by how long each phase actually
-    takes. Photo download dominates, so it gets the largest band."""
+    """Completion estimate, weighted by how long each phase actually takes.
+
+    Bands: payments 1-5, transactions 5-17, registrations 18-40, photos 40-98.
+    Registrations and photos both report incremental counts (see the
+    [PROGRESS] lines in offline_sync.py), so within those two bands — which are
+    almost all of the wall-clock time — the bar advances continuously.
+    """
     phase = p.get("phase")
+
+    def band(low, high, done, total):
+        if not total:
+            return low
+        return low + int((high - low) * min(max(done / total, 0.0), 1.0))
+
     if phase in (None, "starting"):
-        return 2
+        return 1
     if phase == "payments":
-        return 5
+        return 4
     if phase == "transactions":
-        total = p.get("paymentsTotal") or 0
-        done = p.get("paymentsDone") or 0
-        return 5 + int(15 * (done / total)) if total else 10
+        return band(5, 17, p.get("paymentsDone") or 0, p.get("paymentsTotal") or 0)
     if phase == "registrations":
-        return 25
+        return band(
+            18, 40,
+            p.get("registrationsDone") or 0,
+            p.get("registrationsTotal") or p.get("beneficiaries") or 0,
+        )
     if phase == "photos":
-        total = p.get("beneficiaries") or 0
-        done = p.get("photosDone") or 0
-        return 35 + int(60 * min(done / total, 1.0)) if total else 40
+        return band(
+            40, 98,
+            p.get("photosDone") or 0,
+            p.get("photosTotal") or p.get("beneficiaries") or 0,
+        )
     if phase in ("done", "failed"):
         return 100
-    return 5
+    return 4
 
 
 def _sync_worker(job_id, program_id):
@@ -2198,7 +2217,10 @@ def _sync_worker(job_id, program_id):
         "beneficiaries": None,
         "registrationsFetched": 0,
         "registrationsFailed": 0,
+        "registrationsDone": 0,
+        "registrationsTotal": 0,
         "photosDone": 0,
+        "photosTotal": 0,
     }
     job = {
         "jobId": job_id,
@@ -2264,6 +2286,22 @@ def _sync_worker(job_id, program_id):
             line = raw.rstrip()
             stdout_tail.append(line)
 
+            # Incremental counters first — these are the highest-frequency
+            # lines and drive most of the bar's movement.
+            m = _RE_PROGRESS.search(line)
+            if m:
+                kind, done, total = m.group(1), int(m.group(2)), int(m.group(3))
+                if kind == "registrations":
+                    progress["phase"] = "registrations"
+                    progress["registrationsDone"] = done
+                    progress["registrationsTotal"] = total
+                else:
+                    progress["phase"] = "photos"
+                    progress["photosDone"] = done
+                    progress["photosTotal"] = total
+                _flush()
+                continue
+
             m = _RE_OPEN_PAYMENTS.search(line)
             if m:
                 progress["phase"] = "transactions"
@@ -2295,8 +2333,13 @@ def _sync_worker(job_id, program_id):
                 continue
 
             if _RE_PHOTO_OK.search(line):
+                # Fallback only: if this app is ever run against an older
+                # offline_sync.py that has no [PROGRESS] lines, count the
+                # per-photo "[OK]" lines instead. When [PROGRESS] is present it
+                # is authoritative and this must not double-count.
                 progress["phase"] = "photos"
-                progress["photosDone"] += 1
+                if not progress.get("photosTotal"):
+                    progress["photosDone"] += 1
                 _flush()
                 continue
 
@@ -2328,7 +2371,7 @@ def _sync_worker(job_id, program_id):
         # it is the most important message this app can show an FSP.
         detail = (stderr_text or stdout_text or "").strip()
         job["error"] = detail[-2000:] if detail else f"Sync exited with code {proc.returncode}"
-        job["message"] = "❌ Sync failed — no batch was written."
+        job["message"] = "Sync failed — no batch was written"
     else:
         progress["phase"] = "done"
         job["status"] = "done"
@@ -2337,7 +2380,10 @@ def _sync_worker(job_id, program_id):
                 if "beneficiaries" in line.lower():
                     final_line = line
                     break
-        job["message"] = f"✅ {final_line.strip()}" if final_line else "✅ Sync completed"
+        # Plain text: the page renders state with an icon and colour, so a
+        # status glyph in the string would be redundant (and looks amateurish).
+        job["message"] = final_line.strip() if final_line else "Sync completed"
+        job["count"] = int(_RE_FINAL.match(job["message"]).group(1)) if _RE_FINAL.match(job["message"]) else None
 
     job["finishedAt"] = time.time()
     job["heartbeat"] = time.time()
