@@ -63,4 +63,4 @@ jobs:
         with:
           app-name: 'scandroid-sudan'
           slot-name: 'Production'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_21C667C34D8F4002A1D960FE8AF5E87B }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_1C667001C32D44929228D5FDC3E257E7 }}
