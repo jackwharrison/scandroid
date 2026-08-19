@@ -130,7 +130,7 @@ LATIN_FONT = "DejaVu"
 # Strong-direction detection, used to pick the bidi base direction. The first
 # strong character decides: "شارع Main" is an RTL paragraph, "Main شارع" an LTR
 # one, and getting this wrong misplaces trailing punctuation.
-_RTL_STRONG_RE = _re.compile(r"[֐-׿؀-ۿ܀-ݏݐ-ݿࢠ-ࣿיִ-﷿ﹰ-﻿]")
+_RTL_STRONG_RE = _re.compile(r"[֐-׿؀-ۿ܀-ݏݐ-ݿࢠ-ࣿיִ-﷿ﹰ-﻿]")
 _LTR_STRONG_RE = _re.compile(r"[A-Za-zÀ-ʯͰ-ϿЀ-ӿ]")
 
 
@@ -274,7 +274,18 @@ def _fit_mixed(c, text, size, max_width, min_size=7.0):
 
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key"
+# The session now carries each operator's 121 access token. Flask-Session keeps
+# the session data server-side (filesystem) and the cookie holds only the signed
+# session id -- but that id is the bearer, so it must be signed with a real key.
+# "your_secret_key" was a literal in the repo. Falling back to a random key is
+# fine locally; on Azure each gunicorn worker would generate a different one and
+# staff would appear to be logged out at random, so warn loudly.
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(32).hex()
+if not os.getenv("FLASK_SECRET_KEY"):
+    print(
+        "[auth] WARNING: FLASK_SECRET_KEY is not set - a random key was generated. "
+        "Set it in Azure App Settings or logins will drop unpredictably."
+    )
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
 Session(app)
@@ -1628,8 +1639,7 @@ def admin_login():
 
     # ✔ Success
     if res.status_code == 201:
-        session["admin_logged_in"] = True
-        session["admin_username"] = username
+        _store_login_session("admin", username, res)
         return redirect(url_for("admin_dashboard", lang=lang))
 
     # ❌ Wrong username/password
@@ -1663,7 +1673,7 @@ def admin_dashboard():
 @app.route("/admin-logout")
 def admin_logout():
     lang = request.args.get("lang", "en")
-    session.pop("admin_logged_in", None)
+    _clear_login_session("admin")
     return redirect(url_for("admin_login", lang=lang))
 
 
@@ -2239,8 +2249,7 @@ def fsp_login():
             )
 
             if res.status_code == 201:
-                session["fsp_logged_in"] = True
-                session["fsp_username"] = username
+                _store_login_session("fsp", username, res)
                 return redirect(url_for("fsp_program_selector"))
 
             elif res.status_code in (400, 401):
@@ -2821,7 +2830,10 @@ def sync_status():
 
 @app.route("/fsp-logout")
 def fsp_logout():
-    session.pop("fsp_logged_in", None)
+    # On a shared tablet, leaving the token behind would attribute the next
+    # person's distribution to the previous user - a confidently wrong audit
+    # trail, which is worse than an obviously shared one.
+    _clear_login_session("fsp")
     return redirect(url_for("fsp_login"))
 
 
@@ -3109,6 +3121,104 @@ def get_121_token():
         return None
 
 
+# ---------------------------------------------------------------------------
+# OPERATOR ATTRIBUTION
+#
+# Both login routes already authenticate the person against the 121 API
+# (POST /api/users/login, accepted on 201) - there is no local password check.
+# They used to throw away the access_token_general that 121 hands back, so every
+# subsequent call went through get_121_token() as the shared service account
+# (USERNAME_121 / PASSWORD_121 in Azure App Settings). In 121's audit log that
+# made every payment reconciliation look like one robot user.
+#
+# Keeping the token means 121 records the real person against the payment.
+# No password is ever stored - only the token 121 itself issued.
+#
+# Reads (programme titles, registration attributes, columnToMatch) and the
+# background sync in offline_sync.py deliberately keep using the service
+# account: there is no human behind them, and a field user may legitimately
+# lack program.read, which would turn working dropdowns into empty ones.
+# ---------------------------------------------------------------------------
+def _store_login_session(role, username, response):
+    """Record who logged in, plus the 121 token issued to them."""
+    token = None
+    permissions = None
+    try:
+        body = response.json()
+        token = body.get("access_token_general")
+        perms = body.get("permissions")
+        if isinstance(perms, dict):
+            permissions = {str(k): v for k, v in perms.items()}
+    except Exception:
+        pass
+
+    # Some 121 builds set the token as a cookie rather than in the body.
+    if not token:
+        try:
+            token = response.cookies.get("access_token_general")
+        except Exception:
+            token = None
+
+    session[role + "_logged_in"] = True
+    session[role + "_username"] = username
+    session[role + "_token"] = token
+    session[role + "_permissions"] = permissions
+    session[role + "_login_at"] = time.time()
+
+    if not token:
+        print(
+            "[auth] WARNING: 121 login for %s returned no access_token_general; "
+            "this session's submissions will fall back to the service account."
+            % username
+        )
+
+
+def _clear_login_session(role):
+    """Wipe everything identifying this operator."""
+    for suffix in ("_logged_in", "_username", "_token", "_permissions", "_login_at"):
+        session.pop(role + suffix, None)
+    if role == "fsp":
+        session.pop("fsp_program_id", None)
+
+
+def _has_program_permission(role, program_id, permission):
+    """Tri-state: True / False / None when 121 did not tell us.
+
+    Only a definite False is acted on. If the login response had no readable
+    permissions map, we return None and let the request proceed - 121 is the
+    real gate, and blocking a whole distribution because a response shape
+    changed would be far worse than a late 403.
+    """
+    perms = session.get(role + "_permissions")
+    if not isinstance(perms, dict):
+        return None
+    entry = perms.get(str(program_id))
+    if isinstance(entry, dict):
+        entry = entry.get("permissions") or entry.get("permission")
+    if not isinstance(entry, (list, tuple, set)):
+        return None
+    return permission in entry
+
+
+def get_121_token_for_request(role="fsp"):
+    """(token, actor_label, is_user_attributed) for a write made by a human.
+
+    Falls back to the service account when there is no operator token - an old
+    session, or a 121 build that stops returning the token - so a distribution
+    degrades to the previous behaviour rather than stopping.
+    """
+    token = session.get(role + "_token")
+    username = session.get(role + "_username")
+    if token:
+        return token, (username or role), True
+
+    print(
+        "[auth] NOTE: no operator token in session, so this submission is "
+        "attributed to the service account."
+    )
+    return get_121_token(), "the shared 121 service account", False
+
+
 @app.route("/submit-payments", methods=["POST"])
 def submit_payments():
     import csv
@@ -3338,9 +3448,24 @@ def submit_payments():
         # -------------------------------
         # SUBMIT TO 121 /paymentId/excel-reconciliation
         # -------------------------------
-        token = get_121_token()
+        token, actor_label, user_attributed = get_121_token_for_request("fsp")
         if not token:
             return "❌ Login to 121 failed", 401
+
+        # Early warning only - see _has_program_permission. A definite "no" is
+        # worth catching before we upload; anything less proceeds and lets 121
+        # decide.
+        if user_attributed and _has_program_permission(
+            "fsp", program_id, "payment.update"
+        ) is False:
+            return (
+                f"❌ Your 121 account ({actor_label}) is not allowed to reconcile "
+                f"payments for program {program_id}. Ask your 121 administrator to "
+                "add the 'payment.update' permission to your role.",
+                403,
+            )
+
+        print(f"[auth] submitting payment reconciliation as {actor_label}")
 
         success_count = 0
         fail_count = 0
@@ -3380,6 +3505,13 @@ def submit_payments():
             if upload_resp.status_code == 201:
                 success_count += 1
                 print(f"[OK] Submitted to paymentId {pid}")
+            elif upload_resp.status_code == 401 and user_attributed:
+                fail_count += 1
+                failure_details.append(
+                    f"paymentId {pid}: your 121 login has expired — log out, log "
+                    "back in and send again. Nothing was lost."
+                )
+                print(f"[ERROR] Operator token rejected (401) for paymentId {pid}")
             else:
                 fail_count += 1
                 snippet = (upload_resp.text or "")[:300]
@@ -3467,14 +3599,20 @@ def submit_registration_updates():
         if len(rows) > 100000:
             return "❌ Too many rows — 121 supports at most 100k rows per update.", 400
 
-        token = get_121_token()
+        token, actor_label, user_attributed = get_121_token_for_request("fsp")
         if not token:
             return "❌ Login to 121 failed", 401
+
+        print(f"[auth] submitting registration updates as {actor_label}")
 
         update_url = f"{url121}/api/programs/{program_id}/registrations"
         files = {"file": ("registration_updates.csv", csv_bytes, "text/csv")}
         # 121 requires a `reason` on every bulk update (stored in the audit log).
-        data = {"reason": "Updated during offline distribution (121 Scan)"}
+        # Naming the operator here puts the same attribution in the reason string
+        # as on the token, which is what a reviewer actually reads in 121.
+        data = {
+            "reason": f"Updated during offline distribution (121 Scan) by {actor_label}"
+        }
 
         try:
             resp = requests.patch(
@@ -3489,6 +3627,13 @@ def submit_registration_updates():
 
         if resp.status_code in (200, 201, 202, 204):
             return f"✅ Updated {len(rows)} registration(s) in 121.", 200
+
+        if resp.status_code == 401 and user_attributed:
+            return (
+                "❌ Your 121 login has expired. Please log out, log back in and "
+                "try again.",
+                401,
+            )
 
         snippet = (resp.text or "")[:400]
         return (
