@@ -200,7 +200,52 @@
       "logo2": null,
       "logo1_size": "medium",
       "logo2_size": "medium",
-      "show_qr": true
+      "show_qr": true,
+      "fields": [
+        {
+          "key": "amount",
+          "label": "Amount",
+          "show": true,
+          "custom": true
+        },
+        {
+          "key": "bank_account_number",
+          "label": "Bank Account Number",
+          "show": true,
+          "custom": true
+        },
+        {
+          "key": "first_name",
+          "label": "First Name",
+          "show": true,
+          "custom": true
+        },
+        {
+          "key": "fourth_name",
+          "label": "fourth_name",
+          "show": true
+        },
+        {
+          "key": "national_id_number",
+          "label": "national_ID_number",
+          "show": true
+        },
+        {
+          "key": "payment_description",
+          "label": "payment_description",
+          "show": true
+        },
+        {
+          "key": "second_name",
+          "label": "second_name",
+          "show": true
+        },
+        {
+          "key": "third_name",
+          "label": "third_name",
+          "show": true
+        }
+      ]
     }
   }
 }

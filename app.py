@@ -108,8 +108,184 @@ def _font_for(text):
     return ARABIC_FONT if _contains_arabic(text) else "DejaVu"
 
 
+# ---------------------------------------------------------------------------
+# Mixed-script (Arabic + Latin) drawing
+#
+# _font_for() above picks ONE font for a whole string, which is wrong for any
+# string that mixes scripts: "Name: محمد" would be drawn entirely in Amiri, so
+# the Latin label picked up Amiri's Latin glyphs while a pure-Latin row on the
+# same voucher used DejaVu. Side by side that reads as two different typefaces.
+#
+# The helpers below instead:
+#   1. reshape + bidi-reorder the WHOLE string once, giving visual order;
+#   2. split that visual string into Arabic-script vs everything-else runs;
+#   3. draw each run left-to-right in its own font.
+#
+# Because step 1 already produced visual order, drawing the runs sequentially
+# left-to-right is correct for both LTR and RTL base directions. Latin text
+# therefore always renders in LATIN_FONT, no matter what it sits next to.
+# ---------------------------------------------------------------------------
+LATIN_FONT = "DejaVu"
+
+# Strong-direction detection, used to pick the bidi base direction. The first
+# strong character decides: "شارع Main" is an RTL paragraph, "Main شارع" an LTR
+# one, and getting this wrong misplaces trailing punctuation.
+_RTL_STRONG_RE = _re.compile(r"[֐-׿؀-ۿ܀-ݏݐ-ݿࢠ-ࣿיִ-﷿ﹰ-﻿]")
+_LTR_STRONG_RE = _re.compile(r"[A-Za-zÀ-ʯͰ-ϿЀ-ӿ]")
+
+
+def _base_is_rtl(text):
+    """True when the first strong-direction character is RTL."""
+    rtl = _RTL_STRONG_RE.search(text)
+    if not rtl:
+        return False
+    ltr = _LTR_STRONG_RE.search(text)
+    return True if not ltr else rtl.start() < ltr.start()
+
+
+def _visual_text(text):
+    """Reshape + bidi-reorder a string into the visual order to be drawn."""
+    text = "" if text is None else str(text)
+    if not (_HAS_ARABIC_SHAPING and _contains_arabic(text)):
+        return text
+    try:
+        reshaped = arabic_reshaper.reshape(text)
+    except Exception:
+        reshaped = text
+    base = "R" if _base_is_rtl(text) else "L"
+    try:
+        return get_display(reshaped, base_dir=base)
+    except TypeError:
+        # Older/newer python-bidi builds without the base_dir keyword.
+        try:
+            return get_display(reshaped)
+        except Exception:
+            return text
+    except Exception:
+        return text
+
+
+def _script_runs(visual):
+    """Split visual-order text into [(run_text, font_name), ...].
+
+    Neutral characters (spaces, digits, punctuation) attach to the run before
+    them so a single word is never split across two fonts; leading neutrals
+    attach to the run that follows.
+    """
+    if not visual:
+        return []
+
+    runs = []          # [[chars], is_arabic]
+    pending = []       # neutrals waiting for a run to attach to
+
+    for ch in visual:
+        if _ARABIC_RE.match(ch):
+            is_arabic = True
+        elif _LTR_STRONG_RE.match(ch):
+            is_arabic = False
+        else:
+            pending.append(ch)
+            continue
+
+        if runs and runs[-1][1] == is_arabic:
+            runs[-1][0].extend(pending)
+            runs[-1][0].append(ch)
+        else:
+            if runs:
+                runs[-1][0].extend(pending)   # trailing neutrals stay behind
+                runs.append([[ch], is_arabic])
+            else:
+                runs.append([pending + [ch], is_arabic])
+        pending = []
+
+    if pending:
+        if runs:
+            runs[-1][0].extend(pending)
+        else:
+            runs.append([pending, False])     # no strong chars at all
+
+    return [
+        ("".join(chars), ARABIC_FONT if is_arabic else LATIN_FONT)
+        for chars, is_arabic in runs
+    ]
+
+
+def _mixed_width(c, text, size):
+    """Drawn width of text once split into per-script runs."""
+    return sum(
+        c.stringWidth(run, font, size) for run, font in _script_runs(_visual_text(text))
+    )
+
+
+def _draw_mixed(c, x, y, text, size):
+    """Draw text left-aligned at x, each script run in its own font.
+
+    Returns the total width drawn.
+    """
+    cursor = x
+    for run, font in _script_runs(_visual_text(text)):
+        c.setFont(font, size)
+        c.drawString(cursor, y, run)
+        cursor += c.stringWidth(run, font, size)
+    return cursor - x
+
+
+def _draw_mixed_right(c, right_x, y, text, size):
+    """Draw text so its right edge sits at right_x, per-script fonts intact."""
+    runs = _script_runs(_visual_text(text))
+    total = sum(c.stringWidth(run, font, size) for run, font in runs)
+    cursor = right_x - total
+    for run, font in runs:
+        c.setFont(font, size)
+        c.drawString(cursor, y, run)
+        cursor += c.stringWidth(run, font, size)
+    return total
+
+
+def _draw_mixed_centred(c, cx, y, text, size):
+    """Draw text centred on cx, each script run in its own font."""
+    runs = _script_runs(_visual_text(text))
+    total = sum(c.stringWidth(run, font, size) for run, font in runs)
+    cursor = cx - total / 2.0
+    for run, font in runs:
+        c.setFont(font, size)
+        c.drawString(cursor, y, run)
+        cursor += c.stringWidth(run, font, size)
+    return total
+
+
+def _fit_mixed(c, text, size, max_width, min_size=7.0):
+    """Largest font size <= size at which text fits max_width.
+
+    Returns (size, text). If the text still does not fit at min_size it is
+    truncated with an ellipsis so a long value can never run off the voucher.
+    """
+    if max_width <= 0:
+        return size, text
+    while size > min_size and _mixed_width(c, text, size) > max_width:
+        size -= 0.5
+    if _mixed_width(c, text, size) <= max_width:
+        return size, text
+
+    truncated = str(text)
+    while truncated and _mixed_width(c, truncated + "…", size) > max_width:
+        truncated = truncated[:-1]
+    return size, (truncated + "…") if truncated else ""
+
+
 app = Flask(__name__)
-app.secret_key = "your_secret_key"
+# The session now carries each operator's 121 access token. Flask-Session keeps
+# the session data server-side (filesystem) and the cookie holds only the signed
+# session id -- but that id is the bearer, so it must be signed with a real key.
+# "your_secret_key" was a literal in the repo. Falling back to a random key is
+# fine locally; on Azure each gunicorn worker would generate a different one and
+# staff would appear to be logged out at random, so warn loudly.
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(32).hex()
+if not os.getenv("FLASK_SECRET_KEY"):
+    print(
+        "[auth] WARNING: FLASK_SECRET_KEY is not set - a random key was generated. "
+        "Set it in Azure App Settings or logins will drop unpredictably."
+    )
 app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_PERMANENT"] = False
 Session(app)
@@ -169,6 +345,132 @@ def _resolve_logo_path(filename, static_folder=None):
         if os.path.exists(candidate):
             return candidate
     return None
+
+
+def _default_label(raw):
+    """Default label for a column: the header exactly as the file spells it.
+
+    Only surrounding/repeated whitespace is collapsed — underscores, casing and
+    script are left alone, so "bank_account_number" prints as
+    "bank_account_number". Admins who want something tidier type their own label
+    on the Generate Vouchers page, which is stored per program and never
+    overwritten by this.
+    """
+    return " ".join(str(raw or "").split())
+
+
+def _is_reference_id(key):
+    """True for any spelling of the reference-ID column (it is not printed as
+    a field — it becomes the QR code and the small line at the page foot)."""
+    k = str(key or "").strip().lower().replace("_", "").replace(" ", "")
+    return "ref" in k and "id" in k
+
+
+def _voucher_field_config(design):
+    """The saved [{key, label, show, custom}] field list for a program, or []."""
+    fields = (design or {}).get("fields")
+    return [f for f in fields if isinstance(f, dict)] if isinstance(fields, list) else []
+
+
+# An admin-typed label is capped so a pasted paragraph cannot wreck the layout.
+MAX_FIELD_LABEL_LEN = 60
+
+
+def _clean_field_label(value, key, default=None):
+    """Sanitise a label, falling back to the column's default label."""
+    label = " ".join(str(value or "").split())[:MAX_FIELD_LABEL_LEN].strip()
+    return label or default or _default_label(key)
+
+
+def merge_voucher_fields(design, columns):
+    """Reconcile the columns found in an upload with the program's saved order.
+
+    columns: [(key, header)] in the order they appear in the file.
+
+    Saved fields that are still present keep their saved position and
+    visibility; columns the program has never seen are appended in file order
+    and default to visible.
+
+    Labels: a field the admin has renamed (custom=True) keeps that label
+    forever. Everything else shows the column header verbatim, so fixing a
+    header in the CSV still flows through to the voucher.
+
+    Each entry also carries "default_label" — the label this column WOULD have
+    with no override — so the UI can offer a reset. It is derived, not stored.
+    """
+    default_by_key, order = {}, []
+    for key, header in columns:
+        key = str(key or "").strip().lower()
+        if not key or _is_reference_id(key) or key in default_by_key:
+            continue
+        # The header exactly as written; fall back to the key if the header
+        # cell was blank.
+        default_by_key[key] = _default_label(header) or _default_label(key)
+        order.append(key)
+
+    merged, used = [], set()
+    for entry in _voucher_field_config(design):
+        key = str(entry.get("key") or "").strip().lower()
+        if key not in default_by_key or key in used:
+            continue
+        used.add(key)
+        default_label = default_by_key[key]
+        is_custom = bool(entry.get("custom"))
+        merged.append(
+            {
+                "key": key,
+                "label": _clean_field_label(entry.get("label"), key, default_label)
+                if is_custom
+                else default_label,
+                "custom": is_custom,
+                "default_label": default_label,
+                "show": entry.get("show") is not False,
+            }
+        )
+
+    for key in order:
+        if key not in used:
+            merged.append(
+                {
+                    "key": key,
+                    "label": default_by_key[key],
+                    "custom": False,
+                    "default_label": default_by_key[key],
+                    "show": True,
+                }
+            )
+
+    return merged
+
+
+def _ordered_fields(item, design):
+    """[(label, value)] to print on one voucher, in the configured order.
+
+    Hidden fields, the reference ID and empty values are filtered out. Columns
+    with no saved configuration print last, in file order, so a new CSV column
+    never silently disappears from the voucher.
+    """
+    printable = {
+        str(k).strip().lower(): v
+        for k, v in (item or {}).items()
+        if k and not _is_reference_id(k) and v not in (None, "")
+    }
+
+    out, used = [], set()
+    for entry in _voucher_field_config(design):
+        key = str(entry.get("key") or "").strip().lower()
+        if key not in printable or key in used:
+            continue
+        used.add(key)
+        if entry.get("show") is False:
+            continue
+        out.append((entry.get("label") or _default_label(key), printable[key]))
+
+    for key, value in printable.items():
+        if key not in used:
+            out.append((_default_label(key), value))
+
+    return out
 
 
 def _draw_voucher(c, item, static_folder, design=None):
@@ -264,8 +566,10 @@ def _draw_voucher(c, item, static_folder, design=None):
     # --- MAIN TITLE just below "Project" ---
     title_text = design.get("title") or "CASH ON THE MOVE"
     title_y = project_y - 1.4*cm
-    c.setFont(_font_for(title_text), 22)
-    c.drawCentredString(width/2, title_y, _shape_rtl(title_text))
+    # Per-run fonts: a title like "CASH ON THE MOVE / نقد" keeps its Latin half
+    # in DejaVu instead of switching the whole line to the Arabic face.
+    title_size, title_text = _fit_mixed(c, title_text, 22, inner_w - 1.0 * cm, min_size=11)
+    _draw_mixed_centred(c, width / 2, title_y, title_text, title_size)
 
     # Subtitle lines (newline-separated; falls back to the original copy)
     subtitle_raw = design.get("subtitle")
@@ -281,8 +585,8 @@ def _draw_voucher(c, item, static_folder, design=None):
 
     sub_y = title_y - 1.0*cm
     for line in subtitle_lines:
-        c.setFont(_font_for(line), 11)
-        c.drawCentredString(width/2, sub_y, _shape_rtl(line))
+        line_size, line_text = _fit_mixed(c, line, 11, inner_w - 1.0 * cm, min_size=7)
+        _draw_mixed_centred(c, width / 2, sub_y, line_text, line_size)
         sub_y -= 0.6*cm
     # ---- QR CODE ------------------------------------------------------------
     show_qr = design.get("show_qr", True)
@@ -309,37 +613,62 @@ def _draw_voucher(c, item, static_folder, design=None):
         # No QR: start the info block at the left margin instead of leaving a gap.
         info_x = qr_x
     info_y = qr_y + qr_box_size - 0.5*cm
+    info_right = width - margin - 0.4 * cm
+    avail_w = info_right - info_x
+
+    # Fields in the order configured for this program (see _ordered_fields):
+    # [(label, value), ...]. Hidden fields and the reference ID are already
+    # filtered out.
+    rows_to_print = _ordered_fields(item, design)
+
+    # ---- Vertical fit -------------------------------------------------------
+    # Room between the first row's baseline and the small reference ID line.
+    base_size = 12.0
     line_height = 0.75 * cm
+    avail_h = info_y - (margin + 0.9 * cm)
+    if rows_to_print and len(rows_to_print) * line_height > avail_h:
+        line_height = avail_h / len(rows_to_print)
+        # Keep the type proportional to the tightened leading, with a floor so
+        # a 15-column CSV stays legible rather than collapsing to nothing.
+        base_size = max(7.0, min(base_size, line_height / cm * 16.0))
 
-    c.setFont("DejaVu", 12)
+    # ---- Label column width -------------------------------------------------
+    # Every value starts at the same x, so Arabic and Latin rows line up in a
+    # column instead of Arabic rows jumping to the right margin.
+    label_gap = 0.35 * cm
+    widest_label = 0.0
+    for label, _value in rows_to_print:
+        widest_label = max(widest_label, _mixed_width(c, f"{label}:", base_size))
+    label_col = min(widest_label + label_gap, avail_w * 0.55)
 
-    # Formatting for dynamic keys
-    def pretty_label(raw):
-        raw = raw.replace("_", " ")
-        raw = "".join([" " + ch if ch.isupper() else ch for ch in raw])
-        raw = " ".join(raw.split())
-        return raw.title()
+    # ---- Block direction ----------------------------------------------------
+    # The COLUMN NAMES decide which way the rows read. Latin headers give the
+    # familiar left-to-right block (labels left, values in a column to their
+    # right) no matter what script the values are in — which is the whole point
+    # of this layout. Arabic headers mirror the block so it reads right-to-left
+    # with the label first. It is decided once for the whole block, on a
+    # majority of the labels, so every row aligns to the same edge even when
+    # the CSV mixes Latin and Arabic headers.
+    arabic_labels = sum(1 for label, _v in rows_to_print if _contains_arabic(label))
+    block_rtl = bool(rows_to_print) and arabic_labels * 2 > len(rows_to_print)
 
-    # All dynamic fields except referenceId
-    def is_reference_id(key: str) -> bool:
-        k = key.strip().lower().replace("_", "").replace(" ", "")
-        return "ref" in k and "id" in k
-
-    # All dynamic fields except the reference ID (robust detection)
-    fields_to_print = {
-        k: v for k, v in item.items() if not is_reference_id(k) and v not in (None, "")
-    }
+    label_w = label_col - 0.1 * cm
+    value_w = avail_w - label_col
 
     y = info_y
-    for key, value in fields_to_print.items():
-        label = pretty_label(key)
-        line = f"{label}: {value}"
-        c.setFont(_font_for(line), 12)
-        if _contains_arabic(value):
-            # RTL row: reshape/reorder and right-align within the voucher body.
-            c.drawRightString(width - margin - 0.4*cm, y, _shape_rtl(line))
+    for label, value in rows_to_print:
+        label_size, label_text = _fit_mixed(c, f"{label}:", base_size, label_w, min_size=6)
+        value_size, value_text = _fit_mixed(c, str(value), base_size, value_w, min_size=6)
+
+        if block_rtl:
+            # Label hugs the right edge, values right-aligned in the column to
+            # its left, so the eye meets the label first.
+            _draw_mixed_right(c, info_right, y, label_text, label_size)
+            _draw_mixed_right(c, info_right - label_col, y, value_text, value_size)
         else:
-            c.drawString(info_x, y, _shape_rtl(line))
+            _draw_mixed(c, info_x, y, label_text, label_size)
+            _draw_mixed(c, info_x + label_col, y, value_text, value_size)
+
         y -= line_height
 
     # ---- SMALL REFERENCE ID AT BOTTOM ------------------------------------
@@ -518,6 +847,7 @@ def _design_for_client(design):
         "logo1_size": _clean_size(design.get("logo1_size")),
         "logo2_size": _clean_size(design.get("logo2_size")),
         "show_qr": design.get("show_qr", True),
+        "fields": _voucher_field_config(design),
     }
 
 
@@ -531,7 +861,7 @@ translations = {
     "payment_rejected": "Payment Rejected",
     "participant_withdraws": "Participant Withdraws",
     "language": "Language",
-    "login": "Login for Red Cross Staff",
+    "login": "Login for Administrator",
     "enter_password": "Enter Password",
     "submit": "Submit",
     "payment_status": "Payment Status",
@@ -553,7 +883,7 @@ translations = {
     "logout": "Logout",
     "config_system": "System Configuration",
     "config_display": "Configure Fields to Display",
-    "fsp_login": "Log in for Financial Service Provider",
+    "fsp_login": "Login for Distribution Staff",
     "program_select_title": "Select a Program",
     "back_to_programs": "Back to Programs",
     "program_select_subtitle": "Choose the program you want to work with",
@@ -608,8 +938,8 @@ translations = {
     "enable_qr_scan": "Enable QR code scanning",
     "enable_qr_scan_hint": "When off, this program uses manual code entry only (no QR camera).",
     "home_question": "Who are you?",
-    "home_admin": "Red Cross Staff",
-    "home_fsp": "Financial Service Provider",
+    "home_admin": "Administrator",
+    "home_fsp": "Distribution Staff",
     "payment_submit_success": "✅ Payments submitted successfully!",
     "payment_submit_failed": "❌ Failed to submit",
     "voucher_generator": "Voucher Generator",
@@ -688,6 +1018,18 @@ translations = {
     "voucher_size_small": "Small",
     "voucher_size_medium": "Medium",
     "voucher_size_large": "Large",
+    "voucher_fields_title": "Fields on the voucher",
+    "voucher_fields_hint": "Drag to reorder. Click a name to change how it is printed. Switch a field off to leave it off the voucher. This is saved for this program.",
+    "voucher_fields_none": "No printable columns were found in this file.",
+    "voucher_fields_order_saved": "Field order saved",
+    "voucher_fields_order_failed": "Could not save field order",
+    "voucher_fields_move_up": "Move up",
+    "voucher_fields_move_down": "Move down",
+    "voucher_fields_sample": "e.g.",
+    "voucher_fields_rename": "Edit the name printed on the voucher",
+    "voucher_fields_column": "Column in your file",
+    "voucher_fields_reset": "reset",
+    "voucher_fields_reset_title": "Reset to",
     "program": "Program",
     "home_title": "Welcome",
     "current_program": "Program",
@@ -752,7 +1094,7 @@ translations = {
     "payment_rejected": "Paiement refusé",
     "participant_withdraws": "Le participant se retire",
     "language": "Langue",
-    "login": "Connexion pour le personnel de la Croix-Rouge",
+    "login": "Connexion administrateur",
     "enter_password": "Entrer le mot de passe",
     "submit": "Soumettre",
     "payment_status": "Statut du paiement",
@@ -774,7 +1116,7 @@ translations = {
     "logout": "Déconnexion",
     "config_system": "Configurer le système ",
     "config_display": "Congifuration des champs de vérification",
-    "fsp_login": "Connexion pour le prestataire de services financiers",
+    "fsp_login": "Connexion personnel de distribution",
     "program_select_title": "Sélectionner un programme",
     "back_to_programs": "Retour aux programmes",
     "program_select_subtitle": "Choisissez le programme avec lequel vous souhaitez travailler",
@@ -829,8 +1171,8 @@ translations = {
     "enable_qr_scan": "Activer le scan de code QR",
     "enable_qr_scan_hint": "Désactivé, ce programme utilise uniquement la saisie manuelle du code (pas de caméra QR).",
     "home_question": "Qui es-tu?",
-    "home_admin": "Personnel de la Croix-Rouge",
-    "home_fsp": "Prestataire de services financiers",
+    "home_admin": "Administrateur",
+    "home_fsp": "Personnel de distribution",
     "step_4_generate": "📤 Étape 4. Générer les paiements à envoyer à 121",
     "payments_ready": "🔄 Paiements prêts à être soumis à 121 :",
     "generate_csv": "Étape 4. Générer un CSV",
@@ -932,6 +1274,18 @@ translations = {
     "voucher_size_small": "Petit",
     "voucher_size_medium": "Moyen",
     "voucher_size_large": "Grand",
+    "voucher_fields_title": "Champs sur le bon",
+    "voucher_fields_hint": "Faites glisser pour réordonner. Cliquez sur un nom pour modifier son affichage. Désactivez un champ pour l'exclure du bon. Enregistré pour ce programme.",
+    "voucher_fields_none": "Aucune colonne imprimable n'a été trouvée dans ce fichier.",
+    "voucher_fields_order_saved": "Ordre des champs enregistré",
+    "voucher_fields_order_failed": "Impossible d'enregistrer l'ordre des champs",
+    "voucher_fields_move_up": "Monter",
+    "voucher_fields_move_down": "Descendre",
+    "voucher_fields_sample": "ex.",
+    "voucher_fields_rename": "Modifier le nom imprimé sur le bon",
+    "voucher_fields_column": "Colonne de votre fichier",
+    "voucher_fields_reset": "réinitialiser",
+    "voucher_fields_reset_title": "Réinitialiser à",
     # --- added 2026-07-17: machine-translated, review as needed ---
     "status_online": "En ligne",
     "status_online_sub": "Vous avez Internet",
@@ -978,7 +1332,7 @@ translations = {
     "payment_rejected": "تم رفض الدفع",
     "participant_withdraws": "انسحب المستفيد",
     "language": "اللغة",
-    "login": "تسجيل دخول لموظفي الهلال الأحمر",
+    "login": "تسجيل دخول المسؤول",
     "enter_password": "أدخل كلمة المرور",
     "submit": "إرسال",
     "payment_status": "حالة الدفع",
@@ -1000,7 +1354,7 @@ translations = {
     "logout": "تسجيل الخروج",
     "config_system": "إعدادات النظام",
     "config_display": "تكوين الحقول المعروضة",
-    "fsp_login": "تسجيل الدخول لمزود الخدمة المالية",
+    "fsp_login": "تسجيل دخول موظفي التوزيع",
     "program_select_title": "اختر برنامجاً",
     "back_to_programs": "العودة إلى البرامج",
     "program_select_subtitle": "اختر البرنامج الذي تريد العمل معه",
@@ -1054,8 +1408,8 @@ translations = {
     "enable_qr_scan": "تفعيل مسح رمز QR",
     "enable_qr_scan_hint": "عند الإيقاف، يستخدم هذا البرنامج إدخال الرمز يدويًا فقط (بدون كاميرا QR).",
     "home_question": "من أنت؟",
-    "home_admin": "موظفو الصليب الأحمر",
-    "home_fsp": "مزود خدمات مالية",
+    "home_admin": "المسؤول",
+    "home_fsp": "موظفو التوزيع",
     "step_4_generate": "📤 الخطوة 4. إنشاء الدفعات لإرسالها إلى 121",
     "payments_ready": "🔄 الدفعات الجاهزة للإرسال إلى 121:",
     "generate_csv": "إنشاء ملف CSV",
@@ -1158,6 +1512,18 @@ translations = {
     "voucher_size_small": "صغير",
     "voucher_size_medium": "متوسط",
     "voucher_size_large": "كبير",
+    "voucher_fields_title": "الحقول على القسيمة",
+    "voucher_fields_hint": "اسحب لإعادة الترتيب. انقر على الاسم لتغيير طريقة طباعته. أوقف أي حقل لاستثنائه من القسيمة. يُحفظ ذلك لهذا البرنامج.",
+    "voucher_fields_none": "لم يتم العثور على أعمدة قابلة للطباعة في هذا الملف.",
+    "voucher_fields_order_saved": "تم حفظ ترتيب الحقول",
+    "voucher_fields_order_failed": "تعذّر حفظ ترتيب الحقول",
+    "voucher_fields_move_up": "أعلى",
+    "voucher_fields_move_down": "أسفل",
+    "voucher_fields_sample": "مثال:",
+    "voucher_fields_rename": "تعديل الاسم المطبوع على القسيمة",
+    "voucher_fields_column": "العمود في ملفك",
+    "voucher_fields_reset": "إعادة تعيين",
+    "voucher_fields_reset_title": "إعادة التعيين إلى",
     # --- added 2026-07-17: machine-translated, review as needed ---
     "status_online": "متصل",
     "status_online_sub": "لديك اتصال بالإنترنت",
@@ -1273,8 +1639,7 @@ def admin_login():
 
     # ✔ Success
     if res.status_code == 201:
-        session["admin_logged_in"] = True
-        session["admin_username"] = username
+        _store_login_session("admin", username, res)
         return redirect(url_for("admin_dashboard", lang=lang))
 
     # ❌ Wrong username/password
@@ -1308,7 +1673,7 @@ def admin_dashboard():
 @app.route("/admin-logout")
 def admin_logout():
     lang = request.args.get("lang", "en")
-    session.pop("admin_logged_in", None)
+    _clear_login_session("admin")
     return redirect(url_for("admin_login", lang=lang))
 
 
@@ -1884,8 +2249,7 @@ def fsp_login():
             )
 
             if res.status_code == 201:
-                session["fsp_logged_in"] = True
-                session["fsp_username"] = username
+                _store_login_session("fsp", username, res)
                 return redirect(url_for("fsp_program_selector"))
 
             elif res.status_code in (400, 401):
@@ -2466,7 +2830,10 @@ def sync_status():
 
 @app.route("/fsp-logout")
 def fsp_logout():
-    session.pop("fsp_logged_in", None)
+    # On a shared tablet, leaving the token behind would attribute the next
+    # person's distribution to the previous user - a confidently wrong audit
+    # trail, which is worse than an obviously shared one.
+    _clear_login_session("fsp")
     return redirect(url_for("fsp_login"))
 
 
@@ -2754,6 +3121,104 @@ def get_121_token():
         return None
 
 
+# ---------------------------------------------------------------------------
+# OPERATOR ATTRIBUTION
+#
+# Both login routes already authenticate the person against the 121 API
+# (POST /api/users/login, accepted on 201) - there is no local password check.
+# They used to throw away the access_token_general that 121 hands back, so every
+# subsequent call went through get_121_token() as the shared service account
+# (USERNAME_121 / PASSWORD_121 in Azure App Settings). In 121's audit log that
+# made every payment reconciliation look like one robot user.
+#
+# Keeping the token means 121 records the real person against the payment.
+# No password is ever stored - only the token 121 itself issued.
+#
+# Reads (programme titles, registration attributes, columnToMatch) and the
+# background sync in offline_sync.py deliberately keep using the service
+# account: there is no human behind them, and a field user may legitimately
+# lack program.read, which would turn working dropdowns into empty ones.
+# ---------------------------------------------------------------------------
+def _store_login_session(role, username, response):
+    """Record who logged in, plus the 121 token issued to them."""
+    token = None
+    permissions = None
+    try:
+        body = response.json()
+        token = body.get("access_token_general")
+        perms = body.get("permissions")
+        if isinstance(perms, dict):
+            permissions = {str(k): v for k, v in perms.items()}
+    except Exception:
+        pass
+
+    # Some 121 builds set the token as a cookie rather than in the body.
+    if not token:
+        try:
+            token = response.cookies.get("access_token_general")
+        except Exception:
+            token = None
+
+    session[role + "_logged_in"] = True
+    session[role + "_username"] = username
+    session[role + "_token"] = token
+    session[role + "_permissions"] = permissions
+    session[role + "_login_at"] = time.time()
+
+    if not token:
+        print(
+            "[auth] WARNING: 121 login for %s returned no access_token_general; "
+            "this session's submissions will fall back to the service account."
+            % username
+        )
+
+
+def _clear_login_session(role):
+    """Wipe everything identifying this operator."""
+    for suffix in ("_logged_in", "_username", "_token", "_permissions", "_login_at"):
+        session.pop(role + suffix, None)
+    if role == "fsp":
+        session.pop("fsp_program_id", None)
+
+
+def _has_program_permission(role, program_id, permission):
+    """Tri-state: True / False / None when 121 did not tell us.
+
+    Only a definite False is acted on. If the login response had no readable
+    permissions map, we return None and let the request proceed - 121 is the
+    real gate, and blocking a whole distribution because a response shape
+    changed would be far worse than a late 403.
+    """
+    perms = session.get(role + "_permissions")
+    if not isinstance(perms, dict):
+        return None
+    entry = perms.get(str(program_id))
+    if isinstance(entry, dict):
+        entry = entry.get("permissions") or entry.get("permission")
+    if not isinstance(entry, (list, tuple, set)):
+        return None
+    return permission in entry
+
+
+def get_121_token_for_request(role="fsp"):
+    """(token, actor_label, is_user_attributed) for a write made by a human.
+
+    Falls back to the service account when there is no operator token - an old
+    session, or a 121 build that stops returning the token - so a distribution
+    degrades to the previous behaviour rather than stopping.
+    """
+    token = session.get(role + "_token")
+    username = session.get(role + "_username")
+    if token:
+        return token, (username or role), True
+
+    print(
+        "[auth] NOTE: no operator token in session, so this submission is "
+        "attributed to the service account."
+    )
+    return get_121_token(), "the shared 121 service account", False
+
+
 @app.route("/submit-payments", methods=["POST"])
 def submit_payments():
     import csv
@@ -2983,9 +3448,24 @@ def submit_payments():
         # -------------------------------
         # SUBMIT TO 121 /paymentId/excel-reconciliation
         # -------------------------------
-        token = get_121_token()
+        token, actor_label, user_attributed = get_121_token_for_request("fsp")
         if not token:
             return "❌ Login to 121 failed", 401
+
+        # Early warning only - see _has_program_permission. A definite "no" is
+        # worth catching before we upload; anything less proceeds and lets 121
+        # decide.
+        if user_attributed and _has_program_permission(
+            "fsp", program_id, "payment.update"
+        ) is False:
+            return (
+                f"❌ Your 121 account ({actor_label}) is not allowed to reconcile "
+                f"payments for program {program_id}. Ask your 121 administrator to "
+                "add the 'payment.update' permission to your role.",
+                403,
+            )
+
+        print(f"[auth] submitting payment reconciliation as {actor_label}")
 
         success_count = 0
         fail_count = 0
@@ -3025,6 +3505,13 @@ def submit_payments():
             if upload_resp.status_code == 201:
                 success_count += 1
                 print(f"[OK] Submitted to paymentId {pid}")
+            elif upload_resp.status_code == 401 and user_attributed:
+                fail_count += 1
+                failure_details.append(
+                    f"paymentId {pid}: your 121 login has expired — log out, log "
+                    "back in and send again. Nothing was lost."
+                )
+                print(f"[ERROR] Operator token rejected (401) for paymentId {pid}")
             else:
                 fail_count += 1
                 snippet = (upload_resp.text or "")[:300]
@@ -3112,14 +3599,20 @@ def submit_registration_updates():
         if len(rows) > 100000:
             return "❌ Too many rows — 121 supports at most 100k rows per update.", 400
 
-        token = get_121_token()
+        token, actor_label, user_attributed = get_121_token_for_request("fsp")
         if not token:
             return "❌ Login to 121 failed", 401
+
+        print(f"[auth] submitting registration updates as {actor_label}")
 
         update_url = f"{url121}/api/programs/{program_id}/registrations"
         files = {"file": ("registration_updates.csv", csv_bytes, "text/csv")}
         # 121 requires a `reason` on every bulk update (stored in the audit log).
-        data = {"reason": "Updated during offline distribution (121 Scan)"}
+        # Naming the operator here puts the same attribution in the reason string
+        # as on the token, which is what a reviewer actually reads in 121.
+        data = {
+            "reason": f"Updated during offline distribution (121 Scan) by {actor_label}"
+        }
 
         try:
             resp = requests.patch(
@@ -3134,6 +3627,13 @@ def submit_registration_updates():
 
         if resp.status_code in (200, 201, 202, 204):
             return f"✅ Updated {len(rows)} registration(s) in 121.", 200
+
+        if resp.status_code == 401 and user_attributed:
+            return (
+                "❌ Your 121 login has expired. Please log out, log back in and "
+                "try again.",
+                401,
+            )
 
         snippet = (resp.text or "")[:400]
         return (
@@ -3189,6 +3689,10 @@ def voucher_design():
             "logo1_size": _clean_size(request.form.get("logo1_size") or existing.get("logo1_size")),
             "logo2_size": _clean_size(request.form.get("logo2_size") or existing.get("logo2_size")),
             "show_qr": (request.form.get("show_qr", "1") != "0"),
+            # The voucher-field order is owned by the Generate Vouchers page,
+            # not this form — carry it through untouched or saving a design
+            # would silently reset it.
+            "fields": _voucher_field_config(existing),
         }
 
         # Explicit clears
@@ -3294,6 +3798,183 @@ def vouchers_page():
     )
 
 
+# ---------------------------------------------------------------------------
+# Voucher source-file parsing
+#
+# The upload and download routes both need the same rows, and the download also
+# needs the column ORDER as it appeared in the file (dict key order is not a
+# reliable substitute once a saved field order is merged in). One parser keeps
+# the two in step — they previously drifted, and the .xls branch of the
+# download referenced an undefined `upload_path`, raising NameError on any .xls
+# download.
+#
+# Returns (rows, columns):
+#   rows    - [{lowercased_key: value}] with a normalised "referenceid" key
+#   columns - [(lowercased_key, original_header_text)] in file order
+# ---------------------------------------------------------------------------
+REFERENCE_ID_ALIASES = (
+    "referenceid",
+    "reference id",
+    "reference_id",
+    "refid",
+    "id",
+)
+
+
+def _normalise_header(raw):
+    """(key, label) for one column header. Key is lowercased for lookups; the
+    label keeps the author's original casing/script for printing."""
+    label = str(raw).replace("﻿", "").strip()
+    return label.lower(), label
+
+
+def _resolve_reference_id(clean_row):
+    for alias in REFERENCE_ID_ALIASES:
+        value = clean_row.get(alias)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _parse_voucher_file(path):
+    """Parse a voucher CSV/XLSX/XLS into (rows, columns).
+
+    Raises ValueError for an unsupported extension.
+    """
+    name = str(path).lower()
+    rows, columns = [], []
+
+    # ---------------------------------------------------------------- CSV ----
+    if name.endswith(".csv"):
+        with open(path, "r", encoding="utf-8", errors="replace") as infile:
+            reader = csv.DictReader(infile)
+            for raw_header in reader.fieldnames or []:
+                if raw_header is None:
+                    continue
+                key, label = _normalise_header(raw_header)
+                if key and key not in dict(columns):
+                    columns.append((key, label))
+
+            for row in reader:
+                clean_row = {}
+                for raw_key, value in row.items():
+                    if raw_key is None:
+                        continue
+                    key, _ = _normalise_header(raw_key)
+                    clean_row[key] = value.strip() if isinstance(value, str) else value
+                clean_row["referenceid"] = _resolve_reference_id(clean_row)
+                if any(v not in (None, "") for v in clean_row.values()):
+                    rows.append(clean_row)
+
+    # --------------------------------------------------------------- XLSX ----
+    elif name.endswith(".xlsx"):
+        from openpyxl import load_workbook
+
+        wb = load_workbook(path, read_only=True, data_only=True)
+        ws = wb.active
+        rows_iter = ws.iter_rows(values_only=True)
+
+        try:
+            header_row = next(rows_iter)
+        except StopIteration:
+            header_row = []
+
+        headers = []
+        for raw_header in header_row:
+            if raw_header in (None, ""):
+                headers.append(None)
+                continue
+            key, label = _normalise_header(raw_header)
+            headers.append(key or None)
+            if key and key not in dict(columns):
+                columns.append((key, label))
+
+        for row in rows_iter:
+            if not any(v not in (None, "") for v in row):
+                continue
+            clean_row = {}
+            for key, value in zip(headers, row):
+                if not key:
+                    continue
+                clean_row[key] = value.strip() if isinstance(value, str) else value
+            clean_row["referenceid"] = _resolve_reference_id(clean_row)
+            if any(v not in (None, "") for v in clean_row.values()):
+                rows.append(clean_row)
+
+    # ---------------------------------------------------------------- XLS ----
+    elif name.endswith(".xls"):
+        import xlrd
+
+        wb = xlrd.open_workbook(path)
+        sh = wb.sheet_by_index(0)
+
+        # The first non-empty row is the real header row (some exports carry a
+        # blank or title row above it).
+        header_index = None
+        for i in range(sh.nrows):
+            if any(str(cell).strip() for cell in sh.row_values(i)):
+                header_index = i
+                break
+        if header_index is None:
+            return [], []
+
+        headers = []
+        for raw_header in sh.row_values(header_index):
+            if raw_header in (None, ""):
+                headers.append(None)
+                continue
+            key, label = _normalise_header(raw_header)
+            headers.append(key or None)
+            if key and key not in dict(columns):
+                columns.append((key, label))
+
+        for rx in range(header_index + 1, sh.nrows):
+            values = sh.row_values(rx)
+            if not any(str(v).strip() for v in values):
+                continue
+            clean_row = {}
+            for key, value in zip(headers, values):
+                if not key:
+                    continue
+                clean_row[key] = value.strip() if isinstance(value, str) else value
+            clean_row["referenceid"] = _resolve_reference_id(clean_row)
+            if any(v not in (None, "") for v in clean_row.values()):
+                rows.append(clean_row)
+
+    else:
+        raise ValueError("Unsupported file type")
+
+    return rows, columns
+
+
+def _field_list_for_client(fields, rows):
+    """Shape the merged field list for the reorder UI, adding a sample value
+    taken from the first row that actually has one."""
+    out = []
+    for entry in fields:
+        key = entry.get("key")
+        sample = ""
+        for row in rows:
+            value = row.get(key)
+            if value not in (None, ""):
+                sample = str(value)
+                break
+        default_label = entry.get("default_label") or _default_label(key)
+        out.append(
+            {
+                "key": key,
+                "label": entry.get("label") or default_label,
+                # The UI shows a reset affordance only for a renamed field, and
+                # needs the default to reset back to.
+                "default_label": default_label,
+                "custom": bool(entry.get("custom")),
+                "show": entry.get("show") is not False,
+                "sample": sample[:60],
+            }
+        )
+    return out
+
+
 @app.route("/vouchers/upload", methods=["POST"])
 def vouchers_upload():
     if not session.get("admin_logged_in"):
@@ -3303,130 +3984,100 @@ def vouchers_upload():
         return jsonify({"success": False, "message": "No file uploaded"}), 400
 
     f = request.files["csv"]
-    filename = f.filename.lower()
+    filename = (f.filename or "").lower()
 
     try:
         os.makedirs("uploads", exist_ok=True)
         upload_path = os.path.join("uploads", filename)
         f.save(upload_path)
 
-        rows = []
-
-        # ---------------------------------------------------------------------
-        # CASE 1: CSV
-        # ---------------------------------------------------------------------
-        if filename.endswith(".csv"):
-            with open(upload_path, "r", encoding="utf-8", errors="replace") as infile:
-                reader = csv.DictReader(infile)
-
-                for row in reader:
-                    clean_row = {}
-                    for key, value in row.items():
-                        if key is None:
-                            continue
-                        clean_key = key.strip().replace("\ufeff", "").lower()
-                        clean_row[clean_key] = (
-                            value.strip() if isinstance(value, str) else value
-                        )
-
-                    ref = (
-                        clean_row.get("referenceid")
-                        or clean_row.get("reference id")
-                        or clean_row.get("reference_id")
-                        or clean_row.get("refid")
-                        or clean_row.get("id")
-                        or ""
-                    )
-
-                    clean_row["referenceid"] = ref.strip()
-                    rows.append(clean_row)
-
-        # ---------------------------------------------------------------------
-        # CASE 2: XLSX
-        # ---------------------------------------------------------------------
-        elif filename.endswith(".xlsx"):
-            from openpyxl import load_workbook
-
-            wb = load_workbook(upload_path, read_only=True, data_only=True)
-            ws = wb.active
-
-            # Read header
-            header_row = next(ws.iter_rows(values_only=True))
-            headers = [str(h).strip().lower() if h else None for h in header_row]
-
-            # Read remaining rows (skip header)
-            is_header = True
-            for row in ws.iter_rows(values_only=True):
-                if is_header:
-                    is_header = False
-                    continue
-
-                clean_row = {}
-                for key, value in zip(headers, row):
-                    if not key:
-                        continue
-                    clean_row[key] = value.strip() if isinstance(value, str) else value
-
-                ref = (
-                    clean_row.get("referenceid")
-                    or clean_row.get("reference id")
-                    or clean_row.get("reference_id")
-                    or clean_row.get("refid")
-                    or clean_row.get("id")
-                    or ""
-                )
-
-                clean_row["referenceid"] = str(ref).strip()
-
-                # Skip empty rows (all None)
-                if any(v not in (None, "") for v in clean_row.values()):
-                    rows.append(clean_row)
-
-        # ---------------------------------------------------------------------
-        # CASE 3: XLS
-        # ---------------------------------------------------------------------
-        elif filename.endswith(".xls"):
-            import xlrd
-
-            wb = xlrd.open_workbook(upload_path)
-            sh = wb.sheet_by_index(0)
-
-            headers = [str(h).strip().lower() for h in sh.row_values(0)]
-
-            for rx in range(1, sh.nrows):  # start at row 1 (skip header)
-                values = sh.row_values(rx)
-                clean_row = {}
-
-                for key, value in zip(headers, values):
-                    clean_row[key] = value.strip() if isinstance(value, str) else value
-
-                ref = (
-                    clean_row.get("referenceid")
-                    or clean_row.get("reference id")
-                    or clean_row.get("reference_id")
-                    or clean_row.get("refid")
-                    or clean_row.get("id")
-                    or ""
-                )
-
-                clean_row["referenceid"] = str(ref).strip()
-
-                # Skip empty rows
-                if any(v not in (None, "") for v in clean_row.values()):
-                    rows.append(clean_row)
-
-        else:
+        try:
+            rows, columns = _parse_voucher_file(upload_path)
+        except ValueError:
             return jsonify({"success": False, "message": "Unsupported file type"}), 400
+
+        program_id = request.form.get("program_id") or None
+
+        # Reconcile the file's columns with this program's saved order, then
+        # persist so the same order comes back on the next upload.
+        design = get_voucher_design(program_id) if program_id else None
+        merged = merge_voucher_fields(design, columns)
+
+        if program_id:
+            updated = dict(design or {})
+            updated["fields"] = merged
+            try:
+                save_voucher_design(program_id, updated)
+            except Exception as e:
+                app.logger.warning("Could not save voucher field order: %s", e)
 
         # Save metadata
         session["voucher_file_path"] = upload_path
         session["voucher_count"] = len(rows)
-        session["voucher_program_id"] = request.form.get("program_id") or None
+        session["voucher_program_id"] = program_id
 
-        return jsonify({"success": True, "count": len(rows)})
+        return jsonify(
+            {
+                "success": True,
+                "count": len(rows),
+                "fields": _field_list_for_client(merged, rows),
+            }
+        )
 
     except Exception as e:
         return jsonify({"success": False, "message": f"Failed to parse file: {e}"}), 400
+
+
+@app.route("/vouchers/fields", methods=["POST"])
+def vouchers_fields():
+    """Save the voucher field order / visibility for a program.
+
+    Body: {"programId": "<id>", "fields": [{"key": ..., "label": ..., "show": bool}]}
+    """
+    if not session.get("admin_logged_in"):
+        return jsonify({"success": False, "error": "Not authorized"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    program_id = payload.get("programId") or session.get("voucher_program_id")
+    if not program_id:
+        return jsonify({"success": False, "error": "Missing programId"}), 400
+
+    incoming = payload.get("fields")
+    if not isinstance(incoming, list):
+        return jsonify({"success": False, "error": "fields must be a list"}), 400
+
+    fields, seen = [], set()
+    for entry in incoming:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("key") or "").strip().lower()
+        if not key or key in seen or _is_reference_id(key):
+            continue
+        seen.add(key)
+
+        default_label = _clean_field_label(entry.get("default_label"), key)
+        label = _clean_field_label(entry.get("label"), key, default_label)
+
+        # "custom" is what protects a label from being refreshed out of the CSV
+        # on the next upload. Trust it only when the label really does differ
+        # from the default, so clearing the box reverts to the column name
+        # rather than pinning the default forever.
+        custom = bool(entry.get("custom")) and label != default_label
+
+        stored = {"key": key, "label": label, "show": entry.get("show") is not False}
+        if custom:
+            stored["custom"] = True
+        # default_label is derived on every upload — never persisted.
+        fields.append(stored)
+
+    design = dict(get_voucher_design(program_id) or {})
+    design["fields"] = fields
+    try:
+        save_voucher_design(program_id, design)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    return jsonify({"success": True, "fields": fields})
 
 
 @app.route("/vouchers/download", methods=["GET"])
@@ -3439,132 +4090,9 @@ def vouchers_download():
         flash("No uploaded data to generate vouchers.", "error")
         return redirect(url_for("vouchers_page"))
 
-    rows = []
-    filename = file_path.lower()
-
-    # -----------------------------
-    # CASE 1: CSV
-    # -----------------------------
-    if filename.endswith(".csv"):
-        with open(file_path, "r", encoding="utf-8", errors="replace") as infile:
-            reader = csv.DictReader(infile.read().splitlines())
-            for row in reader:
-                clean_row = {
-                    k.strip().lower(): (v.strip() if isinstance(v, str) else v)
-                    for k, v in row.items()
-                    if k
-                }
-
-                ref = (
-                    clean_row.get("referenceid")
-                    or clean_row.get("reference id")
-                    or clean_row.get("reference_id")
-                    or clean_row.get("refid")
-                    or clean_row.get("id")
-                    or ""
-                )
-                clean_row["referenceid"] = str(ref).strip()
-                rows.append(clean_row)
-
-    # -----------------------------
-    # CASE 2: XLSX
-    # -----------------------------
-    elif filename.endswith(".xlsx"):
-        from openpyxl import load_workbook
-
-        wb = load_workbook(file_path, read_only=True)
-        ws = wb.active
-
-        rows_iter = ws.iter_rows(values_only=True)
-
-        # --- Read REAL header row only once ---
-        header_row = next(rows_iter)
-        headers = [str(h).strip().lower() if h else "" for h in header_row]
-
-        # --- Process all remaining rows (skips header correctly) ---
-        for row in rows_iter:
-            # skip empty rows
-            if not any(row):
-                continue
-
-            clean_row = {}
-            for key, value in zip(headers, row):
-                if key:
-                    clean_row[key] = (
-                        str(value).strip() if isinstance(value, str) else value
-                    )
-
-            ref = (
-                clean_row.get("referenceid")
-                or clean_row.get("reference id")
-                or clean_row.get("reference_id")
-                or clean_row.get("refid")
-                or clean_row.get("id")
-                or ""
-            )
-            clean_row["referenceid"] = str(ref).strip()
-            rows.append(clean_row)
-
-    # -----------------------------
-    # CASE 3: XLS
-    # -----------------------------
-    elif filename.endswith(".xls"):
-        import xlrd
-
-        wb = xlrd.open_workbook(upload_path)
-        sh = wb.sheet_by_index(0)
-
-        # --- Find the FIRST non-empty row → this is the real header row ---
-        header_row_index = None
-        for i in range(sh.nrows):
-            row = sh.row_values(i)
-            if any(
-                str(c).strip() for c in row
-            ):  # Row contains at least 1 non-empty cell
-                header_row_index = i
-                break
-
-        if header_row_index is None:
-            return (
-                jsonify({"success": False, "message": "No valid header row found"}),
-                400,
-            )
-
-        # Extract header names
-        headers = [
-            str(h).strip().lower() if h is not None else ""
-            for h in sh.row_values(header_row_index)
-        ]
-
-        # --- Process all rows AFTER the header row ---
-        for rx in range(header_row_index + 1, sh.nrows):
-            values = sh.row_values(rx)
-
-            # skip empty rows
-            if not any(str(v).strip() for v in values):
-                continue
-
-            clean_row = {}
-            for key, value in zip(headers, values):
-                if key:  # skip empty header columns
-                    clean_row[key] = (
-                        str(value).strip() if isinstance(value, str) else value
-                    )
-
-            # normalize referenceid
-            ref = (
-                clean_row.get("referenceid")
-                or clean_row.get("reference id")
-                or clean_row.get("reference_id")
-                or clean_row.get("refid")
-                or clean_row.get("id")
-                or ""
-            )
-            clean_row["referenceid"] = str(ref).strip()
-
-            rows.append(clean_row)
-
-    else:
+    try:
+        rows, _columns = _parse_voucher_file(file_path)
+    except ValueError:
         flash("Unsupported voucher file type.", "error")
         return redirect(url_for("vouchers_page"))
 

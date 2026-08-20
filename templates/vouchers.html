@@ -439,6 +439,261 @@
       text-align: center;
     }
 
+    /* ---------- FIELD ORDER LIST ---------- */
+    .fields-section {
+      margin-top: 26px;
+      border-top: 1px solid var(--line);
+      padding-top: 22px;
+    }
+
+    .fields-section h3 {
+      margin: 0 0 6px 0;
+      font-size: 1.05rem;
+      color: var(--navy);
+    }
+
+    .fields-hint {
+      margin: 0 0 16px 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .field-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: grab;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+
+    .field-row:hover { border-color: #c7d2fe; }
+
+    .field-row.dragging {
+      opacity: 0.45;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+    }
+
+    .field-row.drop-target {
+      border-color: var(--blue);
+      box-shadow: inset 0 2px 0 var(--blue);
+    }
+
+    .field-row.is-hidden {
+      background: #fafafa;
+      border-style: dashed;
+    }
+
+    .field-row.is-hidden .field-label,
+    .field-row.is-hidden .field-sample {
+      opacity: 0.45;
+      text-decoration: line-through;
+    }
+
+    .field-grip {
+      color: #9ca3af;
+      font-size: 1.05rem;
+      line-height: 1;
+      cursor: grab;
+      user-select: none;
+      flex: 0 0 auto;
+    }
+
+    .field-pos {
+      flex: 0 0 auto;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #eef2ff;
+      color: var(--navy);
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .field-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* The label is an input that looks like text until you interact with it,
+       so the list stays readable but every label is obviously editable. */
+    .field-label {
+      font-weight: 600;
+      font-size: 0.94rem;
+      /* Latin and Arabic labels share one stack so the list mirrors the PDF,
+         where all Latin text now renders in a single font. */
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      width: 100%;
+      box-sizing: border-box;
+      color: var(--ink);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      padding: 3px 6px;
+      margin: -3px -6px 0 -6px;
+      cursor: text;
+      text-overflow: ellipsis;
+    }
+
+    .field-label:hover {
+      border-color: #d1d5db;
+      background: #fcfcfd;
+    }
+
+    .field-label:focus {
+      outline: none;
+      border-color: var(--blue);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(29,78,216,0.12);
+    }
+
+    .field-row.is-hidden .field-label { color: var(--muted); }
+
+    .field-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 3px;
+      min-width: 0;
+    }
+
+    .field-meta .field-column {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.74rem;
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 1px 5px;
+      white-space: nowrap;
+    }
+
+    .field-meta .field-sample {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .field-reset {
+      flex: 0 0 auto;
+      border: none;
+      background: none;
+      padding: 0 2px;
+      color: var(--blue);
+      font-size: 0.76rem;
+      cursor: pointer;
+      text-decoration: underline;
+      white-space: nowrap;
+    }
+
+    .field-reset:hover { color: var(--navy); }
+
+    .field-move {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 0 0 auto;
+    }
+
+    .field-move button {
+      width: 24px;
+      height: 17px;
+      padding: 0;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: var(--navy);
+      border-radius: 5px;
+      font-size: 0.6rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .field-move button:hover:not(:disabled) { background: #eef2ff; }
+    .field-move button:disabled { opacity: 0.35; cursor: default; }
+
+    /* show/hide switch */
+    .field-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex: 0 0 auto;
+    }
+
+    .field-switch input { opacity: 0; width: 0; height: 0; }
+
+    .field-switch .slider {
+      position: absolute;
+      inset: 0;
+      cursor: pointer;
+      background: #cbd5e1;
+      border-radius: 999px;
+      transition: background 0.2s ease;
+    }
+
+    .field-switch .slider::before {
+      content: "";
+      position: absolute;
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .field-switch input:checked + .slider { background: var(--green); }
+    .field-switch input:checked + .slider::before { transform: translateX(18px); }
+    .field-switch input:focus-visible + .slider { box-shadow: 0 0 0 3px rgba(13,143,98,0.25); }
+
+    .fields-empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    /* ---------- TOAST ---------- */
+    #fieldToast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(18px);
+      background: #16a34a;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 9999;
+    }
+
+    #fieldToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #fieldToast.error { background: #dc2626; }
+
     /* ---------- FOOTER ---------- */
     footer {
       display: flex;
@@ -553,11 +808,26 @@
 
     <div id="counter" class="counter" style="display:none;">…</div>
 
+    <!-- Populated after a successful upload: the columns that will be printed,
+         in print order. Drag / arrows reorder, the switch hides a field. -->
+    <div class="fields-section" id="fieldsSection" style="display:none;">
+      <h3>{{ t.voucher_fields_title or "Fields on the voucher" }}</h3>
+      <p class="fields-hint">
+        {{ t.voucher_fields_hint or "Drag to reorder. Click a name to change how it is printed. Switch a field off to leave it off the voucher. This is saved for this program." }}
+      </p>
+      <ul class="field-list" id="fieldList"></ul>
+      <div class="fields-empty" id="fieldsEmpty" style="display:none;">
+        {{ t.voucher_fields_none or "No printable columns were found in this file." }}
+      </div>
+    </div>
+
     <button id="downloadBtn" class="btn btn-success" disabled>
       ⬇️ {{ t.download_vouchers }}
     </button>
   </div>
 </div>
+
+<div id="fieldToast"></div>
 
 <footer>
   <div class="footer-left">{{ t.footer_dev }}</div>
@@ -588,6 +858,305 @@ const filename = document.getElementById('filename');
 const form = document.getElementById('uploadForm');
 const counter = document.getElementById('counter');
 const downloadBtn = document.getElementById('downloadBtn');
+
+const TXT = {
+  chooseCSV: "{{ t.choose_csv_alert }}",
+  uploadFailed: "{{ t.upload_failed }}",
+  singular: "{{ t.voucher_ready_singular }}",
+  plural: "{{ t.voucher_ready_plural }}",
+  orderSaved: "{{ t.voucher_fields_order_saved or 'Field order saved' }}",
+  orderFailed: "{{ t.voucher_fields_order_failed or 'Could not save field order' }}",
+  moveUp: "{{ t.voucher_fields_move_up or 'Move up' }}",
+  moveDown: "{{ t.voucher_fields_move_down or 'Move down' }}",
+  sample: "{{ t.voucher_fields_sample or 'e.g.' }}",
+  renameField: "{{ t.voucher_fields_rename or 'Edit the name printed on the voucher' }}",
+  columnTitle: "{{ t.voucher_fields_column or 'Column in your file' }}",
+  resetLabel: "{{ t.voucher_fields_reset or 'reset' }}",
+  resetLabelTitle: "{{ t.voucher_fields_reset_title or 'Reset to' }}",
+};
+
+/* ============================================================
+   VOUCHER FIELD ORDER
+   The server returns the columns already merged with whatever order this
+   program saved previously, so this list only has to render and reorder.
+   ============================================================ */
+const fieldsSection = document.getElementById('fieldsSection');
+const fieldList = document.getElementById('fieldList');
+const fieldsEmpty = document.getElementById('fieldsEmpty');
+const fieldToast = document.getElementById('fieldToast');
+
+let voucherFields = [];
+let dragIndex = null;
+let saveTimer = null;
+
+function showFieldToast(message, type) {
+  fieldToast.textContent = (type === 'error' ? '✕  ' : '✓  ') + message;
+  fieldToast.className = 'show' + (type === 'error' ? ' error' : '');
+  clearTimeout(fieldToast._timer);
+  fieldToast._timer = setTimeout(() => { fieldToast.className = ''; }, 2200);
+}
+
+function renderFields() {
+  fieldList.innerHTML = '';
+
+  if (!voucherFields.length) {
+    fieldsEmpty.style.display = '';
+    return;
+  }
+  fieldsEmpty.style.display = 'none';
+
+  // Position badges count printed fields only, so the numbers match the order
+  // the fields actually appear on the voucher.
+  let printPosition = 0;
+
+  voucherFields.forEach((field, index) => {
+    const li = document.createElement('li');
+    li.className = 'field-row' + (field.show ? '' : ' is-hidden');
+    li.draggable = true;
+    li.dataset.index = String(index);
+
+    const grip = document.createElement('span');
+    grip.className = 'field-grip';
+    grip.textContent = '⠿';
+    grip.setAttribute('aria-hidden', 'true');
+
+    const pos = document.createElement('span');
+    pos.className = 'field-pos';
+    if (field.show) {
+      printPosition += 1;
+      pos.textContent = String(printPosition);
+    } else {
+      pos.textContent = '–';
+      pos.style.background = '#f3f4f6';
+      pos.style.color = '#9ca3af';
+    }
+
+    const text = document.createElement('div');
+    text.className = 'field-text';
+
+    // ---- editable label ---------------------------------------------------
+    // Captured before any editing: `field` is the live array entry, which the
+    // input handler mutates, so Escape needs its own copy to restore.
+    const initialLabel = field.label || field.key;
+    const defaultLabel = field.default_label || field.key;
+
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.className = 'field-label';
+    label.value = initialLabel;
+    label.maxLength = 60;
+    label.setAttribute('aria-label', TXT.renameField + ': ' + field.key);
+    label.title = TXT.renameField;
+
+    // A draggable ancestor swallows clicks and text selection inside an input,
+    // so the row stops being draggable while the label is being edited.
+    const suspendDrag = () => { li.draggable = false; };
+    const resumeDrag = () => { li.draggable = true; };
+    label.addEventListener('mousedown', suspendDrag);
+    label.addEventListener('touchstart', suspendDrag, { passive: true });
+    label.addEventListener('focus', suspendDrag);
+    label.addEventListener('blur', () => {
+      resumeDrag();
+      // Emptied box means "go back to the column name".
+      if (!label.value.trim()) {
+        voucherFields[index].label = defaultLabel;
+        voucherFields[index].custom = false;
+        renderFields();
+        queueSave();
+      }
+    });
+
+    label.addEventListener('input', () => {
+      const value = label.value;
+      voucherFields[index].label = value;
+      voucherFields[index].custom = value.trim() !== defaultLabel;
+      // Re-render would steal focus mid-typing, so only the reset link is
+      // toggled here; the full list redraws on blur or on the next change.
+      updateOverrideUi();
+      queueSave();
+    });
+
+    label.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); label.blur(); }
+      if (e.key === 'Escape') {
+        label.value = initialLabel;
+        voucherFields[index].label = initialLabel;
+        voucherFields[index].custom = initialLabel !== defaultLabel;
+        updateOverrideUi();
+        label.blur();
+        queueSave();
+      }
+    });
+
+    text.appendChild(label);
+
+    // ---- source column + sample value + reset ------------------------------
+    const meta = document.createElement('div');
+    meta.className = 'field-meta';
+
+    // Only useful once the label no longer matches the file: it tells you which
+    // column this renamed field came from. Shown as the header is spelled in
+    // the file, not the internal lowercased key.
+    const column = document.createElement('span');
+    column.className = 'field-column';
+    column.textContent = defaultLabel;
+    column.title = TXT.columnTitle;
+    meta.appendChild(column);
+
+    if (field.sample) {
+      const sample = document.createElement('span');
+      sample.className = 'field-sample';
+      sample.textContent = TXT.sample + ' ' + field.sample;
+      meta.appendChild(sample);
+    }
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'field-reset';
+    reset.textContent = TXT.resetLabel;
+    reset.title = TXT.resetLabelTitle + ' "' + defaultLabel + '"';
+    reset.addEventListener('click', () => {
+      voucherFields[index].label = defaultLabel;
+      voucherFields[index].custom = false;
+      renderFields();
+      queueSave();
+    });
+    meta.appendChild(reset);
+
+    // The source column and the reset link are both only relevant for a
+    // renamed field, so they appear and disappear together.
+    function updateOverrideUi() {
+      const current = label.value.trim();
+      const isDefault = !current || current === defaultLabel;
+      reset.style.display = isDefault ? 'none' : '';
+      column.style.display = isDefault ? 'none' : '';
+    }
+    updateOverrideUi();
+
+    text.appendChild(meta);
+
+    const move = document.createElement('div');
+    move.className = 'field-move';
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.textContent = '▲';
+    up.title = TXT.moveUp;
+    up.setAttribute('aria-label', TXT.moveUp + ': ' + (field.label || field.key));
+    up.disabled = index === 0;
+    up.addEventListener('click', () => moveField(index, index - 1));
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.textContent = '▼';
+    down.title = TXT.moveDown;
+    down.setAttribute('aria-label', TXT.moveDown + ': ' + (field.label || field.key));
+    down.disabled = index === voucherFields.length - 1;
+    down.addEventListener('click', () => moveField(index, index + 1));
+
+    move.appendChild(up);
+    move.appendChild(down);
+
+    const sw = document.createElement('label');
+    sw.className = 'field-switch';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!field.show;
+    cb.setAttribute('aria-label', field.label || field.key);
+    cb.addEventListener('change', () => {
+      voucherFields[index].show = cb.checked;
+      renderFields();
+      queueSave();
+    });
+    const slider = document.createElement('span');
+    slider.className = 'slider';
+    sw.appendChild(cb);
+    sw.appendChild(slider);
+
+    li.appendChild(grip);
+    li.appendChild(pos);
+    li.appendChild(text);
+    li.appendChild(move);
+    li.appendChild(sw);
+
+    /* --- native HTML5 drag and drop (arrows cover touch devices) --- */
+    li.addEventListener('dragstart', e => {
+      dragIndex = index;
+      li.classList.add('dragging');
+      // Firefox needs data set for the drag to start at all.
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', String(index)); } catch (err) {}
+    });
+
+    li.addEventListener('dragend', () => {
+      dragIndex = null;
+      li.classList.remove('dragging');
+      document.querySelectorAll('.field-row.drop-target')
+        .forEach(el => el.classList.remove('drop-target'));
+    });
+
+    li.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (dragIndex !== null && dragIndex !== index) li.classList.add('drop-target');
+    });
+
+    li.addEventListener('dragleave', () => li.classList.remove('drop-target'));
+
+    li.addEventListener('drop', e => {
+      e.preventDefault();
+      li.classList.remove('drop-target');
+      const from = dragIndex !== null
+        ? dragIndex
+        : parseInt(e.dataTransfer.getData('text/plain'), 10);
+      if (!isNaN(from)) moveField(from, index);
+    });
+
+    fieldList.appendChild(li);
+  });
+}
+
+function moveField(from, to) {
+  if (from === to) return;
+  if (from < 0 || to < 0 || from >= voucherFields.length || to >= voucherFields.length) return;
+  const [moved] = voucherFields.splice(from, 1);
+  voucherFields.splice(to, 0, moved);
+  renderFields();
+  queueSave();
+}
+
+/* Debounced so dragging several fields in a row is one request. */
+function queueSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveFieldOrder, 450);
+}
+
+async function saveFieldOrder() {
+  const pid = currentProgramId();
+  if (!pid) return;
+
+  try {
+    const res = await fetch('/vouchers/fields', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ programId: pid, fields: voucherFields }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'save failed');
+    showFieldToast(TXT.orderSaved);
+  } catch (err) {
+    showFieldToast(TXT.orderFailed, 'error');
+  }
+}
+
+function resetFields() {
+  clearTimeout(saveTimer);
+  voucherFields = [];
+  fieldList.innerHTML = '';
+  fieldsSection.style.display = 'none';
+  fieldsEmpty.style.display = 'none';
+}
+
 
 /* --- program selection + design gating --- */
 const DESIGN_STATUS = {{ designs_status | tojson }};
@@ -623,19 +1192,14 @@ function refreshProgramState() {
   downloadBtn.disabled = true;
   filename.textContent = '';
   if (fileInput) fileInput.value = '';
+  // Field order is saved per program, so the previous list must not linger.
+  resetFields();
 }
 
 if (programSelector) {
   programSelector.addEventListener('change', refreshProgramState);
   refreshProgramState();
 }
-
-const TXT = {
-  chooseCSV: "{{ t.choose_csv_alert }}",
-  uploadFailed: "{{ t.upload_failed }}",
-  singular: "{{ t.voucher_ready_singular }}",
-  plural: "{{ t.voucher_ready_plural }}",
-};
 
 fileInput.addEventListener('change', () => {
   filename.textContent = fileInput.files[0]?.name || '';
@@ -668,6 +1232,11 @@ form.addEventListener('submit', async e => {
       : `${data.count} ${TXT.plural}`;
 
   downloadBtn.disabled = data.count === 0;
+
+  // Show the columns that will be printed, in the order they will print in.
+  voucherFields = Array.isArray(data.fields) ? data.fields : [];
+  fieldsSection.style.display = voucherFields.length || data.count ? '' : 'none';
+  renderFields();
 });
 
 downloadBtn.addEventListener('click', () => {

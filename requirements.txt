@@ -8,3 +8,5 @@ Flask-Session
 openpyxl
 xlrd
 azure-monitor-opentelemetry
+arabic-reshaper
+python-bidi
