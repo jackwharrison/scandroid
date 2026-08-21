@@ -1060,6 +1060,10 @@ translations = {
     "voucher_save_design": "Save design",
     "voucher_design_saved": "Design saved",
     "voucher_design_save_failed": "Could not save design",
+    "lookup_min": "Type at least {n} characters of the code.",
+    "lookup_many": "{n} possible matches — keep typing.",
+    "lookup_one": "One match found — press Go.",
+    "lookup_none": "No match in the saved records. Check the code."
 },
 
 "fr": {
@@ -1269,6 +1273,10 @@ translations = {
     "voucher_save_design": "Enregistrer la conception",
     "voucher_design_saved": "Conception enregistrée",
     "voucher_design_save_failed": "Impossible d'enregistrer la conception",
+    "lookup_min": "Saisissez au moins {n} caractères du code.",
+    "lookup_many": "{n} correspondances possibles — continuez à saisir.",
+    "lookup_one": "Une correspondance trouvée — appuyez sur Valider.",
+    "lookup_none": "Aucune correspondance dans les enregistrements. Vérifiez le code."
 },
 
 "ar": {
@@ -1478,6 +1486,10 @@ translations = {
     "voucher_save_design": "حفظ التصميم",
     "voucher_design_saved": "تم حفظ التصميم",
     "voucher_design_save_failed": "تعذّر حفظ التصميم",
+    "lookup_min": "أدخل {n} أحرف على الأقل من الرمز.",
+    "lookup_many": "{n} تطابقات محتملة — تابع الإدخال.",
+    "lookup_one": "تم العثور على تطابق واحد — اضغط تأكيد.",
+    "lookup_none": "لا يوجد تطابق في السجلات المحفوظة. تحقق من الرمز."
 },
 
 }

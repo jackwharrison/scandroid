@@ -341,6 +341,21 @@
       cursor: not-allowed;
     }
 
+    /* Live feedback for the progressive code lookup. Colour carries meaning
+       (waiting / ready / no match) but the text says it too, so it still reads
+       correctly in greyscale or for a colour-blind operator. */
+    .manual-hint {
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      min-height: 18px;
+      color: var(--muted);
+    }
+    .manual-hint.is-ready { color: #047857; }
+    .manual-hint.is-wait  { color: #b45309; }
+    .manual-hint.is-none  { color: #b91c1c; }
+
     /* ---------- FOOTER ---------- */
     footer {
       background-color: var(--navy);
@@ -511,6 +526,8 @@
             {{ t.manual_submit or "Go" }}
           </button>
         </div>
+        <!-- Live match count for the progressive lookup (see MIN_PREFIX below) -->
+        <div class="manual-hint" id="manualHint" role="status" aria-live="polite"></div>
       </div>
 
     </div>
@@ -544,7 +561,11 @@ document.addEventListener("DOMContentLoaded", () => {
       no_read_hint: "{{ t.no_read_hint or 'This QR code can’t be read — it may be blurred, faded or low quality. Enter the Reference ID printed below the QR code using the box below.' }}",
       decoder_unavailable: "{{ t.decoder_unavailable or 'The scanner could not start on this device. Enter the Reference ID printed below the QR code using the box below.' }}",
       no_read_banner: "{{ t.no_read_banner or 'Can’t read this QR code' }}",
-      no_read_banner_sub: "{{ t.no_read_banner_sub or 'Type the Reference ID printed under the QR code into the box below.' }}"
+      no_read_banner_sub: "{{ t.no_read_banner_sub or 'Type the Reference ID printed under the QR code into the box below.' }}",
+      lookup_min: "{{ t.lookup_min or 'Type at least {n} characters of the code.' }}",
+      lookup_many: "{{ t.lookup_many or '{n} possible matches — keep typing.' }}",
+      lookup_one: "{{ t.lookup_one or 'One match found — press Go.' }}",
+      lookup_none: "{{ t.lookup_none or 'No match in the saved records. Check the code.' }}"
     };
 
     let stream = null;
@@ -869,6 +890,152 @@ document.addEventListener("DOMContentLoaded", () => {
     const manualEntryBox   = document.getElementById('manualEntryBox');
     const manualCodeInput  = document.getElementById('manualCodeInput');
     const manualSubmitBtn  = document.getElementById('manualSubmitBtn');
+    const manualHint       = document.getElementById('manualHint');
+
+    /* ---------- PROGRESSIVE CODE LOOKUP ----------
+     *
+     * Operators find the full Kobo UUID too long to retype, so the box also
+     * accepts the FIRST PART of it and narrows as they type. Two conditions
+     * must BOTH hold before Go unlocks:
+     *
+     *   1. at least MIN_PREFIX characters entered, AND
+     *   2. exactly one saved record whose UUID starts with them.
+     *
+     * Uniqueness alone is not safe. A hex UUID has no check digit, so a
+     * mistyped character does not fail — it silently resolves to a different
+     * record. On a small caseload one or two characters can already be
+     * "unique", which would hand the operator the wrong person. The minimum
+     * length is what closes that gap; the photo check on the next page remains
+     * the final backstop.
+     *
+     * Prefix matching applies to the UUID ONLY. Reference IDs and Kobo IDs are
+     * short and often share a structured prefix, so partial matching on those
+     * would produce phantom ambiguity. They are still accepted in full, as an
+     * exact match, exactly as before this change.
+     *
+     * Everything happens against the records already cached in IndexedDB, so
+     * this works fully offline and adds no server call.
+     */
+    const MIN_PREFIX = 6;
+
+    // null = not loaded yet. [] = nothing cached, in which case we fall back to
+    // the previous behaviour (accept anything and let routing decide) rather
+    // than locking the operator out of the box entirely.
+    let candidates = null;
+
+    async function loadCandidates() {
+      return new Promise((resolve) => {
+        let req;
+        try { req = indexedDB.open("scandroid"); } catch { resolve([]); return; }
+
+        req.onerror = () => resolve([]);
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains("records")) { resolve([]); return; }
+          try {
+            const g = db.transaction("records", "readonly").objectStore("records").getAll();
+            g.onsuccess = () => {
+              const out = [];
+              for (const r of (g.result || [])) {
+                if (!r) continue;
+                const full = String(r.uuid || "");
+                if (!full) continue;
+
+                // Records are keyed "<programId>:<uuid>". Only count this
+                // program's people (plus legacy unscoped records) — another
+                // program's caseload must not affect the match count.
+                let raw = full;
+                if (PROGRAM_ID) {
+                  if (full.startsWith(PROGRAM_ID + ':')) {
+                    raw = full.slice(PROGRAM_ID.length + 1);
+                  } else if (full.includes(':')) {
+                    continue;
+                  }
+                }
+
+                out.push({
+                  uuid: raw,
+                  koboId: String(r.koboId || ""),
+                  regId: String(r.regId || ""),
+                });
+              }
+              resolve(out);
+            };
+            g.onerror = () => resolve([]);
+          } catch { resolve([]); }
+        };
+      });
+    }
+
+    // An exact hit on any id field short-circuits the prefix rules: a pasted or
+    // scanned-then-retyped full code must keep working regardless of length.
+    function lookup(query) {
+      const s = query.trim().toLowerCase();
+      const list = candidates || [];
+
+      const exact = list.find(c =>
+        c.uuid.toLowerCase()   === s ||
+        (c.koboId && c.koboId.toLowerCase() === s) ||
+        (c.regId  && c.regId.toLowerCase()  === s)
+      ) || null;
+
+      const prefix = (s.length >= MIN_PREFIX)
+        ? list.filter(c => c.uuid.toLowerCase().startsWith(s))
+        : [];
+
+      return { exact, prefix };
+    }
+
+    function setHint(text, state) {
+      if (!manualHint) return;
+      manualHint.textContent = text || '';
+      manualHint.classList.remove('is-ready', 'is-wait', 'is-none');
+      if (state) manualHint.classList.add(state);
+    }
+
+    function updateManualState() {
+      const raw = manualCodeInput.value.trim();
+
+      if (!raw) {
+        manualSubmitBtn.disabled = true;
+        setHint('', null);
+        return;
+      }
+
+      // Not loaded yet, or nothing cached: behave as before this change.
+      if (candidates === null || candidates.length === 0) {
+        manualSubmitBtn.disabled = false;
+        setHint('', null);
+        return;
+      }
+
+      const { exact, prefix } = lookup(raw);
+
+      if (exact) {
+        manualSubmitBtn.disabled = false;
+        setHint(TXT.lookup_one, 'is-ready');
+        return;
+      }
+
+      if (raw.length < MIN_PREFIX) {
+        manualSubmitBtn.disabled = true;
+        setHint(TXT.lookup_min.replace('{n}', MIN_PREFIX), 'is-wait');
+        return;
+      }
+
+      if (prefix.length === 1) {
+        manualSubmitBtn.disabled = false;
+        setHint(TXT.lookup_one, 'is-ready');
+      } else if (prefix.length === 0) {
+        manualSubmitBtn.disabled = true;
+        setHint(TXT.lookup_none, 'is-none');
+      } else {
+        // Count only — never names or partial ids, so the box cannot be used to
+        // read out the caseload.
+        manualSubmitBtn.disabled = true;
+        setHint(TXT.lookup_many.replace('{n}', prefix.length), 'is-wait');
+      }
+    }
 
     if (manualToggleBtn) {
       manualToggleBtn.addEventListener('click', () => {
@@ -879,12 +1046,10 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    manualCodeInput.addEventListener('input', () => {
-      manualSubmitBtn.disabled = manualCodeInput.value.trim() === '';
-    });
+    manualCodeInput.addEventListener('input', updateManualState);
 
     manualCodeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && manualCodeInput.value.trim()) {
+      if (e.key === 'Enter' && !manualSubmitBtn.disabled) {
         submitManualCode();
       }
     });
@@ -894,11 +1059,35 @@ document.addEventListener("DOMContentLoaded", () => {
     function submitManualCode() {
       const code = manualCodeInput.value.trim();
       if (!code) return;
+
+      // Resolve a partial UUID to the single record it points at, so everything
+      // downstream (routing, already-scanned checks, the beneficiary page) still
+      // receives a complete id and needs no changes.
+      let target = code;
+      if (candidates && candidates.length) {
+        const { exact, prefix } = lookup(code);
+        if (exact) {
+          target = code;
+        } else if (code.length >= MIN_PREFIX && prefix.length === 1) {
+          target = prefix[0].uuid;
+        } else {
+          updateManualState();   // still ambiguous / too short — don't guess
+          return;
+        }
+      }
+
       manualSubmitBtn.disabled = true;
       manualSubmitBtn.textContent = '…';
       cleanup(); // stop camera if running
-      routeAfterScan(code);
+      routeAfterScan(target);
     }
+
+    // Load the cached ids once, then reflect them in the box. Done after the
+    // listeners are wired so a fast typist is never left with a stale hint.
+    loadCandidates().then((list) => {
+      candidates = list;
+      updateManualState();
+    });
 
   })();
 
