@@ -389,33 +389,123 @@ def get_registration(program_id, registration_id):
     return response.json()
 
 
-def resolve_column_to_match(program_id):
-    """Resolve the columnToMatch for a program.
+def build_fsp_column_map(program_id):
+    """{programFspConfigurationName: columnToMatch} for this program.
 
-    The authoritative source is the 121 FSP configuration
-    (GET /api/programs/{id}/fsp-configurations -> a list of FSP configs, each
-    with a `properties` array containing a `columnToMatch` property). We fetch
-    it live at sync time so the bundle is built against the column 121 reports
-    right now. If the API can't be reached we fall back to the per-program value
-    stored in config, then the legacy global COLUMN_TO_MATCH — but the live
-    value is preferred and is what gets written into the batch manifest.
+    INVARIANT 1: keyed on the configuration NAME, never on array position.
+    columnToMatch belongs to an FSP configuration, and a program routinely has
+    several with different values (program 2 has three: phoneNumber, fullName,
+    paID121). The old code returned the first one it happened to see, so the
+    answer depended on the order 121 serialised the array in.
 
-    Returns the column name (str) or None if it truly cannot be determined.
+    INVARIANT 3: a non-200 raises. Silently treating "unauthorised" as "not
+    configured" is what let a wrong column reach the field with no log line.
     """
-    try:
-        url = f"{API_BASE}/programs/{program_id}/fsp-configurations"
-        r = requests.get(url, cookies=COOKIES, timeout=10)
-        if r.status_code == 200:
-            for fsp in r.json():
-                for prop in fsp.get("properties", []):
-                    if prop.get("name") == "columnToMatch" and prop.get("value"):
-                        return prop["value"]
-    except Exception as e:
-        logger.warning("[resolve_column_to_match] API error for program %s: %s", program_id, e)
+    url = f"{API_BASE}/programs/{program_id}/fsp-configurations"
+    r = requests.get(url, cookies=COOKIES, timeout=REQUEST_TIMEOUT)
+    r.raise_for_status()
 
-    per_program = config.get("COLUMN_TO_MATCH_PER_PROGRAM", {})
-    return per_program.get(str(program_id)) or config.get("COLUMN_TO_MATCH")
+    payload = r.json()
+    configs = payload if isinstance(payload, list) else payload.get("data", [])
 
+    col_map = {}
+    for fsp in configs:
+        if not isinstance(fsp, dict):
+            continue
+        name = fsp.get("name")
+        if not name:
+            continue
+        for prop in fsp.get("properties", []):
+            if prop.get("name") == "columnToMatch" and prop.get("value"):
+                col_map[name] = prop["value"]
+                break
+
+    if not col_map:
+        raise IncompleteSyncError(
+            f"Program {program_id}: no FSP configuration reports a columnToMatch. "
+            "Payments cannot be reconciled. Check the 121 FSP configuration."
+        )
+
+    for name, column in sorted(col_map.items()):
+        logger.info("[fsp-config] %s -> columnToMatch '%s'", name, column)
+
+    return col_map
+
+
+def payment_fsp_names(program_id, payment):
+    """The programFspConfigurationName(s) a payment covers.
+
+    Prefers the `fsps` array already present on the payments-list payload; falls
+    back to GET /programs/{id}/payments/{paymentId} when the list form does not
+    carry it. Written to work either way so it does not depend on which shape
+    this 121 build returns.
+    """
+    payment_id = payment.get("paymentId")
+    fsps = payment.get("fsps")
+
+    if not isinstance(fsps, list) or not fsps:
+        url = f"{API_BASE}/programs/{program_id}/payments/{payment_id}"
+        r = requests.get(url, cookies=COOKIES, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        fsps = r.json().get("fsps") or []
+
+    names = []
+    for entry in fsps:
+        if isinstance(entry, dict):
+            name = entry.get("programFspConfigurationName")
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def resolve_payment_column(program_id, payment, col_map, names=None):
+    """The columnToMatch for ONE payment, or raise.
+
+    INVARIANT 2: resolution is anchored to the payment, which knows its FSP
+    configuration. There is deliberately no program-level fallback and no
+    global — INVARIANT 5 — because either would reintroduce exactly the class
+    of bug this replaces.
+    """
+    payment_id = payment.get("paymentId")
+    if names is None:
+        names = payment_fsp_names(program_id, payment)
+
+    if not names:
+        _fail(
+            f"paymentId={payment_id} \"{payment.get('name')}\" reports no FSP "
+            "configuration, so its match column cannot be determined."
+        )
+        return None
+
+    unknown = [n for n in names if n not in col_map]
+    if unknown:
+        _fail(
+            f"paymentId={payment_id} \"{payment.get('name')}\" uses FSP "
+            f"configuration(s) {unknown} which have no columnToMatch in 121. "
+            f"Known configurations: {sorted(col_map)}"
+        )
+        return None
+
+    columns = {col_map[n] for n in names}
+
+    if len(columns) > 1:
+        # INVARIANT 4. A single reconciliation CSV has one header, so a payment
+        # spanning configurations that disagree cannot be reconciled at all.
+        # Surface it here rather than silently half-reconciling in the field.
+        _fail(
+            f"paymentId={payment_id} \"{payment.get('name')}\" spans FSP "
+            f"configurations {names} with conflicting columnToMatch values "
+            f"{sorted(columns)}. It cannot be reconciled with one CSV — split "
+            "the payment in 121, or align the configurations."
+        )
+        return None
+
+    column = columns.pop()
+    logger.info(
+        "[match-column] paymentId=%s \"%s\" fsp=%s -> '%s'",
+        payment_id, payment.get("name"), names, column
+    )
+    return column
 
 def fetch_registrations_bulk(program_id, registration_ids):
     """
@@ -698,10 +788,14 @@ def download_cache(program_id, payment_id):
 
     # Resolve the match column ONCE, live from 121, reused for every record
     # and written into the manifest below.
-    match_key = resolve_column_to_match(program_id)
+    col_map = build_fsp_column_map(program_id)
+    match_key = resolve_payment_column(
+        program_id, {"paymentId": payment_id, "name": f"Payment {payment_id}"}, col_map
+    )
     if not match_key:
-        logger.error("[!] Could not resolve columnToMatch for program %s — "
-                     "offline payments will not be matchable.", program_id)
+        raise IncompleteSyncError(
+            f"Could not resolve columnToMatch for paymentId {payment_id}."
+        )
 
     transactions = get_transactions(program_id, payment_id)
     cache_data = []
@@ -818,7 +912,7 @@ def download_cache(program_id, payment_id):
 WINDOW_DAYS = int(os.getenv("OFFLINE_SYNC_WINDOW_DAYS", "14"))
 
 
-def select_open_payments(program_id, window_days=WINDOW_DAYS):
+def select_open_payments(program_id, col_map, window_days=WINDOW_DAYS):
     """
     Decide which payments are worth pulling transactions for.
 
@@ -867,7 +961,7 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
             )
             continue
 
-        selected.append({
+        entry = {
             "paymentId": payment_id,
             # Names are auto-generated by 121 and are NOT guaranteed unique —
             # two payments minutes apart can share a name. The paymentId is the
@@ -877,7 +971,14 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
             "paymentDate": payment_date,
             "waitingCount": waiting_count,
             "isPaymentApproved": p.get("isPaymentApproved"),
-        })
+            "fspConfigNames": payment_fsp_names(program_id, p),
+        }
+        # Resolved once, here, and carried everywhere downstream. Nothing later
+        # in the pipeline re-derives it (INVARIANT 6).
+        entry["columnToMatch"] = resolve_payment_column(
+            program_id, p, col_map, names=entry["fspConfigNames"]
+        )
+        selected.append(entry)
 
     selected.sort(key=lambda x: (str(x.get("paymentDate") or ""), x["paymentId"]))
 
@@ -890,7 +991,8 @@ def select_open_payments(program_id, window_days=WINDOW_DAYS):
     for p in selected:
         logger.info(
             f"  - paymentId={p['paymentId']} \"{p['name']}\" "
-            f"waiting={p['waitingCount']} date={p.get('paymentDate')}"
+            f"waiting={p['waitingCount']} date={p.get('paymentDate')} "
+            f"fsp={p.get('fspConfigNames')} column='{p.get('columnToMatch')}'"
         )
 
     return selected
@@ -992,6 +1094,11 @@ def fetch_tranches(program_id, payments):
                     "amount": _transfer_value(t),
                     "created": t.get("created"),
                     "status": status,
+                    # INVARIANT 6: self-describing. The device reads the column
+                    # off the tranche the FSP selected — it never has to infer
+                    # one for the program.
+                    "columnToMatch": payment.get("columnToMatch"),
+                    "fspConfigNames": payment.get("fspConfigNames"),
                 }
 
                 # One tranche per (uuid, paymentId) — matches the compound
@@ -1078,15 +1185,13 @@ def download_open_payments_cache(program_id):
     batch_dir = get_next_batch_dir(base_path, "recent")
     photos_dir = os.path.join(batch_dir, "photos")
 
-    # Resolve the match column ONCE, live from 121, and record it in the
-    # manifest so the client never has to guess.
-    match_key = resolve_column_to_match(program_id)
-    if not match_key:
-        logger.error("[!] Could not resolve columnToMatch for program %s — "
-                     "offline payments will not be matchable.", program_id)
+    # columnToMatch is per FSP configuration, reached via the payment — never
+    # per program. Build the name->column map once, then resolve each payment
+    # against it inside select_open_payments().
+    col_map = build_fsp_column_map(program_id)
 
     # 1) + 2) + 3)
-    open_payments = select_open_payments(program_id)
+    open_payments = select_open_payments(program_id, col_map)
     if not open_payments:
         logger.warning("[!] No open payments for program %s — nothing to cache.", program_id)
 
@@ -1105,6 +1210,7 @@ def download_open_payments_cache(program_id):
     cache_data = []
     all_tranches = []
     missing_registration_uuids = []
+    missing_match_values = []   # [(uuid, column)]
 
     for uuid, tranches in tranches_by_uuid.items():
         reg_id = reg_id_by_uuid.get(uuid)
@@ -1115,8 +1221,20 @@ def download_open_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
-        if match_key:
-            filtered_data[match_key] = reg.get(match_key)
+
+        # The union of columns this beneficiary's tranches need — they may sit
+        # on different FSP configurations within the same program.
+        match_cols = {t["columnToMatch"] for t in tranches if t.get("columnToMatch")}
+        for col in match_cols:
+            raw = reg.get(col)
+            filtered_data[col] = raw
+            # encrypt_data() casts None to "" and encrypts it, producing a valid
+            # Fernet token that decrypts to empty. Once encrypted, "no value" is
+            # indistinguishable from a real one and the device only finds out
+            # mid-distribution. Catch it here, while it is still fixable.
+            if not str(raw or "").strip():
+                missing_match_values.append((uuid, col))
+
         encrypted_data = encrypt_data(filtered_data)
 
         first = tranches[0]
@@ -1166,6 +1284,18 @@ def download_open_payments_cache(program_id):
             f"{expected_beneficiaries}."
         )
 
+    if missing_match_values:
+        by_col = defaultdict(list)
+        for uuid, col in missing_match_values:
+            by_col[col].append(uuid)
+        detail = "; ".join(
+            f"'{col}': {len(ids)} beneficiar(y/ies) e.g. {ids[:5]}"
+            for col, ids in sorted(by_col.items())
+        )
+        _fail(
+            "Some beneficiaries have no value for their payment's match column "
+            f"in 121, so their payments could not be reconciled — {detail}"
+        )
     # 6) Download & encrypt photos in parallel (one per beneficiary)
     photo_failures = download_photos_bulk(cache_data, photos_dir)
 
@@ -1179,11 +1309,27 @@ def download_open_payments_cache(program_id):
     with open(tx_path, "w", encoding="utf-8") as f:
         json.dump(all_tranches, f, indent=2)
 
+    # Per-payment map is the authoritative artifact now. The scalar
+    # "columnToMatch" is kept ONLY so a device still running the old client can
+    # read something sane; it is populated only when every payment in the batch
+    # agrees, and is otherwise null rather than an arbitrary pick.
+    column_by_payment = {
+        str(p["paymentId"]): p.get("columnToMatch")
+        for p in open_payments
+        if p.get("columnToMatch")
+    }
+    _distinct_columns = set(column_by_payment.values())
+    _legacy_column = (
+        next(iter(_distinct_columns)) if len(_distinct_columns) == 1 else None
+    )
+
     batch_info = {
         "batchType": "payment-recent",
         "multiPayment": True,
         "programId": program_id,
-        "columnToMatch": match_key,
+        "columnToMatch": _legacy_column,
+        "columnToMatchByPayment": column_by_payment,
+        "fspColumnMap": col_map,
         "dataEncrypted": True,
         "encryptionScheme": "fernet-v1",
         "windowDays": WINDOW_DAYS,
@@ -1195,10 +1341,13 @@ def download_open_payments_cache(program_id):
         "expectedTrancheCount": expected_tranches,
         "registrationFetchFailures": len(failed_reg_ids),
         "photoFailures": len(photo_failures),
+        "missingMatchValues": len(missing_match_values),
         "complete": (
             len(cache_data) == expected_beneficiaries
             and len(all_tranches) == expected_tranches
             and not failed_reg_ids
+            and not missing_match_values
+            and all(p.get("columnToMatch") for p in open_payments)
         ),
         "reconciliation": reconciliation,
         "payments": [

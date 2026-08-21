@@ -1469,7 +1469,10 @@ function scopedUUID(uuid) {
             registrationId: t.registrationId ?? null,
             amount: t.amount ?? t.transferValue ?? 0,
             created: t.created || null,
-            status: t.status || 'waiting'
+            status: t.status || 'waiting',
+            // The match column for THIS payment's FSP configuration. Carried on
+            // the tranche so the offline page never infers a program-wide one.
+            columnToMatch: t.columnToMatch || null
           });
           tranchesWritten++;
         }
@@ -1486,27 +1489,45 @@ function scopedUUID(uuid) {
         value: { importedAt: Date.now(), recordCount: written, photos: photosWritten }
       });
 
-      // ---- Stash the match column so beneficiary_offline.html never has to guess ----
-      // The bundle self-describes which column its encrypted records were built
-      // against (batch_info.json -> columnToMatch). We persist it per-program in
-      // the meta store under the exact key the offline page reads.
+      // ---- Stash the per-payment match columns ----
+      // Primary copy lives on each tranche (see the transaction store above).
+      // This map is the backstop for a tranche written by an older bundle, and
+      // is what the offline page consults before giving up.
       try {
         const biEntry = Object.values(zip.files).find(f => /batch_info\.json$/i.test(f.name));
         if (biEntry) {
           const bi = JSON.parse(await biEntry.async('string')) || {};
+
+          const byPayment = bi.columnToMatchByPayment || null;
+          if (byPayment && Object.keys(byPayment).length) {
+            await db.put('meta', {
+              key: `columnToMatchByPayment:${ACTIVE_PROGRAM_ID}`,
+              value: byPayment
+            });
+            console.info('[sync] match columns by payment:', byPayment);
+          } else {
+            console.warn('[sync] batch_info.json carries no columnToMatchByPayment.');
+          }
+
+          // Legacy scalar: only meaningful when every payment agrees. The sync
+          // now writes null rather than an arbitrary pick when they differ, so
+          // an absent value here is correct, not a failure.
           if (bi.columnToMatch) {
             await db.put('meta', {
               key: `columnToMatch:${ACTIVE_PROGRAM_ID}`,
               value: bi.columnToMatch
             });
           } else {
-            console.warn('[sync] batch_info.json has no columnToMatch — offline matching may fall back to a stale value.');
+            // Clear any stale single value from a previous bundle — leaving it
+            // would let the offline page fall back to a column that no longer
+            // applies to the payments now in the batch.
+            try { await db.delete('meta', `columnToMatch:${ACTIVE_PROGRAM_ID}`); } catch (e) {}
           }
         } else {
-          console.warn('[sync] batch_info.json not found in bundle — cannot stash columnToMatch.');
+          console.warn('[sync] batch_info.json not found in bundle.');
         }
       } catch (e) {
-        console.warn('[sync] Failed to stash columnToMatch:', e);
+        console.warn('[sync] Failed to stash match columns:', e);
       }
 
       // Store display config so beneficiary_offline.html can load it offline
@@ -1811,12 +1832,13 @@ async function buildCsvFromPayments(payments) {
   const encKeyObj = await metaStore.get("encryptionKey");
   const encKey = encKeyObj?.value || "";
 
-  // 🔥 Use the correct match column name from config.
-  // paymentId is emitted explicitly: a beneficiary can hold several concurrent
-  // payments, so the server must reconcile the one the FSP actually selected
-  // rather than re-deriving it from the cache (which can only hold one value
-  // per person and would silently close out the wrong payment).
-  const rows = [[COLUMN_TO_MATCH, "status", "paymentId"]];
+  // Column-neutral by design. The header 121 expects depends on the payment's
+  // FSP configuration, which the server resolves at submit time — the device
+  // just reports WHICH value it matched on and which payment it belongs to.
+  // `columnToMatch` is included for audit and as a cross-check, not as the
+  // authority: if 121's configuration changed between sync and send, the
+  // server's live value wins.
+  const rows = [["matchValue", "status", "paymentId", "columnToMatch"]];
 
   const esc = (val) => {
     const v = String(val == null ? "" : val);
@@ -1830,7 +1852,7 @@ async function buildCsvFromPayments(payments) {
       matchValue = await decrypt(matchValue, encKey);
     }
 
-    rows.push([matchValue, p.status, p.paymentId ?? ""]);
+    rows.push([matchValue, p.status, p.paymentId ?? "", p.column_to_match ?? ""]);
   }
 
   return rows.map(r => r.map(esc).join(",")).join("\n");

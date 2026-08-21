@@ -321,20 +321,61 @@
       return d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'});
     }
 
+
+    // Resolve the match column + value for ONE selected tranche.
+    // Resolution order is strict, most-specific first:
+    //   1. the tranche itself (current bundles)
+    //   2. the per-payment map stashed at sync (older tranche rows)
+    //   3. the legacy program-wide scalar (bundles synced before this change)
+    // There is deliberately no hardcoded default: guessing 'phoneNumber' is
+    // what silently reconciled against the wrong column.
+    async function applySelection(db, rec, t){
+      SELECTED_PAYMENT_ID=t.paymentId??null;
+      SELECTED_PAYMENT_NAME=t.paymentName||null;
+      SELECTED_AMOUNT=t.amount??null;
+
+      MATCH_COL=t.columnToMatch||null;
+      if(!MATCH_COL){
+        try{
+          const m=await dbGet(db,'meta',`columnToMatchByPayment:${ACTIVE_PROGRAM_ID}`);
+          if(m&&m.value) MATCH_COL=m.value[String(t.paymentId)]||null;
+        }catch(e){}
+      }
+      if(!MATCH_COL){
+        try{
+          const s=await dbGet(db,'meta',`columnToMatch:${ACTIVE_PROGRAM_ID}`);
+          if(s&&s.value) MATCH_COL=s.value;
+        }catch(e){}
+      }
+
+      MATCH_VALUE='';
+      if(MATCH_COL){
+        const rawVal=rec.data?.[MATCH_COL]||'';
+        MATCH_VALUE=rawVal;
+        if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){
+          try{ MATCH_VALUE=await fernetDecryptString(rawVal,SERVER_FERNET_KEY); }
+          catch(e){ console.warn('match value decryption failed',e); MATCH_VALUE=''; }
+        }
+        // An encrypted empty string decrypts cleanly to "" — a valid token with
+        // no value behind it. Treat that as missing.
+        if(typeof MATCH_VALUE==='string') MATCH_VALUE=MATCH_VALUE.trim();
+      }
+
+      console.info(`[match] payment ${t.paymentId} -> column '${MATCH_COL}' `+
+                   `value ${MATCH_VALUE?'present':'MISSING'}`);
+    }
+
+
     async function loadPayments(db, rec){
       const approveBtn=document.getElementById('approveBtn');
       const rejectBtn=document.getElementById('rejectBtn');
       const note=document.getElementById('decisionNote');
       const scoped=rec.uuid;
 
-      // Resolve the match column + value once, used by every decision.
-      MATCH_COL=COLUMN_TO_MATCH;
-      try{ const stored=await dbGet(db,'meta',`columnToMatch:${ACTIVE_PROGRAM_ID}`); if(stored&&stored.value) MATCH_COL=stored.value; }catch(e){}
-      if(!MATCH_COL) MATCH_COL='phoneNumber';
-      let rawVal=rec.data?.[MATCH_COL]||'';
-      MATCH_VALUE=rawVal;
-      if(looksEncrypted(rawVal)&&SERVER_FERNET_KEY){try{MATCH_VALUE=await fernetDecryptString(rawVal,SERVER_FERNET_KEY);}catch(e){}}
-
+      // The match column is a property of the payment's FSP configuration, so
+      // it is resolved per selected tranche in applySelection() — NOT once for
+      // the program. A program can run several FSP configurations at the same
+      // time with different columns.
       // Gather this beneficiary's tranches and the ones already collected.
       let tranches=[], paid=[];
       try{ tranches=await getAllByIndexKeyPrefix(db,'transaction',scoped); }catch(e){console.warn('tranche load failed',e);}
@@ -372,9 +413,7 @@
       if(open.length===1){
         // Single open tranche — no selection friction, show the amount block.
         const only=open[0];
-        SELECTED_PAYMENT_ID=only.paymentId??null;
-        SELECTED_PAYMENT_NAME=only.paymentName||null;
-        SELECTED_AMOUNT=only.amount??null;
+        await applySelection(db, rec, only);
         amountBlock.classList.remove('hidden');
         document.getElementById('amountValue').textContent=fmtAmount(only.amount);
         // Name the payment even when there's only one, so the FSP always knows
@@ -412,10 +451,8 @@
         opt.querySelector('.pay-title').textContent=label;
         opt.querySelector('.pay-meta').textContent=meta;
         opt.querySelector('.pay-amount').textContent=fmtAmount(t.amount);
-        opt.addEventListener('click',()=>{
-          SELECTED_PAYMENT_ID=t.paymentId??null;
-          SELECTED_PAYMENT_NAME=t.paymentName||null;
-          SELECTED_AMOUNT=t.amount??null;
+        opt.addEventListener('click',async ()=>{
+          await applySelection(db, rec, t);
           [...listEl.children].forEach(c=>c.classList.remove('selected'));
           opt.classList.add('selected');
           const sl=document.getElementById('selectedLine');
@@ -438,8 +475,24 @@
         const db=await openDB();
         const rec=await dbFindRecordByAnyId(db,SCANNED_ID);
         if(!rec){alert("No matching record found.");return;}
+        if(!MATCH_COL){
+          alert(
+            `The matching field for this payment is unknown on this device, so ` +
+            `the payment cannot be reconciled in 121.\n\n` +
+            `Sync from the FSP admin page while online, then try again.`
+          );
+          return;
+        }
         if(!MATCH_VALUE){
-          alert(`Cannot find value for column "${MATCH_COL}". Please re-sync from the FSP admin page and try again.`);
+          // Re-syncing does NOT fix this: the bundle would be rebuilt with the
+          // same empty value. Name the field so it can be corrected in 121.
+          alert(
+            `This beneficiary has no value for "${MATCH_COL}", the matching ` +
+            `field used by this payment, so it cannot be reconciled in 121.\n\n` +
+            `Reference: ${rec.uuid}\nPayment: ${SELECTED_PAYMENT_ID}\n\n` +
+            `An administrator must set "${MATCH_COL}" on this registration in ` +
+            `121. Re-syncing will not fix it.`
+          );
           return;
         }
         // Collect any editable field values the FSP typed in. Only non-empty
