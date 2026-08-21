@@ -341,12 +341,12 @@
           if(m&&m.value) MATCH_COL=m.value[String(t.paymentId)]||null;
         }catch(e){}
       }
-      if(!MATCH_COL){
-        try{
-          const s=await dbGet(db,'meta',`columnToMatch:${ACTIVE_PROGRAM_ID}`);
-          if(s&&s.value) MATCH_COL=s.value;
-        }catch(e){}
-      }
+      // NO legacy program-wide fallback. The only value it could return is a
+      // single scalar for the whole program, which is wrong by construction on
+      // any program with more than one FSP configuration — and on a device that
+      // has not re-synced it returns the exact stale column this redesign
+      // removed. If neither the tranche nor the per-payment map can answer, the
+      // device is on an old bundle and must sync; savePaymentDecision() says so.
 
       MATCH_VALUE='';
       if(MATCH_COL){
