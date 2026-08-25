@@ -2373,6 +2373,17 @@ def fsp_admin():
     # --- IMPORTANT: persist program for later routes ---
     session["fsp_program_id"] = program_id
 
+    # Can this operator reconcile payments in 121 for this program?
+    #
+    # Tri-state (see _has_program_permission): only a DEFINITE False hides the
+    # Send block and the editable fields. None means 121's login response
+    # carried no readable permissions map — we fail open there, exactly as
+    # /submit-payments does, because blocking every distribution over a changed
+    # response shape would be far worse than a late 403 from 121 itself.
+    can_update_payments = (
+        _has_program_permission("fsp", program_id, "payment.update") is not False
+    )
+
     return render_template(
         "fsp_admin.html",
         COLUMN_TO_MATCH=column_to_match,
@@ -2383,6 +2394,7 @@ def fsp_admin():
         program_title=program_title,
         program_id=program_id,  # ✅ this feeds ACTIVE_PROGRAM_ID in JS
         username=username,
+        can_update_payments=can_update_payments,
     )
 
 
@@ -3652,6 +3664,22 @@ def submit_registration_updates():
         token, actor_label, user_attributed = get_121_token_for_request("fsp")
         if not token:
             return "❌ Login to 121 failed", 401
+
+        # Same gate as /submit-payments. These edits are captured during a
+        # distribution and pushed as part of the same Send action, so they
+        # follow the same permission. Hiding the inputs in the UI is not
+        # enforcement: without this, a view-only account could POST here
+        # directly. Tri-state — only a definite False is acted on.
+        if user_attributed and _has_program_permission(
+            "fsp", program_id, "payment.update"
+        ) is False:
+            return (
+                f"❌ Your 121 account ({actor_label}) is not allowed to update "
+                f"registrations for program {program_id}. Ask your 121 "
+                "administrator to add the 'payment.update' permission to your "
+                "role.",
+                403,
+            )
 
         print(f"[auth] submitting registration updates as {actor_label}")
 

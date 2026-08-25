@@ -746,7 +746,12 @@
     </button>
   </div>
 
-  <!-- SEND BLOCK -->
+  <!-- SEND BLOCK
+       Rendered only for operators whose 121 role carries payment.update for
+       this program. Hidden completely rather than disabled: a greyed-out
+       button or an explanatory note is one more thing for a scan-only user to
+       wonder about. Every JS reference to the ids below is null-guarded. -->
+  {% if can_update_payments %}
   <div class="row-box">
     <div class="info-box">
       <div class="info-title">
@@ -771,6 +776,7 @@
       Send
     </button>
   </div>
+  {% endif %}
 
 </main>
 
@@ -811,6 +817,9 @@ document.addEventListener('click', function(e) {
 
 <script>
   const ACTIVE_PROGRAM_ID = "{{ program_id }}";
+  // Tri-state resolved server-side: false ONLY when 121 definitely says this
+  // operator lacks payment.update for this program (see fsp_admin in app.py).
+  const CAN_UPDATE_PAYMENTS = {{ can_update_payments|tojson }};
 </script>
 
 <!-- IndexedDB helper -->
@@ -1547,6 +1556,35 @@ function scopedUUID(uuid) {
       return { written: 0, photosWritten: 0 };
     }
   }
+
+  // Persist this operator's payment.update permission so the offline pages can
+  // honour it.
+  //
+  // It CANNOT be baked into beneficiary_offline.html by Jinja: that page is in
+  // PRECACHE_URLS and served cacheFirst by the service worker, so a template
+  // value there is frozen at precache time and shared by whoever next opens it
+  // on the tablet — the same trap the columnToMatch comments in that file warn
+  // about.
+  //
+  // Written on every /fsp-admin load, which is the only route into /scan, so a
+  // different user logging in on a shared device overwrites the previous
+  // value before they can scan anyone.
+  async function persistPaymentPermission() {
+    try {
+      const db = await openScandroidDB();
+      await db.put('meta', {
+        key: `canUpdatePayments:${ACTIVE_PROGRAM_ID}`,
+        value: CAN_UPDATE_PAYMENTS
+      });
+      console.info(`[perm] payment.update for program ${ACTIVE_PROGRAM_ID}:`,
+                   CAN_UPDATE_PAYMENTS);
+    } catch (e) {
+      // Non-fatal: the offline page defaults to permitted, matching the
+      // server's fail-open behaviour.
+      console.warn('[perm] could not persist payment permission:', e);
+    }
+  }
+  window.addEventListener("DOMContentLoaded", persistPaymentPermission);
 </script>
 
 <script>
@@ -1801,10 +1839,14 @@ async function loadPaymentsReadyCount() {
 </script>
 <!-- *** NEW SEND LOGIC – Added NON-DESTRUCTIVELY *** -->
 <script>
+// The counter element lives inside the SEND block, which is not rendered
+// without payment.update — so every write to it is guarded. The function still
+// returns the pending list either way, because the send handler uses it.
 async function loadPaymentsReadyCount() {
+  const countEl = document.getElementById("paymentsReadyCount");
   const db = await openScandroidDB();
   if (!db.objectStoreNames.contains("payments")) {
-    document.getElementById("paymentsReadyCount").textContent = "0";
+    if (countEl) countEl.textContent = "0";
     return [];
   }
   const tx = db.transaction("payments", "readonly");
@@ -1815,14 +1857,15 @@ async function loadPaymentsReadyCount() {
     p.uuid && p.uuid.startsWith(ACTIVE_PROGRAM_ID + ':')
   );
 
-  document.getElementById("paymentsReadyCount").textContent = pending.length;
+  if (countEl) countEl.textContent = pending.length;
   return pending;
 
 }
 
 function loadLastSubmission() {
   const saved = localStorage.getItem("scandroid_last_payment_submission");
-  if (saved) document.getElementById("lastSubmissionText").textContent = saved;
+  const el = document.getElementById("lastSubmissionText");
+  if (saved && el) el.textContent = saved;
 }
 
 async function buildCsvFromPayments(payments) {
@@ -1924,10 +1967,15 @@ function buildRegistrationUpdateCsv(payments) {
   return lines.join('\n');
 }
 
-document.getElementById("sendBtn").addEventListener("click", async function () {
+// The button is not rendered at all without payment.update, so this must be
+// null-safe. The CAN_UPDATE_PAYMENTS check inside is defence in depth: nothing
+// should ever reach /submit-payments from an account that cannot use it.
+const sendBtnEl = document.getElementById("sendBtn");
+if (sendBtnEl) sendBtnEl.addEventListener("click", async function () {
   const btn = this;
 
   if (isEffectivelyOffline()) return;
+  if (!CAN_UPDATE_PAYMENTS) return;
 
   const errorBox = document.getElementById("sendError");
   errorBox.style.display = "none";
@@ -2090,6 +2138,10 @@ window.addEventListener("DOMContentLoaded", () => {
 <script>
 function updateOnlineButtonState(isOnline) {
     const syncBtn = document.getElementById("syncBtn");
+    // The whole SEND block is absent when the operator lacks payment.update,
+    // so sendBtn and sendHint are null. This function runs on a 5s timer —
+    // an unguarded null here would abort the repaint on every tick and leave
+    // the Sync button stuck in whatever state it was last in.
     const sendBtn = document.getElementById("sendBtn");
     const syncHint = document.getElementById("syncOfflineHint");
     const sendHint = document.getElementById("sendOfflineHint");
@@ -2099,25 +2151,33 @@ function updateOnlineButtonState(isOnline) {
         // connectivity repaint re-enables it and a second sync can be started
         // on top of the first.
         const syncBusy = !!window.__syncRunning;
-        syncBtn.disabled = syncBusy;
-        sendBtn.disabled = false;
-        syncBtn.classList.toggle("btn-disabled", syncBusy);
-        sendBtn.classList.remove("btn-disabled");
-        syncBtn.removeAttribute("aria-disabled");
-        sendBtn.removeAttribute("aria-disabled");
-        syncBtn.removeAttribute("title");
-        sendBtn.removeAttribute("title");
+        if (syncBtn) {
+            syncBtn.disabled = syncBusy;
+            syncBtn.classList.toggle("btn-disabled", syncBusy);
+            syncBtn.removeAttribute("aria-disabled");
+            syncBtn.removeAttribute("title");
+        }
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.classList.remove("btn-disabled");
+            sendBtn.removeAttribute("aria-disabled");
+            sendBtn.removeAttribute("title");
+        }
         if (syncHint) syncHint.classList.remove("visible");
         if (sendHint) sendHint.classList.remove("visible");
     } else {
-        syncBtn.disabled = true;
-        sendBtn.disabled = true;
-        syncBtn.classList.add("btn-disabled");
-        sendBtn.classList.add("btn-disabled");
-        syncBtn.setAttribute("aria-disabled", "true");
-        sendBtn.setAttribute("aria-disabled", "true");
-        syncBtn.title = "Cannot sync while offline";
-        sendBtn.title = "Cannot send while offline";
+        if (syncBtn) {
+            syncBtn.disabled = true;
+            syncBtn.classList.add("btn-disabled");
+            syncBtn.setAttribute("aria-disabled", "true");
+            syncBtn.title = "Cannot sync while offline";
+        }
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.classList.add("btn-disabled");
+            sendBtn.setAttribute("aria-disabled", "true");
+            sendBtn.title = "Cannot send while offline";
+        }
         if (syncHint) syncHint.classList.add("visible");
         if (sendHint) sendHint.classList.add("visible");
     }

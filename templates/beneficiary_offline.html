@@ -207,12 +207,24 @@
     const PROGRAM_CURRENCY="{{ program_currency or '' }}";
     const t_enter_value="{{ t.enter_value or 'Enter value' }}";
 
+    // Whether this operator may push changes to 121. NOT a template value:
+    // this page is precached and served cacheFirst, so anything Jinja put here
+    // would be frozen at precache time and shared between users on a shared
+    // tablet. It is read from IndexedDB meta in loadPage(), written by
+    // fsp_admin.html on every load. Defaults to true so a device that has
+    // never stored it behaves exactly as before (the server is the real gate).
+    let CAN_UPDATE_PAYMENTS = true;
+
     function renderFields(container,data,keyB64){
       container.innerHTML="";
       const rows=Array.isArray(fieldsConfig)?fieldsConfig:[];
       if(!rows.length){container.innerHTML='<div class="note">No fields configured.</div>';return;}
       for(const f of rows){
         const fk=f.key||f.name||f.field; if(!fk)continue;
+        // No payment.update: an editable field is dropped from the screen
+        // completely — label and value both. Showing it read-only would only
+        // invite "why can't I type in this?".
+        if(f.editable && !CAN_UPDATE_PAYMENTS) continue;
         const label=(f.labels&&(f.labels[LANG]||f.labels.en))||fk;
         const hasVal=data&&Object.prototype.hasOwnProperty.call(data,fk);
         const raw=hasVal?data[fk]:"";
@@ -253,6 +265,12 @@
         const sc=await dbGet(db,'meta','displayConfig');
         if(sc&&sc.value){const cfg=sc.value,pc=cfg.programs?(cfg.programs[ACTIVE_PROGRAM_ID]||cfg):cfg; if(Array.isArray(pc.fields)&&pc.fields.length)fieldsConfig=pc.fields; if(pc.photo!==undefined)photoEnabled=!!pc.photo.enabled;}
       }catch(e){console.warn('displayConfig load failed:',e);}
+      // Only a definite `false` removes the editable fields — anything else
+      // (missing key, unreadable store) leaves the page as it is today.
+      try{
+        const perm=await dbGet(db,'meta',`canUpdatePayments:${ACTIVE_PROGRAM_ID}`);
+        if(perm&&perm.value===false)CAN_UPDATE_PAYMENTS=false;
+      }catch(e){console.warn('payment permission load failed:',e);}
       let rec=await dbGet(db,'records',scopedUUID(String(SCANNED_ID)));
       if(!rec){const idx=await dbGet(db,'meta','idIndex');const map=idx&&idx.value||{};const n=String(SCANNED_ID);const mu=map['uuid:'+n]||map['kobo:'+n]||map['reg:'+n];if(mu)rec=await dbGet(db,'records',scopedUUID(mu));}
       if(!rec)rec=await dbFindRecordByAnyId(db,SCANNED_ID);
