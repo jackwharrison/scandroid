@@ -221,10 +221,11 @@
       if(!rows.length){container.innerHTML='<div class="note">No fields configured.</div>';return;}
       for(const f of rows){
         const fk=f.key||f.name||f.field; if(!fk)continue;
-        // No payment.update: an editable field is dropped from the screen
+        // Cannot push edits to 121: the field is dropped from the screen
         // completely — label and value both. Showing it read-only would only
-        // invite "why can't I type in this?".
-        if(f.editable && !CAN_UPDATE_PAYMENTS) continue;
+        // invite "why can't I type in this?", and showing it editable would
+        // collect a value that 121 will reject at Send.
+        if(f.editable && !CAN_EDIT_FIELDS) continue;
         const label=(f.labels&&(f.labels[LANG]||f.labels.en))||fk;
         const hasVal=data&&Object.prototype.hasOwnProperty.call(data,fk);
         const raw=hasVal?data[fk]:"";
@@ -267,10 +268,13 @@
       }catch(e){console.warn('displayConfig load failed:',e);}
       // Only a definite `false` removes the editable fields — anything else
       // (missing key, unreadable store) leaves the page as it is today.
+      // Falls back to the older canUpdatePayments key so a device that has not
+      // yet reloaded /fsp-admin since this deploy still behaves correctly.
       try{
-        const perm=await dbGet(db,'meta',`canUpdatePayments:${ACTIVE_PROGRAM_ID}`);
-        if(perm&&perm.value===false)CAN_UPDATE_PAYMENTS=false;
-      }catch(e){console.warn('payment permission load failed:',e);}
+        let perm=await dbGet(db,'meta',`canEditFields:${ACTIVE_PROGRAM_ID}`);
+        if(!perm)perm=await dbGet(db,'meta',`canUpdatePayments:${ACTIVE_PROGRAM_ID}`);
+        if(perm&&perm.value===false)CAN_EDIT_FIELDS=false;
+      }catch(e){console.warn('field-edit permission load failed:',e);}
       let rec=await dbGet(db,'records',scopedUUID(String(SCANNED_ID)));
       if(!rec){const idx=await dbGet(db,'meta','idIndex');const map=idx&&idx.value||{};const n=String(SCANNED_ID);const mu=map['uuid:'+n]||map['kobo:'+n]||map['reg:'+n];if(mu)rec=await dbGet(db,'records',scopedUUID(mu));}
       if(!rec)rec=await dbFindRecordByAnyId(db,SCANNED_ID);

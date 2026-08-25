@@ -820,6 +820,11 @@ document.addEventListener('click', function(e) {
   // Tri-state resolved server-side: false ONLY when 121 definitely says this
   // operator lacks payment.update for this program (see fsp_admin in app.py).
   const CAN_UPDATE_PAYMENTS = {{ can_update_payments|tojson }};
+  // Separate from the above: editable fields are pushed by
+  // PATCH /api/programs/{id}/registrations, which needs the registration
+  // permissions, not payment.update. False here hides the inputs on the
+  // beneficiary screen. See fsp_admin in app.py.
+  const CAN_EDIT_FIELDS = {{ can_edit_fields|tojson }};
 </script>
 
 <!-- IndexedDB helper -->
@@ -1576,8 +1581,15 @@ function scopedUUID(uuid) {
         key: `canUpdatePayments:${ACTIVE_PROGRAM_ID}`,
         value: CAN_UPDATE_PAYMENTS
       });
-      console.info(`[perm] payment.update for program ${ACTIVE_PROGRAM_ID}:`,
-                   CAN_UPDATE_PAYMENTS);
+      // Written as its own key rather than folded into the one above: the two
+      // answer different questions and a future change to one must not
+      // silently move the other.
+      await db.put('meta', {
+        key: `canEditFields:${ACTIVE_PROGRAM_ID}`,
+        value: CAN_EDIT_FIELDS
+      });
+      console.info(`[perm] program ${ACTIVE_PROGRAM_ID} — payments:`,
+                   CAN_UPDATE_PAYMENTS, '· edit fields:', CAN_EDIT_FIELDS);
     } catch (e) {
       // Non-fatal: the offline page defaults to permitted, matching the
       // server's fail-open behaviour.

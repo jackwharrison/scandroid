@@ -2373,16 +2373,32 @@ def fsp_admin():
     # --- IMPORTANT: persist program for later routes ---
     session["fsp_program_id"] = program_id
 
-    # Can this operator reconcile payments in 121 for this program?
+    # Two separate questions, because they fail at two different endpoints.
     #
-    # Tri-state (see _has_program_permission): only a DEFINITE False hides the
-    # Send block and the editable fields. None means 121's login response
-    # carried no readable permissions map — we fail open there, exactly as
-    # /submit-payments does, because blocking every distribution over a changed
-    # response shape would be far worse than a late 403 from 121 itself.
+    # Tri-state (see _has_program_permission): only a DEFINITE False hides
+    # anything. None means 121's login response carried no readable permissions
+    # map — we fail open there, exactly as /submit-payments does, because
+    # blocking every distribution over a changed response shape would be far
+    # worse than a late 403 from 121 itself.
+
+    # 1. Can this operator reconcile payments? Gates the Send block.
     can_update_payments = (
         _has_program_permission("fsp", program_id, "payment.update") is not False
     )
+
+    # 2. Can this operator update registrations? Gates the editable fields,
+    #    which are pushed by PATCH /api/programs/{id}/registrations. Without
+    #    these, 121 rejects the whole bulk update AFTER the payments have
+    #    already gone through — so the input must never appear in the first
+    #    place.
+    can_update_registrations = all(
+        _has_program_permission("fsp", program_id, perm) is not False
+        for perm in REGISTRATION_UPDATE_PERMISSIONS
+    )
+
+    # An edit can only reach 121 via Send, so it needs both. Showing an input
+    # to someone who cannot Send would collect data into a dead end.
+    can_edit_fields = can_update_payments and can_update_registrations
 
     return render_template(
         "fsp_admin.html",
@@ -2395,8 +2411,8 @@ def fsp_admin():
         program_id=program_id,  # ✅ this feeds ACTIVE_PROGRAM_ID in JS
         username=username,
         can_update_payments=can_update_payments,
+        can_edit_fields=can_edit_fields,
     )
-
 
 # ---------------------------------------------------------------------------
 # BACKGROUND SYNC JOB RUNNER
@@ -3234,6 +3250,20 @@ def _clear_login_session(role):
         session.pop("fsp_program_id", None)
 
 
+# Permissions 121 requires for PATCH /api/programs/{id}/registrations, which is
+# what /submit-registration-updates calls to push editable-field values.
+#
+# Both are required rather than either: 121 splits ordinary registration
+# attributes (attribute.update) from PII-flagged ones (personal.update), the
+# app cannot tell which category a configured editable field falls into without
+# an extra per-attribute lookup, and the bulk PATCH is all-or-nothing — one
+# missing permission fails the entire batch, not just the PII rows.
+REGISTRATION_UPDATE_PERMISSIONS = (
+    "registration:attribute.update",
+    "registration:personal.update",
+)
+
+
 def _has_program_permission(role, program_id, permission):
     """Tri-state: True / False / None when 121 did not tell us.
 
@@ -3665,21 +3695,28 @@ def submit_registration_updates():
         if not token:
             return "❌ Login to 121 failed", 401
 
-        # Same gate as /submit-payments. These edits are captured during a
-        # distribution and pushed as part of the same Send action, so they
-        # follow the same permission. Hiding the inputs in the UI is not
-        # enforcement: without this, a view-only account could POST here
-        # directly. Tri-state — only a definite False is acted on.
-        if user_attributed and _has_program_permission(
-            "fsp", program_id, "payment.update"
-        ) is False:
-            return (
-                f"❌ Your 121 account ({actor_label}) is not allowed to update "
-                f"registrations for program {program_id}. Ask your 121 "
-                "administrator to add the 'payment.update' permission to your "
-                "role.",
-                403,
-            )
+        # Hiding the inputs in the UI is not enforcement: without this, an
+        # account without the permission could POST here directly.
+        #
+        # payment.update is included because these edits are only ever sent as
+        # part of a Send; the two registration permissions are what 121 itself
+        # checks on the bulk PATCH. Tri-state — only a definite False is acted
+        # on, so an unreadable permissions map still lets 121 be the judge.
+        if user_attributed:
+            missing = [
+                perm
+                for perm in ("payment.update",) + REGISTRATION_UPDATE_PERMISSIONS
+                if _has_program_permission("fsp", program_id, perm) is False
+            ]
+            if missing:
+                return (
+                    f"❌ Your 121 account ({actor_label}) is not allowed to "
+                    f"update registrations for program {program_id}. Ask your "
+                    "121 administrator to add "
+                    + ", ".join(f"'{p}'" for p in missing)
+                    + " to your role.",
+                    403,
+                )
 
         print(f"[auth] submitting registration updates as {actor_label}")
 
