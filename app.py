@@ -991,8 +991,8 @@ translations = {
     "select_payment": "Select a payment",
     "selected": "Selected",
     "all_collected": "All payments for this beneficiary have already been collected.",
-    "payment_approved": "Payment Approved",
-    "payment_rejected": "Payment Rejected",
+    "payment_approved": "Approve",
+    "payment_rejected": "Skip",
     "enter_value": "Enter value",
 
     # ---- success_offline.html ----
@@ -1204,8 +1204,8 @@ translations = {
     "select_payment": "Sélectionnez un paiement",
     "selected": "Sélectionné",
     "all_collected": "Tous les paiements pour ce bénéficiaire ont déjà été retirés.",
-    "payment_approved": "Paiement approuvé",
-    "payment_rejected": "Paiement refusé",
+    "payment_approved": "Approuver",
+    "payment_rejected": "Passer",
     "enter_value": "Saisir une valeur",
 
     # ---- success_offline.html ----
@@ -1417,8 +1417,8 @@ translations = {
     "select_payment": "اختر دفعة",
     "selected": "محدد",
     "all_collected": "تم بالفعل استلام جميع المدفوعات لهذا المستفيد.",
-    "payment_approved": "تمت الموافقة على الدفع",
-    "payment_rejected": "تم رفض الدفع",
+    "payment_approved": "موافقة",
+    "payment_rejected": "تخطي",
     "enter_value": "أدخل القيمة",
 
     # ---- success_offline.html ----
