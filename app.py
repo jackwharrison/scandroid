@@ -1063,7 +1063,22 @@ translations = {
     "lookup_min": "Type at least {n} characters of the code.",
     "lookup_many": "{n} possible matches — keep typing.",
     "lookup_one": "One match found — press Go.",
-    "lookup_none": "No match in the saved records. Check the code."
+    "lookup_none": "No match in the saved records. Check the code.",
+    # ---- lookup field (config.html) ----
+    "lookup_section_title": "Beneficiary lookup",
+    "lookup_section_hint": "Which identifier staff type when the QR code can't be used.",
+    "lookup_field_label": "Look up by",
+    "lookup_field_default": "Reference ID (default)",
+    "lookup_checking": "Checking whether this field is unique in 121…",
+    "lookup_unique_ok": "Unique across all registrations in this program.",
+    "lookup_not_unique": "Not unique: {values} value(s) are shared by {rows} registrations. Staff will not be able to identify those people by this field.",
+    "lookup_has_blanks": "{n} registration(s) have no value for this field and cannot be found by it.",
+    "lookup_check_failed": "Could not check uniqueness against 121 right now.",
+    "lookup_partial_check": "Checked {checked} of {total} registrations — the result may be incomplete.",
+
+    # ---- lookup field (scan.html) ----
+    "manual_code_label_field": "Enter {field}",
+    "lookup_duplicate": "{n} people share this value — use the Reference ID instead."
 },
 
 "fr": {
@@ -2044,6 +2059,21 @@ def config_page():
                 f for f in pdata.get("fields", []) if f.get("key") in allowed_names
             ]
 
+            # Same treatment for the lookup field. A configured attribute that
+            # 121 no longer exposes can never match anything typed into the
+            # scan box, and would fail silently in the field — so it reverts to
+            # the reference ID, which always exists.
+            _lookup = pdata.get("lookup") or {}
+            _lookup_key = _lookup.get("field")
+            if _lookup_key and _lookup_key != "referenceId" \
+                    and _lookup_key not in allowed_names:
+                print(
+                    f"[config] program {active_program_id}: lookup field "
+                    f"'{_lookup_key}' is not a 121 attribute — reverting to "
+                    "referenceId."
+                )
+                pdata["lookup"] = {"field": "referenceId"}
+
     # ------------------------------------------------------
     # Kobo image fields
     # ------------------------------------------------------
@@ -2854,6 +2884,19 @@ def scan():
             except Exception as e:
                 print(f"[scan] Failed to fetch 121 program title: {e}")
 
+    # The scan box can now match on a configured registration attribute, whose
+    # value is Fernet-encrypted in the offline cache — so this page needs the
+    # key, exactly as /beneficiary-offline does.
+    #
+    # CAVEAT: /scan is precached cacheFirst by the service worker, so this
+    # baked-in value freezes at precache time and would go stale if
+    # ENCRYPTION_KEY were rotated. scan.html prefers meta.encryptionKey from
+    # IndexedDB and treats this only as the fallback.
+    try:
+        fernet_key = load_config().get("ENCRYPTION_KEY", "")
+    except Exception:
+        fernet_key = ""
+
     return render_template(
         "scan.html",
         lang=lang,
@@ -2861,9 +2904,9 @@ def scan():
         username=username,
         program_title=program_title,
         program_id=program_id or "",
-        qr_enabled=qr_enabled
+        qr_enabled=qr_enabled,
+        fernet_key=fernet_key,
     )
-
 
 @app.route("/service-worker.js")
 def sw():
@@ -2932,6 +2975,111 @@ def api_offline_latest_zip():
         as_attachment=True,
         download_name="latest_offline_cache.zip",
     )
+
+@app.route("/api/program-field-uniqueness/<program_id>")
+def api_program_field_uniqueness(program_id):
+    """Is <field> unique across this programme's registrations in 121?
+
+    Answers the config page's warning badge. Deliberately returns counts only —
+    never the offending values — so this endpoint cannot be used to enumerate
+    the caseload.
+
+    Counts are a snapshot. A field that is unique today can gain a duplicate
+    tomorrow, which is why offline_sync.py re-checks the same thing against the
+    actual batch at sync time (Patch 4).
+    """
+    if not session.get("admin_logged_in"):
+        return jsonify({"error": "unauthorized"}), 401
+
+    field = (request.args.get("field") or "").strip()
+
+    # The reference ID is unique by construction in 121 — no need to walk the
+    # caseload to prove it.
+    if not field or field == "referenceId":
+        return jsonify({
+            "field": field or "referenceId",
+            "checked": 0, "blank": 0,
+            "duplicateValues": 0, "affectedRegistrations": 0,
+            "unique": True, "skipped": True,
+        })
+
+    system_config = load_config()
+    url121 = system_config.get("url121")
+    if not url121:
+        return jsonify({"error": "121 URL is not configured"}), 503
+
+    try:
+        login_resp = requests.post(
+            f"{url121}/api/users/login",
+            json={
+                "username": system_config.get("username121", ""),
+                "password": system_config.get("password121", ""),
+            },
+            timeout=10,
+        )
+        if login_resp.status_code != 201:
+            return jsonify({"error": "121 login failed"}), 502
+        cookies = {
+            "access_token_general": login_resp.json().get("access_token_general")
+        }
+
+        # Same pagination discipline as offline_sync._fetch_all: ask for
+        # limit=-1 first, then verify against meta.totalItems and page
+        # explicitly if the server paginated us anyway. A silently truncated
+        # read here would report "unique" for a field that is not.
+        url = f"{url121}/api/programs/{program_id}/registrations"
+        rows, total = [], None
+
+        r = requests.get(url, cookies=cookies, params={"limit": -1}, timeout=60)
+        r.raise_for_status()
+        payload = r.json()
+        rows = payload.get("data", payload) if isinstance(payload, dict) else payload
+        rows = rows if isinstance(rows, list) else []
+        meta = payload.get("meta") if isinstance(payload, dict) else None
+        total = (meta or {}).get("totalItems")
+
+        if total is not None and len(rows) < total:
+            rows = []
+            page, page_size, max_pages = 1, 1000, 100
+            while page <= max_pages:
+                pr = requests.get(
+                    url, cookies=cookies,
+                    params={"limit": page_size, "page": page}, timeout=60,
+                )
+                pr.raise_for_status()
+                pp = pr.json()
+                batch = pp.get("data", []) if isinstance(pp, dict) else pp
+                if not batch:
+                    break
+                rows.extend(batch)
+                if total is not None and len(rows) >= total:
+                    break
+                page += 1
+
+        # Truthful about incompleteness rather than quietly reporting on a
+        # partial read.
+        truncated = total is not None and len(rows) < total
+
+        from collections import Counter
+        values = [str((row or {}).get(field) or "").strip() for row in rows]
+        blank = sum(1 for v in values if not v)
+        counts = Counter(v.lower() for v in values if v)
+        dupes = {v: c for v, c in counts.items() if c > 1}
+
+        return jsonify({
+            "field": field,
+            "checked": len(rows),
+            "reportedTotal": total,
+            "truncated": truncated,
+            "blank": blank,
+            "duplicateValues": len(dupes),
+            "affectedRegistrations": sum(dupes.values()),
+            "unique": not dupes,
+        })
+
+    except Exception as e:
+        print(f"[uniqueness] program {program_id} field '{field}': {e}")
+        return jsonify({"error": str(e)}), 502
 
 
 @app.route("/ping")

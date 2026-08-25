@@ -73,7 +73,17 @@ display_config = load_display_config()
 _prog_config = display_config.get("programs", {}).get(str(program_id), {})
 FIELD_KEYS = [field["key"] for field in _prog_config.get("fields", [])]
 PHOTO_FIELD_NAME = _prog_config.get("photo", {}).get("field_name", "photo")
+
+# The attribute staff type into the scan box when the QR code cannot be used.
+# "referenceId" (the default) needs nothing extra cached — it IS the record key.
+# Anything else must be pulled into the batch, or the device has nothing to
+# match against and the setting silently does nothing in the field.
+LOOKUP_FIELD = str(
+    (_prog_config.get("lookup") or {}).get("field") or "referenceId"
+).strip() or "referenceId"
+
 logger.info(f"[INFO] Loaded {len(FIELD_KEYS)} field keys for program {program_id}: {FIELD_KEYS}")
+logger.info(f"[INFO] Lookup field for program {program_id}: '{LOOKUP_FIELD}'")
 
 try:
     fernet = Fernet(ENCRYPTION_KEY.encode())
@@ -831,6 +841,8 @@ def download_cache(program_id, payment_id):
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
         if match_key:
             filtered_data[match_key] = reg.get(match_key)
+        if LOOKUP_FIELD != "referenceId":
+            filtered_data[LOOKUP_FIELD] = reg.get(LOOKUP_FIELD)
 
         encrypted_data = encrypt_data(filtered_data)
 
@@ -1211,6 +1223,8 @@ def download_open_payments_cache(program_id):
     all_tranches = []
     missing_registration_uuids = []
     missing_match_values = []   # [(uuid, column)]
+    lookup_values = defaultdict(list)   # normalised value -> [uuid, ...]
+    lookup_blank = []                   # uuids with no lookup value at all
 
     for uuid, tranches in tranches_by_uuid.items():
         reg_id = reg_id_by_uuid.get(uuid)
@@ -1221,6 +1235,18 @@ def download_open_payments_cache(program_id):
             continue
 
         filtered_data = {key: reg.get(key) for key in FIELD_KEYS}
+
+        # The configured lookup attribute. Cached even when it is not one of the
+        # displayed fields — the scan box needs it, the beneficiary screen only
+        # renders what display config lists, so nothing extra appears on screen.
+        if LOOKUP_FIELD != "referenceId":
+            lookup_raw = reg.get(LOOKUP_FIELD)
+            filtered_data[LOOKUP_FIELD] = lookup_raw
+            lookup_clean = str(lookup_raw or "").strip()
+            if lookup_clean:
+                lookup_values[lookup_clean.lower()].append(uuid)
+            else:
+                lookup_blank.append(uuid)
 
         # The union of columns this beneficiary's tranches need — they may sit
         # on different FSP configurations within the same program.
@@ -1296,6 +1322,31 @@ def download_open_payments_cache(program_id):
             "Some beneficiaries have no value for their payment's match column "
             f"in 121, so their payments could not be reconciled — {detail}"
         )
+    # --- lookup-field health check -------------------------------------
+    # Deliberately NOT _fail(): every person here is still findable by their
+    # reference ID, and scan.html refuses to resolve an ambiguous lookup value
+    # rather than guessing. This is a data-quality signal, not a broken batch.
+    lookup_duplicates = {v: ids for v, ids in lookup_values.items() if len(ids) > 1}
+    if LOOKUP_FIELD != "referenceId":
+        if lookup_duplicates:
+            affected = sum(len(ids) for ids in lookup_duplicates.values())
+            logger.warning(
+                "[!] Lookup field '%s' is NOT unique in this batch: %s value(s) "
+                "shared by %s beneficiar(y/ies). Those people can only be found "
+                "by reference ID. Fix the duplicates in 121.",
+                LOOKUP_FIELD, len(lookup_duplicates), affected,
+            )
+        if lookup_blank:
+            logger.warning(
+                "[!] %s beneficiar(y/ies) have no value for lookup field '%s' "
+                "and cannot be found by it (e.g. %s).",
+                len(lookup_blank), LOOKUP_FIELD, lookup_blank[:5],
+            )
+        if not lookup_duplicates and not lookup_blank:
+            logger.info(
+                "[INFO] Lookup field '%s': unique and populated across all %s "
+                "beneficiar(y/ies).", LOOKUP_FIELD, len(cache_data),
+            )
     # 6) Download & encrypt photos in parallel (one per beneficiary)
     photo_failures = download_photos_bulk(cache_data, photos_dir)
 
@@ -1342,6 +1393,13 @@ def download_open_payments_cache(program_id):
         "registrationFetchFailures": len(failed_reg_ids),
         "photoFailures": len(photo_failures),
         "missingMatchValues": len(missing_match_values),
+        # Lookup-field evidence. Deliberately NOT part of "complete" below: a
+        # non-unique or partly-blank lookup field does not make the batch
+        # incomplete — everyone in it is still findable by reference ID.
+        "lookupField": LOOKUP_FIELD,
+        "lookupBlankCount": len(lookup_blank),
+        "lookupDuplicateValueCount": len(lookup_duplicates),
+        "lookupDuplicateAffected": sum(len(ids) for ids in lookup_duplicates.values()),
         "complete": (
             len(cache_data) == expected_beneficiaries
             and len(all_tranches) == expected_tranches
