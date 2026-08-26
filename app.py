@@ -1078,7 +1078,8 @@ translations = {
 
     # ---- lookup field (scan.html) ----
     "manual_code_label_field": "Enter {field}",
-    "lookup_duplicate": "{n} people share this value — use the Reference ID instead."
+    "lookup_duplicate": "{n} people share this value — use the Reference ID instead.",
+    "verify_only_note": "Verification only — your account cannot record payments."    
 },
 
 "fr": {
@@ -1291,7 +1292,8 @@ translations = {
     "lookup_min": "Saisissez au moins {n} caractères du code.",
     "lookup_many": "{n} correspondances possibles — continuez à saisir.",
     "lookup_one": "Une correspondance trouvée — appuyez sur Valider.",
-    "lookup_none": "Aucune correspondance dans les enregistrements. Vérifiez le code."
+    "lookup_none": "Aucune correspondance dans les enregistrements. Vérifiez le code.",
+    "verify_only_note": "Vérification uniquement — votre compte ne peut pas enregistrer de paiements."
 },
 
 "ar": {
@@ -1504,7 +1506,8 @@ translations = {
     "lookup_min": "أدخل {n} أحرف على الأقل من الرمز.",
     "lookup_many": "{n} تطابقات محتملة — تابع الإدخال.",
     "lookup_one": "تم العثور على تطابق واحد — اضغط تأكيد.",
-    "lookup_none": "لا يوجد تطابق في السجلات المحفوظة. تحقق من الرمز."
+    "lookup_none": "لا يوجد تطابق في السجلات المحفوظة. تحقق من الرمز.",
+    "verify_only_note": "التحقق فقط — لا يمكن لحسابك تسجيل المدفوعات."
 },
 
 }

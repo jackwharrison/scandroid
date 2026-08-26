@@ -206,7 +206,8 @@
     const COLUMN_TO_MATCH="{{ column_to_match }}";
     const PROGRAM_CURRENCY="{{ program_currency or '' }}";
     const t_enter_value="{{ t.enter_value or 'Enter value' }}";
-
+    const RO_NOTE="{{ t.verify_only_note or 'Verification only — your account cannot record payments.' }}";
+    const RO_CONTINUE_LABEL="{{ t.scan_next or 'Scan next beneficiary' }}";
     // Whether this operator may push changes to 121. NOT a template value:
     // this page is precached and served cacheFirst, so anything Jinja put here
     // would be frozen at precache time and shared between users on a shared
@@ -214,6 +215,23 @@
     // fsp_admin.html on every load. Defaults to true so a device that has
     // never stored it behaves exactly as before (the server is the real gate).
     let CAN_EDIT_FIELDS = true;
+
+    // Whether this operator may record a payment at all. Same tri-state source
+    // as CAN_EDIT_FIELDS — written by fsp_admin.html on every load — but read
+    // from canUpdatePayments ONLY. canEditFields also requires the two
+    // registration permissions, so an operator who may reconcile payments but
+    // not update registrations must NOT lose the Approve button.
+    //
+    // When this is false the Approve button is REMOVED. A read-only operator's
+    // approval would otherwise sit in the local 'payments' store as
+    // status:'success', and the next operator to log in on the same tablet
+    // would find it in "Payments ready to send" and submit it under their own
+    // token — a payment nobody with the authority to make it ever approved.
+    // Nothing in the payments store records who created a row.
+    //
+    // Defaults to true so a device that has never stored the flag behaves
+    // exactly as it does today.
+    let CAN_RECORD_PAYMENT = true;
 
     function renderFields(container,data,keyB64){
       container.innerHTML="";
@@ -251,7 +269,24 @@
         row.appendChild(lab); row.appendChild(v); container.appendChild(row);
       }
     }
-
+    // Verification-only mode: this operator can look a beneficiary up and
+    // confirm their identity from the photo and fields, but cannot record a
+    // payment decision. Approve is removed from the DOM; Skip stays, because it
+    // writes nothing and is how they move to the next person.
+    function applyVerifyOnlyMode(){
+      const approve=document.getElementById('approveBtn');
+      if(approve)approve.remove();
+      // The actions row is a 2-column grid; with one button left it should
+      // fill the width rather than sit in a half-empty row.
+      const actions=document.querySelector('.actions');
+      if(actions)actions.style.gridTemplateColumns='1fr';
+      // "Skip" only makes sense next to "Approve". On its own it is just
+      // "next person".
+      const reject=document.getElementById('rejectBtn');
+      if(reject)reject.textContent=RO_CONTINUE_LABEL;
+      const note=document.getElementById('decisionNote');
+      if(note)note.textContent=RO_NOTE;
+    }
     async function loadPage(){
       const fieldsEl=document.getElementById('fields');
       const photoMsg=document.getElementById('photoMsg');
@@ -275,6 +310,13 @@
         if(!perm)perm=await dbGet(db,'meta',`canUpdatePayments:${ACTIVE_PROGRAM_ID}`);
         if(perm&&perm.value===false)CAN_EDIT_FIELDS=false;
       }catch(e){console.warn('field-edit permission load failed:',e);}
+      // Separate question, separate key — see CAN_RECORD_PAYMENT above.
+      // Applied before loadPayments() so nothing can re-show the button.
+      try{
+        const pp=await dbGet(db,'meta',`canUpdatePayments:${ACTIVE_PROGRAM_ID}`);
+        if(pp&&pp.value===false)CAN_RECORD_PAYMENT=false;
+      }catch(e){console.warn('payment permission load failed:',e);}
+      if(!CAN_RECORD_PAYMENT)applyVerifyOnlyMode();
       let rec=await dbGet(db,'records',scopedUUID(String(SCANNED_ID)));
       if(!rec){const idx=await dbGet(db,'meta','idIndex');const map=idx&&idx.value||{};const n=String(SCANNED_ID);const mu=map['uuid:'+n]||map['kobo:'+n]||map['reg:'+n];if(mu)rec=await dbGet(db,'records',scopedUUID(mu));}
       if(!rec)rec=await dbFindRecordByAnyId(db,SCANNED_ID);
@@ -427,7 +469,12 @@
         // Everything already collected — nothing to distribute.
         selectSection.classList.add('hidden');
         amountBlock.classList.add('hidden');
-        approveBtn.disabled=true; rejectBtn.disabled=true;
+        // Null-guarded: applyVerifyOnlyMode() removes approveBtn from the DOM
+        // before this runs. Reject stays enabled in verification-only mode —
+        // there it reads "Scan next beneficiary" and is the ONLY way forward,
+        // so disabling it would strand the operator on this screen.
+        if(approveBtn)approveBtn.disabled=true;
+        if(rejectBtn&&CAN_RECORD_PAYMENT)rejectBtn.disabled=true;
         note.textContent='✅ '+( "{{ t.all_collected or 'All payments for this beneficiary have already been collected.' }}");
         return;
       }
@@ -449,7 +496,7 @@
       // Multiple open tranches — render the selector.
       multiNote.style.display='';
       selectSection.classList.remove('hidden');
-      approveBtn.disabled=true; // require a selection first
+      if(approveBtn)approveBtn.disabled=true; // require a selection first (absent in verify-only mode)
       listEl.innerHTML='';
       // Oldest payment first, matching the order the sync wrote them in.
       open.sort((a,b)=>String(a.paymentDate||a.created||'').localeCompare(String(b.paymentDate||b.created||''))
@@ -481,7 +528,7 @@
           sl.textContent=`{{ t.selected or 'Selected' }}: ${label}`+
             (t.paymentId!=null?` (#${t.paymentId})`:'')+` — ${fmtAmount(t.amount)}`;
           sl.classList.remove('hidden');
-          approveBtn.disabled=false;
+          if(approveBtn)approveBtn.disabled=false;
         });
         listEl.appendChild(opt);
       });
@@ -489,12 +536,36 @@
 
     async function savePaymentDecision(decisionValue){
       const note=document.getElementById('decisionNote');
+      // Defence in depth: the button is gone, but a stale listener, a bfcache
+      // restore or the console must not be able to write a payment row this
+      // operator is not allowed to make.
+      if(decisionValue==='success' && !CAN_RECORD_PAYMENT){
+        note.textContent=RO_NOTE;
+        return;
+      }
       if(decisionValue==='success' && SELECTED_PAYMENT_ID===null){
         note.textContent='⚠️ Please select a payment first.';
         return;
       }
       try{
         const db=await openDB();
+
+        // Re-read rather than trusting the page-load value. The Approve
+        // listener is attached before loadPage()'s permission read completes,
+        // so a tap in that window would otherwise be evaluated against the
+        // default (true) and write the row we are trying to prevent.
+        if(decisionValue==='success'){
+          try{
+            const pp=await dbGet(db,'meta',`canUpdatePayments:${ACTIVE_PROGRAM_ID}`);
+            if(pp&&pp.value===false){
+              CAN_RECORD_PAYMENT=false;
+              applyVerifyOnlyMode();
+              note.textContent=RO_NOTE;
+              return;
+            }
+          }catch(e){console.warn('payment permission re-check failed:',e);}
+        }
+
         const rec=await dbFindRecordByAnyId(db,SCANNED_ID);
         if(!rec){alert("No matching record found.");return;}
         if(!MATCH_COL){
@@ -555,7 +626,12 @@
 
     document.addEventListener('DOMContentLoaded',()=>{
       loadPage();
-      document.getElementById("approveBtn").addEventListener("click",()=>savePaymentDecision("success"));
+      // Null-guarded for safety: loadPage() yields at its first await before
+      // applyVerifyOnlyMode() can run, so the button is still here today — but
+      // that ordering must not be load-bearing. If it ever changed, an
+      // unguarded call here would throw and take the Reject listener with it.
+      const _approve=document.getElementById("approveBtn");
+      if(_approve)_approve.addEventListener("click",()=>savePaymentDecision("success"));
       document.getElementById("rejectBtn").addEventListener("click",()=>{window.location.href=`/success-offline?lang=${encodeURIComponent(LANG)}&program_id=${encodeURIComponent(ACTIVE_PROGRAM_ID)}`;});
     });
 </script>
